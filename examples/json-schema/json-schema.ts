@@ -1,4 +1,4 @@
-import { LanguageModelSession, GenerationSchema, GenerationGuide } from "afm-ts-sdk";
+import { LanguageModelSession, GenerationSchema, GenerationGuide } from "tsfm-sdk";
 
 async function main() {
   const personSchema = new GenerationSchema("Person", "A person profile")

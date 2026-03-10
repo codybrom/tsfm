@@ -1,4 +1,4 @@
-import { LanguageModelSession } from "afm-ts-sdk";
+import { LanguageModelSession } from "tsfm-sdk";
 
 async function main() {
   const session = new LanguageModelSession();

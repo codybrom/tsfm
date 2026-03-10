@@ -1,8 +1,8 @@
-# afm-ts-sdk
+# tsfm
 
-[![npm](https://img.shields.io/npm/v/afm-ts-sdk)](https://www.npmjs.com/package/afm-ts-sdk)
-[![Tests](https://github.com/codybrom/afm-ts-sdk/actions/workflows/test.yml/badge.svg)](https://github.com/codybrom/afm-ts-sdk/actions/workflows/test.yml)
-[![license](https://img.shields.io/npm/l/afm-ts-sdk)](LICENSE.md)
+[![npm](https://img.shields.io/npm/v/tsfm-sdk)](https://www.npmjs.com/package/tsfm-sdk)
+[![Tests](https://github.com/codybrom/tsfm/actions/workflows/test.yml/badge.svg)](https://github.com/codybrom/tsfm/actions/workflows/test.yml)
+[![license](https://img.shields.io/npm/l/tsfm-sdk)](LICENSE.md)
 
 TypeScript/Node.js SDK for accessing Apple's [Foundation Models framework](https://developer.apple.com/documentation/foundationmodels). On-device Apple Intelligence inference in Node without an API gateway or local server.
 
@@ -25,7 +25,7 @@ Wraps the same C bridge used by [`apple/python-apple-fm-sdk`](https://github.com
 ## Installation
 
 ```bash
-npm install afm-ts-sdk
+npm install tsfm-sdk
 ```
 
 Xcode not required. A prebuilt `libFoundationModels.dylib` is bundled with the npm package. If your Mac needs a different Dylib, install from source. (See [Development](#development))
@@ -33,7 +33,7 @@ Xcode not required. A prebuilt `libFoundationModels.dylib` is bundled with the n
 ## Quick start
 
 ```ts
-import { SystemLanguageModel, LanguageModelSession } from "afm-ts-sdk";
+import { SystemLanguageModel, LanguageModelSession } from "tsfm-sdk";
 
 const model = new SystemLanguageModel();
 const { available } = await model.waitUntilAvailable();
@@ -52,7 +52,7 @@ console.log(reply); // "The capital of France is Paris."
 ### `SystemLanguageModel`
 
 ```ts
-import { SystemLanguageModel, SystemLanguageModelUseCase, SystemLanguageModelGuardrails } from "afm-ts-sdk";
+import { SystemLanguageModel, SystemLanguageModelUseCase, SystemLanguageModelGuardrails } from "tsfm-sdk";
 
 const model = new SystemLanguageModel({
   useCase:    SystemLanguageModelUseCase.GENERAL,           // default
@@ -92,7 +92,7 @@ All methods accept an optional `{ options?: [GenerationOptions](#generationoptio
 ### `GenerationSchema`
 
 ```ts
-import { GenerationSchema, GenerationGuide } from "afm-ts-sdk";
+import { GenerationSchema, GenerationGuide } from "tsfm-sdk";
 
 const schema = new GenerationSchema("Person", "A person profile")
   .property("name", "string", { description: "Full name" })
@@ -130,7 +130,7 @@ const age  = content.value<number>("age");
 ### `GenerationOptions`
 
 ```ts
-import { SamplingMode } from "afm-ts-sdk";
+import { SamplingMode } from "tsfm-sdk";
 
 await session.respond("prompt", {
   options: {
@@ -146,7 +146,7 @@ await session.respond("prompt", {
 ### `Tool`
 
 ```ts
-import { Tool, GenerationSchema, GeneratedContent, GenerationGuide } from "afm-ts-sdk";
+import { Tool, GenerationSchema, GeneratedContent, GenerationGuide } from "tsfm-sdk";
 
 class WeatherTool extends Tool {
   readonly name        = "get_weather";
@@ -177,7 +177,7 @@ tool.dispose();
 ### `Transcript`
 
 ```ts
-import { Transcript } from "afm-ts-sdk";
+import { Transcript } from "tsfm-sdk";
 
 const json = session.transcript.toJson();
 const dict = session.transcript.toDict();
@@ -191,7 +191,7 @@ const resumed = LanguageModelSession.fromTranscript(Transcript.fromDict(dict));
 All errors extend `FoundationModelsError`:
 
 ```ts
-import { ExceededContextWindowSizeError, GuardrailViolationError } from "afm-ts-sdk";
+import { ExceededContextWindowSizeError, GuardrailViolationError } from "tsfm-sdk";
 
 try {
   await session.respond("...");

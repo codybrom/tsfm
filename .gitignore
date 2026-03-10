@@ -7,3 +7,5 @@ foundation-models-c
 native/
 coverage
 .vscode/settings.json
+docs/.vitepress/dist
+docs/.vitepress/cache

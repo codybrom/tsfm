@@ -1,4 +1,4 @@
-import { LanguageModelSession, GenerationSchema, GenerationGuide } from "afm-ts-sdk";
+import { LanguageModelSession, GenerationSchema, GenerationGuide } from "tsfm-sdk";
 
 interface Cat {
   name: string;

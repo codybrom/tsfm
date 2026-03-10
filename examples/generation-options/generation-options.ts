@@ -1,4 +1,4 @@
-import { LanguageModelSession, SamplingMode } from "afm-ts-sdk";
+import { LanguageModelSession, SamplingMode } from "tsfm-sdk";
 
 async function main() {
   const session = new LanguageModelSession();

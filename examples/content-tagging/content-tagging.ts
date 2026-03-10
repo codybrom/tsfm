@@ -1,4 +1,4 @@
-import { SystemLanguageModel, SystemLanguageModelUseCase, LanguageModelSession } from "afm-ts-sdk";
+import { SystemLanguageModel, SystemLanguageModelUseCase, LanguageModelSession } from "tsfm-sdk";
 
 async function main() {
   const model = new SystemLanguageModel({

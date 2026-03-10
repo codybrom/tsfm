@@ -1,6 +1,6 @@
-# afm-ts-sdk Examples
+# tsfm Examples
 
-Usage examples for the [afm-ts-sdk](https://www.npmjs.com/package/afm-ts-sdk) package.
+Usage examples for the [tsfm](https://www.npmjs.com/package/tsfm-sdk) package.
 
 ## Prerequisites
 
@@ -11,7 +11,7 @@ Usage examples for the [afm-ts-sdk](https://www.npmjs.com/package/afm-ts-sdk) pa
 ## Setup
 
 ```bash
-npm install afm-ts-sdk
+npm install tsfm-sdk
 ```
 
 ## Running Examples

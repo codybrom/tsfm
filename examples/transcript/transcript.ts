@@ -1,4 +1,4 @@
-import { LanguageModelSession, Transcript } from "afm-ts-sdk";
+import { LanguageModelSession, Transcript } from "tsfm-sdk";
 
 async function main() {
   // First session — establish context

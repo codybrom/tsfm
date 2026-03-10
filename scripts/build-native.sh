@@ -18,7 +18,7 @@ LOG_FILE="$PACKAGE_DIR/build-native.log"
 
 log() { echo "$*" | tee -a "$LOG_FILE"; }
 
-log "=== afm-ts-sdk native build ==="
+log "=== tsfm native build ==="
 log "Log: $LOG_FILE"
 > "$LOG_FILE"  # truncate
 

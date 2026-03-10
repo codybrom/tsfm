@@ -4,7 +4,7 @@ import {
   GenerationGuide,
   GeneratedContent,
   Tool,
-} from "afm-ts-sdk";
+} from "tsfm-sdk";
 
 class CalculatorTool extends Tool {
   readonly name = "calculator";

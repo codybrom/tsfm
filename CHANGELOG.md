@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-10
+
+### Changed
+
+- Renamed package from `afm-ts-sdk` to `tsfm-sdk`
+- Renamed GitHub repository from `codybrom/afm-ts-sdk` to `codybrom/tsfm`
+
 ## [0.2.1] - 2026-03-09
 
 ### Added
@@ -44,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - C function signatures for string-returning functions now declare return type as `void *` instead of `str` to retain the pointer for proper memory management
 - Tool callback error handling now wraps errors in `ToolCallError` with proper context
-- Updated README import paths from `apple-fm-ts` to `afm-ts-sdk`
+- Updated README import paths
 
 ### Fixed
 
@@ -71,7 +78,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
-[Unreleased]: https://github.com/codybrom/afm-ts-sdk/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/codybrom/afm-ts-sdk/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/codybrom/afm-ts-sdk/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/codybrom/afm-ts-sdk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/codybrom/tsfm/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/codybrom/tsfm/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/codybrom/tsfm/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/codybrom/tsfm/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/codybrom/tsfm/releases/tag/v0.1.0
