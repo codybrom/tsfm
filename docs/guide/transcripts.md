@@ -1,6 +1,6 @@
 # Transcripts
 
-Transcripts let you save and restore session history. This enables persistent conversations across process restarts.
+Transcripts let you save and restore session history, enabling persistent conversations across process restarts. This maps to Foundation Models' [`Transcript`](https://developer.apple.com/documentation/foundationmodels/transcript), which records instructions, prompts, responses, tool calls, and tool output as a linear history.
 
 ## Exporting a Transcript
 
@@ -58,5 +58,5 @@ resumed.dispose();
 ```
 
 ::: warning
-Access `session.transcript` before calling `session.dispose()`. The transcript reads from the native session pointer, which is freed on dispose.
+You must access `session.transcript` *before* calling `session.dispose()`. Transcripts are read from the native session pointer and will be lost when dispose runs.
 :::

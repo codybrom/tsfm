@@ -123,7 +123,7 @@ describe("statusToError", () => {
       '["NSMultipleUnderlyingErrorsKey": [Error Domain=com.apple.SensitiveContentAnalysisML Code=15]]';
     const err = statusToError(255, detail);
     expect(err).toBeInstanceOf(ServiceCrashedError);
-    expect(err.message).toContain("safety service has crashed");
+    expect(err.message).toContain("Apple Intelligence service has crashed");
     expect(err.message).toContain("launchctl kickstart");
     expect(err.message).toContain(detail);
   });

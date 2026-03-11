@@ -45,7 +45,7 @@ export function buildToolSchema(tools: ChatCompletionTool[]): Record<string, unk
   const toolNames = tools.map((t) => t.function.name);
 
   // Build a merged arguments schema from all tools' parameters.
-  // Apple requires fully specified schemas — no open-ended objects.
+  // Foundation Models requires fully specified schemas — no open-ended objects.
   const mergedProperties: Record<string, unknown> = {};
   for (const tool of tools) {
     const params = tool.function.parameters;
@@ -57,7 +57,7 @@ export function buildToolSchema(tools: ChatCompletionTool[]): Record<string, unk
     }
   }
 
-  // Apple's schema parser requires nested objects to use $defs/$ref —
+  // The AFM schema parser requires nested objects to use $defs/$ref —
   // inline nested objects cause hangs or Code=1041 rejections.
   //
   // x-order controls generation order. Generating type first lets the model

@@ -1,6 +1,6 @@
 # Model Configuration
 
-`SystemLanguageModel` is the entry point for accessing the on-device model. It wraps Apple's Foundation Models framework and provides availability checking before you create sessions.
+`SystemLanguageModel` is the entry point for the on-device model. It has the same class and role as [SystemLanguageModel](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel) in Swift and wraps the native model pointer to gate availability before you create sessions.
 
 ## Creating a Model
 
@@ -21,10 +21,12 @@ Both options are optional and default to the values shown above.
 
 ## Use Cases
 
+These map directly to Foundation Models' [`UseCase`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/usecase) enum:
+
 | Value | Description |
 | --- | --- |
 | `GENERAL` | General-purpose text generation (default) |
-| `CONTENT_TAGGING` | Optimized for classification and labeling |
+| `CONTENT_TAGGING` | Optimized for classification and labeling tasks |
 
 ```ts
 const tagger = new SystemLanguageModel({
@@ -34,7 +36,7 @@ const tagger = new SystemLanguageModel({
 
 ## Checking Availability
 
-The model may not be available if Apple Intelligence is disabled, assets haven't been downloaded, or the device doesn't support it.
+The on-device model may not be available if Apple Intelligence is disabled, assets haven't finished downloading, or the hardware doesn't support it. Always check before creating a session.
 
 ### Synchronous Check
 

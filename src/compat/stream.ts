@@ -1,5 +1,6 @@
 import type { ChatCompletionChunk } from "./types.js";
 
+/** Async iterable wrapper for streaming chat completion chunks, mirroring the `openai` SDK's `Stream`. */
 export class Stream implements AsyncIterable<ChatCompletionChunk> {
   private _iterator: AsyncIterator<ChatCompletionChunk>;
 

@@ -1,6 +1,7 @@
 import { SamplingMode, type GenerationOptions } from "../options.js";
 import type { ChatCompletionCreateParams } from "./types.js";
 
+/** OpenAI params accepted for type compat but not supported by Apple Foundation Models. Warned at runtime. */
 const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
   "n",
   "stop",

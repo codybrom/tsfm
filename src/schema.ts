@@ -239,24 +239,14 @@ export class GenerationSchema {
 // ---------------------------------------------------------------------------
 
 /**
- * Normalize a plain JSON Schema object to the format required by Apple's
- * Foundation Models C API.
+ * Normalize a JSON Schema object for the Foundation Models C API.
  *
- * Three fields are injected if not already present:
- * - `title` — required by the C API; defaults to `"Schema"` (an arbitrary
- *   placeholder; the value has no semantic effect on generation).
- * - `additionalProperties: false` — required for strict schema conformance.
- * - `x-order` — an array of property names that controls generation order;
- *   derived from `Object.keys(properties)` when omitted.
+ * The AFM schema parser requires every `object` node to have `title`,
+ * `properties`, `required`, `additionalProperties`, and `x-order`. This
+ * function recursively fills in missing keys with sensible defaults. Also
+ * recurses into `$defs` entries (used for nested objects via `$ref`).
  *
  * @internal
- */
-/**
- * Normalize a JSON Schema object for Apple's Foundation Models.
- *
- * Apple requires every `object` node to have `title`, `properties`, `required`,
- * `additionalProperties`, and `x-order`. This function recursively fills in
- * missing keys with sensible defaults.
  */
 export function afmSchemaFormat(
   schema: Record<string, unknown>,

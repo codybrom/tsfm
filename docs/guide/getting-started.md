@@ -1,5 +1,11 @@
 # Getting Started
 
+TSFM gives Node.js applications access to Apple's on-device large language model through the Foundation Models framework. It loads a native `.dylib` via FFI, allowing it the same access as native Swift and ObjC applications.
+
+This is not a browser library or a cloud API. It requires Node.js on an Apple Silicon Mac running macOS 26+ with Apple Intelligence enabled. It will not work in browser client-side code, on Windows/Linux, on Intel Macs or on machines without Apple Intelligence.
+
+You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
+
 ## Requirements
 
 - **macOS 26** (Tahoe) or later, Apple Silicon
@@ -12,7 +18,7 @@
 npm install tsfm-sdk
 ```
 
-A prebuilt `libFoundationModels.dylib` is bundled with the package — Xcode is not required. If your machine needs a different build, see [Building from Source](#building-from-source).
+Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 26.0+.  If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
 
 ## Quick Start
 
@@ -36,22 +42,28 @@ model.dispose();
 
 ## Key Concepts
 
-1. **Model** — `SystemLanguageModel` represents the on-device model. Check availability before creating sessions.
-2. **Session** — `LanguageModelSession` maintains conversation state. All generation methods go through a session.
-3. **Dispose** — Native resources must be released by calling `dispose()` when you're done.
+**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework exposes **SystemLanguageModel**, the **on-device** large language model at the core of Apple Intelligence that runs on Macs, iPhones and iPads with no network required.
+
+This SDK basically mirrors the Swift Foundation Models API (same class names, same method signatures, same concepts) with TypeScript translating the same actions to the same underlying model. For the most part, [Apple's own documentation](https://developer.apple.com/documentation/FoundationModels) will translate pretty directly.
+
+| SDK class | Role |
+| --- | --- |
+| SystemLanguageModel | Entry point. Wraps the native model pointer and gates availability before you create sessions. |
+| LanguageModelSession | Holds conversation state. All generation (text, structured, streaming, tool use) goes through a session. |
+| .dispose() / Symbol.dispose | Releases native resources. Required for any object that holds a C pointer. |
 
 ## What's Next
 
 - [Model Configuration](/guide/model-configuration) — Use cases, guardrails, availability
 - [Sessions](/guide/sessions) — Creating and using sessions
 - [Streaming](/guide/streaming) — Token-by-token response streaming
-- [Structured Output](/guide/structured-output) — Typed generation with schemas
+- [Structured Outputs](/guide/structured-output) — Typed generation with dictionary or JSON schemas
 - [Tools](/guide/tools) — Function calling
 - [Error Handling](/guide/error-handling) — Error types and recovery
 
 ## Building from Source
 
-If you need to rebuild the native library:
+If you are working on TSFM as a developer, or need to rebuild the native library, run:
 
 ```bash
 git clone https://github.com/codybrom/tsfm.git
@@ -59,4 +71,4 @@ cd tsfm
 npm run build
 ```
 
-This requires **Xcode 26+** to compile the Swift bridge.
+Rebuilding from source requires **Xcode 26+** to compile the libFoundationModels.dylib Swift bridge.

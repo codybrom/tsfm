@@ -1,4 +1,4 @@
-// OpenAI-compatible type definitions for the Foundation Models compat layer.
+// OpenAI-compatible type definitions for the Apple Foundation Models compat layer.
 // This is a pure types file with no runtime code.
 
 // ---------------------------------------------------------------------------
@@ -95,6 +95,13 @@ export type ResponseFormat =
 // Request params
 // ---------------------------------------------------------------------------
 
+/**
+ * Request params for `chat.completions.create()`.
+ *
+ * All OpenAI params are accepted for type compatibility. Supported params are
+ * mapped to Foundation Models GenerationOptions; unsupported params are warned
+ * and silently ignored at runtime (see `mapParams()` and `UNSUPPORTED_PARAMS`).
+ */
 export type ChatCompletionCreateParams = {
   // Required
   messages: ChatCompletionMessageParam[];

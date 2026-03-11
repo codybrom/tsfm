@@ -97,10 +97,15 @@ export class InvalidGenerationSchemaError extends GenerationError {
   }
 }
 
+/**
+ * The Apple Intelligence service (`generativeexperiencesd`) has crashed.
+ * Detected in `statusToError()` when UNKNOWN_ERROR details contain
+ * "SensitiveContentAnalysisML" or "ModelManagerError Code=1013".
+ */
 export class ServiceCrashedError extends GenerationError {
   constructor(detail?: string) {
     const recovery =
-      "The Apple Intelligence safety service has crashed. " +
+      "The Apple Intelligence service has crashed. " +
       "Restart it by running: launchctl kickstart -k gui/$(id -u)/com.apple.generativeexperiencesd";
     super(detail ? `${recovery}\n\nOriginal error: ${detail}` : recovery);
     this.name = "ServiceCrashedError";

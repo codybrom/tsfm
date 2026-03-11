@@ -92,8 +92,25 @@
   border-radius: 15px;
 }
 
+/* Inline code — subtle, no background pill */
 .vp-doc :not(pre) > code {
   border-radius: 4px;
+  background-color: transparent;
+  padding: 0;
+  font-size: 0.9em;
+  color: var(--vp-c-brand-1);
+}
+
+.dark .vp-doc :not(pre) > code {
+  color: var(--vp-c-brand-1);
+}
+
+/* Headings with code — no special treatment */
+.vp-doc h1 code,
+.vp-doc h2 code,
+.vp-doc h3 code,
+.vp-doc h4 code {
+  font-size: inherit;
 }
 
 /* Hero */

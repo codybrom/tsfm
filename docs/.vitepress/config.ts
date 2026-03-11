@@ -45,8 +45,7 @@ export default defineConfig({
           items: [
             { text: "Sessions", link: "/guide/sessions" },
             { text: "Streaming", link: "/guide/streaming" },
-            { text: "Structured Output", link: "/guide/structured-output" },
-            { text: "JSON Schema", link: "/guide/json-schema" },
+            { text: "Structured Output & JSON Schema", link: "/guide/structured-output" },
             { text: "Tools", link: "/guide/tools" },
             { text: "Transcripts", link: "/guide/transcripts" },
           ],

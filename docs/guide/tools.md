@@ -1,6 +1,6 @@
 # Tools
 
-Tools let the model call functions during generation. Define a tool with a name, description, argument schema, and handler — the model decides when to call it.
+Tools let the model call your functions during generation. This maps directly to Foundation Models' [`Tool`](https://developer.apple.com/documentation/foundationmodels/tool) protocol — same concept, same flow: the model decides a tool can help, generates arguments matching your schema, calls the tool, receives the result, and continues generating.
 
 ## Defining a Tool
 
@@ -76,3 +76,7 @@ tool.dispose();
 ```
 
 Tools can be reused across sessions — just dispose after all sessions are done.
+
+## Tool Chaining
+
+The model can call multiple tools in sequence within a single `respond()` call. If the first tool's output informs a second tool call, the model handles the chaining automatically — you don't need to loop.

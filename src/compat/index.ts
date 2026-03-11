@@ -113,6 +113,20 @@ class Completions {
     this._getModel = getModel;
   }
 
+  /**
+   * Create a chat completion, mirroring the OpenAI `chat.completions.create()` API.
+   *
+   * Supported params are mapped to native GenerationOptions; unsupported params
+   * (e.g. `n`, `logprobs`, `tool_choice`) are warned and ignored. See
+   * `mapParams()` for the full mapping. Sessions are created and disposed
+   * automatically per call.
+   *
+   * Native errors are mapped to OpenAI-compatible responses:
+   * - `ExceededContextWindowSizeError` → `finish_reason: "length"`
+   * - `GuardrailViolationError` → `finish_reason: "content_filter"`
+   * - `RefusalError` → `message.refusal` with `content: null`
+   * - `RateLimitedError` → thrown with `status: 429`
+   */
   async create(params: ChatCompletionCreateParams & { stream: true }): Promise<Stream>;
   async create(
     params: ChatCompletionCreateParams & { stream?: false | null },
@@ -332,6 +346,17 @@ class Chat {
 // Main OpenAI class
 // ---------------------------------------------------------------------------
 
+/**
+ * Drop-in replacement for the `openai` SDK's `OpenAI` class, backed by
+ * Apple Foundation Models on-device inference.
+ *
+ * Supports `chat.completions.create()` with text, streaming, structured
+ * output (`json_schema`), and tool calling. Each call is stateless:
+ * the messages array is replayed into a native transcript, generation runs,
+ * and the session is auto-disposed.
+ *
+ * Call `close()` when done to release the underlying model.
+ */
 export default class OpenAI {
   chat: Chat;
   private _model: SystemLanguageModel;

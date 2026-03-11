@@ -55,7 +55,7 @@ function extractText(
   }
   for (const type of unsupported) {
     console.warn(
-      `[tsfm compat] ${type} content parts are not supported by Apple Intelligence and will be ignored.`,
+      `[tsfm compat] ${type} content parts are not supported by Apple Foundation Models and will be ignored.`,
     );
   }
   return content
@@ -91,8 +91,8 @@ function makeEntry(
 // ---------------------------------------------------------------------------
 
 /**
- * Convert an OpenAI-style messages array into Apple's native transcript JSON
- * format.
+ * Convert an OpenAI-style messages array into the Foundation Models native
+ * transcript JSON format.
  *
  * The last user message is excluded from the transcript entries and returned
  * separately as `prompt`.

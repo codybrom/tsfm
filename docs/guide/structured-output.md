@@ -1,8 +1,12 @@
 # Structured Output
 
-Generate typed, constrained output using `GenerationSchema`. The model's response is guided to match your schema exactly.
+When you provide a schema, the on-device model constrains its output to match your types and structure.
 
-## Defining a Schema
+There are two ways to define schemas. The `GenerationSchema` builder uses the same [dictionary](https://developer.apple.com/documentation/swift/dictionary) object that Foundation Models [use natively](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) with the ability to set generation guides. If you already have JSON Schema objects, you can use `respondWithJsonSchema` instead and the SDK will convert it at runtime to the model's preferred format.
+
+If you're unsure which one to use, see [GenerationSchema vs JSON Schema](#generationschema-vs-json-schema).
+
+## Defining a Schema (Native Format)
 
 ```ts
 import { GenerationSchema, GenerationGuide } from "tsfm-sdk";
@@ -25,7 +29,7 @@ const schema = new GenerationSchema("Person", "A person profile")
 
 ## Generation Guides
 
-Guides constrain the model's output for a property:
+Guides constrain the model's output for a property. These map to Foundation Models' [`@Guide`](https://developer.apple.com/documentation/foundationmodels/guide()) annotations:
 
 | Method | Constrains |
 | --- | --- |
@@ -81,3 +85,31 @@ const cat: Cat = {
   breed: content.value("breed"),
 };
 ```
+
+## Generating Structured Output with JSON Schema
+
+If you already have a JSON Schema definition, or are porting from OpenAI or another API, you can pass it directly with respondWithJsonSchema instead of building a GenerationSchema first:
+
+```ts
+const content = await session.respondWithJsonSchema("Generate a person profile", {
+  type: "object",
+  properties: {
+    name: { type: "string", description: "Full name" },
+    age: { type: "integer", description: "Age in years" },
+    occupation: { type: "string", description: "Job title" },
+  },
+  required: ["name", "age", "occupation"],
+});
+
+const person = content.toObject();
+// { name: "Ada Lovelace", age: 36, occupation: "Mathematician" }
+```
+
+The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
+
+## GenerationSchema vs JSON Schema
+
+The two methods produce the same constrained output — the difference is how you define the schema:
+
+- **respondWithSchema** accepts a GenerationSchema in Apple's native [dictionary](https://developer.apple.com/documentation/swift/dictionary) format. This is what Foundation Models uses natively. It also gives you access to generation guides (range, anyOf, regex, count, etc.) that aren't expressible in standard JSON Schema and per-property access via `content.value<T>(key)`.
+- **respondWithJsonSchema** accepts a plain JSON Schema object. The SDK converts it to a dictionary under the hood, but generation guides aren't available through this path. Use this method when you already have JSON Schemas or are porting from another API and don't need fine-grained constraints.

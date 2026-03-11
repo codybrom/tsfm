@@ -1,6 +1,6 @@
 # Streaming
 
-Stream responses token-by-token using an async iterator. This is useful for displaying results as they're generated.
+Stream responses token-by-token using an async iterator. Foundation Models' native streaming yields cumulative snapshots — the SDK diffs them internally so you receive only new tokens on each iteration.
 
 ## Basic Streaming
 
@@ -17,7 +17,7 @@ console.log();
 session.dispose();
 ```
 
-Each `chunk` is a string containing only the **new** tokens since the last iteration. The SDK handles diffing Apple's cumulative snapshots internally.
+Each `chunk` is a string containing only the **new** tokens since the last iteration. Cumulative snapshots are handled by the SDK internally.
 
 ## With Options
 

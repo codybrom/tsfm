@@ -1,6 +1,6 @@
 # Generation Options
 
-Control temperature, token limits, and sampling strategy for any generation method.
+Control temperature, token limits, and sampling strategy for any generation method. These map directly to Foundation Models' [GenerationOptions](https://developer.apple.com/documentation/foundationmodels/generationoptions).
 
 ## Usage
 
@@ -23,7 +23,7 @@ const reply = await session.respond("Write a haiku about rain", {
 | Option | Type | Description |
 | --- | --- | --- |
 | `temperature` | `number` | Controls randomness. Higher values (e.g. 0.9) produce more varied output. |
-| `maximumResponseTokens` | `number` | Maximum number of tokens in the response. |
+| `maximumResponseTokens` | `number` | Maximum tokens in the response. Hard limits can produce truncated or malformed output. |
 | `sampling` | `SamplingMode` | Sampling strategy (see below). |
 
 ## Sampling Modes
