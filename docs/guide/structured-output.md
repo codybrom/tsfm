@@ -1,10 +1,12 @@
 # Structured Output
 
-When you provide a schema, the on-device model constrains its output to match your types and structure.
+When you provide a schema, the on-device model uses constrained sampling to guarantee its output matches your types and structure with no string parsing needed.
 
-There are two ways to define schemas. The `GenerationSchema` builder uses the same [dictionary](https://developer.apple.com/documentation/swift/dictionary) object that Foundation Models [use natively](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) with the ability to set generation guides. If you already have JSON Schema objects, you can use `respondWithJsonSchema` instead and the SDK will convert it at runtime to the model's preferred format.
+In Swift, Foundation Models offers `@Generable` for compile-time schemas and [`DynamicGenerationSchema`](https://developer.apple.com/documentation/foundationmodels/dynamicgenerationschema) for runtime schemas. This SDK's `GenerationSchema` builder maps to the same underlying dictionary format that both use, with the ability to set [generation guides](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation).
 
-If you're unsure which one to use, see [GenerationSchema vs JSON Schema](#generationschema-vs-json-schema).
+If you already have or prefer to use JSON Schema objects, you can use `respondWithJsonSchema` instead and the SDK will convert it at runtime.
+
+If you're unsure which schema format you should use, see [GenerationSchema vs JSON Schema](#generationschema-vs-json-schema).
 
 ## Defining a Schema (Native Format)
 
@@ -109,7 +111,11 @@ The SDK converts JSON Schema to Apple's native format automatically. Use toObjec
 
 ## GenerationSchema vs JSON Schema
 
-The two methods produce the same constrained output — the difference is how you define the schema:
+Both methods produce the same constrained output. The difference is the schema format and what constraints are available.
 
-- **respondWithSchema** accepts a GenerationSchema in Apple's native [dictionary](https://developer.apple.com/documentation/swift/dictionary) format. This is what Foundation Models uses natively. It also gives you access to generation guides (range, anyOf, regex, count, etc.) that aren't expressible in standard JSON Schema and per-property access via `content.value<T>(key)`.
-- **respondWithJsonSchema** accepts a plain JSON Schema object. The SDK converts it to a dictionary under the hood, but generation guides aren't available through this path. Use this method when you already have JSON Schemas or are porting from another API and don't need fine-grained constraints.
+- **respondWithSchema** takes a GenerationSchema built with the SDK's builder API. This is the native [dictionary](https://developer.apple.com/documentation/swift/dictionary) format that Foundation Models uses internally, and it's the only path that supports [generation guides](#generation-guides). Guides like `constant`, `anyOf`, and `element` have no JSON Schema equivalent. They constrain token selection at generation time rather than validating output after.
+
+  - Use this when you need the extra constraints possible only with generation guides
+
+- **respondWithJsonSchema** takes a standard JSON Schema object. The SDK converts it to the model's dictionary format at runtime. Standard constraints like `enum`, `minimum`/`maximum`, and `pattern` all work, but the model's more specific generation guides aren't available if you pass a JSON Schema.
+  - Use this when you already have existing JSON schemas or don't need the extra constraints possible with generation guides.

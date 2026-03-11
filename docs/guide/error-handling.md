@@ -50,7 +50,7 @@ try {
 
 ### ExceededContextWindowSizeError
 
-The session's accumulated context (instructions, prompts, responses, tool calls) has exceeded what the model can hold. Everything in a session shares one context window, so long conversations or large tool outputs will eventually hit this. Dispose the session and start a new one, optionally seeding it with a trimmed [transcript](/guide/transcripts).
+The session's accumulated context has exceeded the model's limit. All content (instructions, prompts, responses, tool schemas, tool calls, and tool output) share one context window. Long conversations or large tool outputs will eventually hit this. Dispose the session and start a new one, optionally seeding it with a trimmed [transcript](/guide/transcripts). Apple recommends splitting large tasks across multiple sessions.
 
 ### AssetsUnavailableError
 
@@ -58,7 +58,7 @@ The on-device model files haven't finished downloading. This typically happens r
 
 ### GuardrailViolationError
 
-Apple's content safety guardrails flagged the prompt or the generated response. This is enforced at the OS level and cannot be disabled. If you're building an app that handles user-generated prompts, catch this and surface a user-friendly message rather than letting it propagate.
+The model's safety [guardrails](/guide/model-configuration#guardrails) flagged the prompt or the generated response. With `DEFAULT` guardrails, this means unsafe content was detected and blocked. With `PERMISSIVE_CONTENT_TRANSFORMATIONS`, you should see this less often as the model will attempt to transform content instead of rejecting it. Either way, you should attempt to catch this and surface a user-friendly message.
 
 ### UnsupportedGuideError
 

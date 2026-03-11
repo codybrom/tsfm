@@ -8,7 +8,15 @@ export {
 
 export { LanguageModelSession } from "./session.js";
 
-export { Transcript } from "./transcript.js";
+export {
+  Transcript,
+  type TranscriptEntry,
+  type TranscriptContent,
+  type TranscriptTextContent,
+  type TranscriptStructuredContent,
+  type TranscriptToolCall,
+  type TranscriptEntryRole,
+} from "./transcript.js";
 
 export {
   GenerationSchema,

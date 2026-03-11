@@ -1,6 +1,6 @@
 # Streaming
 
-Stream responses token-by-token using an async iterator. Foundation Models' native streaming yields cumulative snapshots — the SDK diffs them internally so you receive only new tokens on each iteration.
+TSFM can stream responses token-by-token using an async iterator. Foundation Models' native streaming yields cumulative snapshots and the TSFM SDK diffs them internally so you receive only new tokens on each iteration. Under the hood, this is wrapping Foundation Models' [`ResponseStream`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/responsestream).
 
 ## Basic Streaming
 
@@ -17,7 +17,7 @@ console.log();
 session.dispose();
 ```
 
-Each `chunk` is a string containing only the **new** tokens since the last iteration. Cumulative snapshots are handled by the SDK internally.
+Each `chunk` is a string containing only the **new** tokens since the last iteration.
 
 ## With Options
 
@@ -42,13 +42,6 @@ for await (const chunk of session.streamResponse("Explain TypeScript")) {
 console.log("\n\nFull response length:", full.length);
 ```
 
-## How It Works
+## Cleanup
 
-Under the hood, `streamResponse()`:
-
-1. Creates a stream reference via the C bridge
-2. Spawns a single Swift Task that yields cumulative snapshots
-3. Diffs each snapshot against the previous to yield only new tokens
-4. Releases the stream reference when iteration completes
-
-The async iterator keeps the Node.js event loop alive until streaming finishes.
+The stream reference is released automatically when iteration completes or the session is disposed. The SDK keeps the Node.js event loop alive while streaming, so the process won't exit mid-stream.

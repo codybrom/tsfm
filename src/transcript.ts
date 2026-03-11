@@ -1,6 +1,45 @@
 import { getFunctions, decodeAndFreeString, type NativePointer } from "./bindings.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 
+export type TranscriptEntryRole = "instructions" | "user" | "response" | "tool";
+
+export interface TranscriptTextContent {
+  type: "text";
+  text: string;
+  id: string;
+}
+
+export interface TranscriptStructuredContent {
+  type: "structure";
+  id: string;
+  structure: { source: string; content: Record<string, unknown> };
+}
+
+export type TranscriptContent = TranscriptTextContent | TranscriptStructuredContent;
+
+export interface TranscriptToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface TranscriptEntry {
+  id: string;
+  role: TranscriptEntryRole;
+  contents?: TranscriptContent[];
+  // instructions-specific
+  tools?: Array<Record<string, unknown>>;
+  // user-specific
+  options?: Record<string, unknown>;
+  responseFormat?: Record<string, unknown>;
+  // response-specific
+  toolCalls?: TranscriptToolCall[];
+  assets?: string[];
+  // tool-specific
+  toolName?: string;
+  toolCallID?: string;
+}
+
 export class Transcript {
   /** @internal raw session pointer — backs the live session's native handle */
   _nativeSession: NativePointer;
@@ -41,6 +80,12 @@ export class Transcript {
   /** Export the transcript as a parsed dictionary (mirrors Python's Transcript.to_dict()). */
   toDict(): Record<string, unknown> {
     return JSON.parse(this.toJson());
+  }
+
+  /** Return the typed transcript entries from the native JSON. */
+  entries(): TranscriptEntry[] {
+    const data = JSON.parse(this.toJson());
+    return data?.entries ?? [];
   }
 
   /** Deserialize a previously exported transcript JSON string. */

@@ -1,6 +1,6 @@
 # Tools
 
-Tools let the model call your functions during generation. This maps directly to Foundation Models' [`Tool`](https://developer.apple.com/documentation/foundationmodels/tool) protocol — same concept, same flow: the model decides a tool can help, generates arguments matching your schema, calls the tool, receives the result, and continues generating.
+Tools let the model call your functions during generation. This maps directly to Foundation Models' [`Tool`](https://developer.apple.com/documentation/foundationmodels/tool) protocol. It is up to the model to decide if a tool can help, generate arguments matching your schema, call the tool, receive the result, and continue generating.
 
 ## Defining a Tool
 
@@ -76,6 +76,14 @@ tool.dispose();
 ```
 
 Tools can be reused across sessions — just dispose after all sessions are done.
+
+## Best Practices
+
+The Foundation Models [`Tool` protocol](https://developer.apple.com/documentation/foundationmodels/tool) in Swift recommends:
+
+- **Limit to 3–5 tools per session.** Tool schemas and descriptions consume context window space. More tools means less room for conversation. If your session exceeds the context size, split work across new sessions.
+- **Keep descriptions short.** A brief phrase is enough. Long descriptions add latency and use up context.
+- **Pre-run essential tools.** If a tool's output is always needed, call it yourself and include the result in the prompt or instructions rather than waiting for the model to discover it needs the tool.
 
 ## Tool Chaining
 
