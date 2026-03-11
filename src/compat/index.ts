@@ -46,6 +46,44 @@ function makeId(): string {
   return "chatcmpl-" + randomUUID();
 }
 
+/**
+ * Reorder JSON keys to match the property order defined in a JSON schema.
+ * OpenAI returns keys in schema-defined order; Apple returns them in
+ * generation order. This normalizes the output for compatibility.
+ */
+function reorderJson(json: string, schema: Record<string, unknown>): string {
+  try {
+    const obj = JSON.parse(json);
+    return JSON.stringify(orderKeys(obj, schema));
+  } catch {
+    return json;
+  }
+}
+
+function orderKeys(value: unknown, schema: Record<string, unknown>): unknown {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return value;
+
+  const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
+  if (!props) return value;
+
+  const obj = value as Record<string, unknown>;
+  const ordered: Record<string, unknown> = {};
+
+  // First, add keys in schema property order
+  for (const key of Object.keys(props)) {
+    if (key in obj) {
+      ordered[key] = orderKeys(obj[key], props[key]);
+    }
+  }
+  // Then any extra keys not in schema (shouldn't happen with strict schemas)
+  for (const key of Object.keys(obj)) {
+    if (!(key in ordered)) {
+      ordered[key] = obj[key];
+    }
+  }
+  return ordered;
+}
+
 function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
@@ -85,9 +123,15 @@ class Completions {
   async create(params: ChatCompletionCreateParams): Promise<ChatCompletion | Stream> {
     const options = mapParams(params);
     const { transcriptJson, prompt: rawPrompt } = messagesToTranscript(params.messages);
-    const tools = params.tools;
     let prompt = rawPrompt;
     let transcriptStr = transcriptJson;
+
+    // When the last message is a tool result, the tool already ran — the model
+    // should respond with plain text incorporating the result, not try to call
+    // tools again. Only enable tool-calling structured output for the initial
+    // request (last message is "user", not "tool").
+    const lastMsg = params.messages[params.messages.length - 1];
+    const tools = lastMsg.role === "tool" ? undefined : params.tools;
 
     // Inject tool instructions into the transcript's instructions entry
     if (tools && tools.length > 0) {
@@ -109,6 +153,11 @@ class Completions {
     // Append JSON instruction to prompt for json_object mode
     if (params.response_format?.type === "json_object") {
       prompt += "\n\nRespond with valid JSON only. No other text.";
+    }
+
+    // Remind the model to use tools when they're available
+    if (tools && tools.length > 0) {
+      prompt += "\n\nRemember: if a tool can help answer this, use type tool_call.";
     }
 
     // Create session from transcript
@@ -152,7 +201,7 @@ class Completions {
         };
         const schema = rf.json_schema.schema ?? { type: "object" };
         const content = await session.respondWithJsonSchema(prompt, schema, { options });
-        return buildCompletion(content.toJson(), "stop");
+        return buildCompletion(reorderJson(content.toJson(), schema), "stop");
       }
 
       // Plain text

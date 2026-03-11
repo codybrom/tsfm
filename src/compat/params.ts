@@ -19,6 +19,7 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
   "audio",
   "modalities",
   "user",
+  "stream_options",
 ];
 
 /**

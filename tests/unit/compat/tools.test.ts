@@ -67,7 +67,7 @@ describe("buildToolInstructions", () => {
     ];
     const result = buildToolInstructions(tools);
     expect(result).toContain("bare_tool");
-    expect(result).toContain("Parameters: {}");
+    expect(result).toContain("parameters: {}");
   });
 
   it("starts with a leading newline", () => {
@@ -75,9 +75,10 @@ describe("buildToolInstructions", () => {
     expect(result.startsWith("\n")).toBe(true);
   });
 
-  it("lists all tools under a Tools: header", () => {
+  it("includes tool use header and response rules", () => {
     const result = buildToolInstructions(sampleTools);
-    expect(result).toContain("Tools:");
+    expect(result).toContain("Tool Use Instructions");
+    expect(result).toContain("Response Rules");
   });
 });
 
@@ -94,7 +95,7 @@ describe("buildToolSchema", () => {
     const props = schema.properties as Record<string, unknown>;
     const typeProp = props.type as Record<string, unknown>;
     expect(typeProp.type).toBe("string");
-    expect(typeProp.enum).toEqual(["text", "tool_call"]);
+    expect(typeProp.enum).toEqual(["tool_call", "text"]);
   });
 
   it("has a content string property", () => {
@@ -104,31 +105,66 @@ describe("buildToolSchema", () => {
     expect(contentProp.type).toBe("string");
   });
 
-  it("includes tool_call property with correct structure", () => {
+  it("uses $ref for tool_call property", () => {
     const schema = buildToolSchema(sampleTools);
     const props = schema.properties as Record<string, unknown>;
     const toolCallProp = props.tool_call as Record<string, unknown>;
-    expect(toolCallProp.type).toBe("object");
-    expect(toolCallProp.required).toEqual(["name", "arguments"]);
-    expect(toolCallProp.additionalProperties).toBe(false);
+    expect(toolCallProp.$ref).toBe("#/$defs/ToolCall");
+  });
+
+  it("defines ToolCall in $defs with correct structure", () => {
+    const schema = buildToolSchema(sampleTools);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const toolCallDef = defs.ToolCall;
+    expect(toolCallDef.type).toBe("object");
+    expect(toolCallDef.title).toBe("ToolCall");
+    expect(toolCallDef.required).toEqual(["name", "arguments"]);
+    expect(toolCallDef.additionalProperties).toBe(false);
   });
 
   it("populates tool name enum dynamically from provided tools", () => {
     const schema = buildToolSchema(sampleTools);
-    const props = schema.properties as Record<string, unknown>;
-    const toolCallProp = props.tool_call as Record<string, unknown>;
-    const toolCallProps = toolCallProp.properties as Record<string, unknown>;
-    const nameProp = toolCallProps.name as Record<string, unknown>;
-    expect(nameProp.enum).toEqual(["get_weather", "search_web"]);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const toolCallProps = defs.ToolCall.properties as Record<string, Record<string, unknown>>;
+    expect(toolCallProps.name.enum).toEqual(["get_weather", "search_web"]);
+  });
+
+  it("uses $ref for arguments in ToolCall def", () => {
+    const schema = buildToolSchema(sampleTools);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const toolCallProps = defs.ToolCall.properties as Record<string, Record<string, unknown>>;
+    expect(toolCallProps.arguments.$ref).toBe("#/$defs/ToolArguments");
+  });
+
+  it("defines ToolArguments in $defs with merged properties", () => {
+    const schema = buildToolSchema(sampleTools);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const argsDef = defs.ToolArguments;
+    expect(argsDef.type).toBe("object");
+    expect(argsDef.title).toBe("ToolArguments");
+    expect(argsDef.additionalProperties).toBe(false);
+    const argProps = argsDef.properties as Record<string, unknown>;
+    expect(argProps).toHaveProperty("location");
+    expect(argProps).toHaveProperty("query");
   });
 
   it("works with a single tool", () => {
     const schema = buildToolSchema([sampleTools[0]]);
-    const props = schema.properties as Record<string, unknown>;
-    const toolCallProp = props.tool_call as Record<string, unknown>;
-    const toolCallProps = toolCallProp.properties as Record<string, unknown>;
-    const nameProp = toolCallProps.name as Record<string, unknown>;
-    expect(nameProp.enum).toEqual(["get_weather"]);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const toolCallProps = defs.ToolCall.properties as Record<string, Record<string, unknown>>;
+    expect(toolCallProps.name.enum).toEqual(["get_weather"]);
+  });
+
+  it("handles tools without parameters", () => {
+    const noParamsTool: ChatCompletionTool = {
+      type: "function",
+      function: { name: "no_args", description: "Tool with no params" },
+    };
+    const schema = buildToolSchema([noParamsTool]);
+    const defs = schema.$defs as Record<string, Record<string, unknown>>;
+    const argsDef = defs.ToolArguments;
+    expect(argsDef.type).toBe("object");
+    expect(Object.keys(argsDef.properties as object)).toHaveLength(0);
   });
 });
 

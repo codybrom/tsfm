@@ -251,17 +251,56 @@ export class GenerationSchema {
  *
  * @internal
  */
-export function afmSchemaFormat(schema: Record<string, unknown>): Record<string, unknown> {
-  const properties = schema.properties;
-  const propertyOrder =
-    schema["x-order"] ??
-    (properties && typeof properties === "object" ? Object.keys(properties) : []);
-  return {
-    title: "Schema",
-    additionalProperties: false,
-    ...schema,
-    "x-order": propertyOrder,
-  };
+/**
+ * Normalize a JSON Schema object for Apple's Foundation Models.
+ *
+ * Apple requires every `object` node to have `title`, `properties`, `required`,
+ * `additionalProperties`, and `x-order`. This function recursively fills in
+ * missing keys with sensible defaults.
+ */
+export function afmSchemaFormat(
+  schema: Record<string, unknown>,
+  isRoot = true,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = { ...schema };
+
+  // Recurse into $defs entries (Apple uses $defs/$ref for nested objects)
+  if (result.$defs && typeof result.$defs === "object") {
+    const defs = result.$defs as Record<string, Record<string, unknown>>;
+    const normalized: Record<string, Record<string, unknown>> = {};
+    for (const [key, value] of Object.entries(defs)) {
+      normalized[key] = value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+    }
+    result.$defs = normalized;
+  }
+
+  // Recurse into properties (skip $ref properties — they reference $defs)
+  if (result.properties && typeof result.properties === "object") {
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    const normalized: Record<string, Record<string, unknown>> = {};
+    for (const [key, value] of Object.entries(props)) {
+      if (value && typeof value === "object" && "$ref" in value) {
+        normalized[key] = value;
+      } else {
+        normalized[key] =
+          value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+      }
+    }
+    result.properties = normalized;
+  }
+
+  // Apple requires every object to have title, properties, required, additionalProperties, and x-order
+  if (result.type === "object") {
+    if (!result.title) result.title = isRoot ? "Schema" : "Object";
+    if (!result.properties) result.properties = {};
+    if (!result.required) result.required = [];
+    if (!("additionalProperties" in result)) result.additionalProperties = false;
+    if (!result["x-order"]) {
+      result["x-order"] = Object.keys(result.properties as object);
+    }
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -65,6 +65,111 @@ describe("afmSchemaFormat", () => {
     expect(Object.keys(input)).not.toContain("title");
     expect(Object.keys(input)).not.toContain("additionalProperties");
   });
+
+  it("recursively normalizes nested object properties", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        nested: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
+      },
+    });
+    const nested = (result.properties as Record<string, Record<string, unknown>>).nested;
+    expect(nested.title).toBe("Object");
+    expect(nested.required).toEqual([]);
+    expect(nested.additionalProperties).toBe(false);
+    expect(nested["x-order"]).toEqual(["name"]);
+  });
+
+  it("preserves explicit additionalProperties on nested objects", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        open: {
+          type: "object",
+          additionalProperties: true,
+        },
+      },
+    });
+    const open = (result.properties as Record<string, Record<string, unknown>>).open;
+    expect(open.additionalProperties).toBe(true);
+  });
+
+  it("adds required to object types without it", () => {
+    const result = afmSchemaFormat({ type: "object" });
+    expect(result.required).toEqual([]);
+  });
+
+  it("uses 'Object' as title for non-root objects", () => {
+    const result = afmSchemaFormat(
+      { type: "object", properties: { a: { type: "string" } } },
+      false,
+    );
+    expect(result.title).toBe("Object");
+  });
+
+  it("passes through falsy property values without recursing", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: { empty: null as unknown as Record<string, unknown> },
+    });
+    const props = result.properties as Record<string, unknown>;
+    expect(props.empty).toBeNull();
+  });
+
+  it("recursively normalizes $defs entries", () => {
+    const result = afmSchemaFormat({
+      $defs: {
+        Inner: {
+          type: "object",
+          properties: { name: { type: "string" } },
+        },
+      },
+      type: "object",
+      properties: {
+        ref: { $ref: "#/$defs/Inner" },
+      },
+    });
+    const defs = result.$defs as Record<string, Record<string, unknown>>;
+    expect(defs.Inner.title).toBe("Object");
+    expect(defs.Inner.required).toEqual([]);
+    expect(defs.Inner.additionalProperties).toBe(false);
+    expect(defs.Inner["x-order"]).toEqual(["name"]);
+  });
+
+  it("passes through non-object $defs entries unchanged", () => {
+    const result = afmSchemaFormat({
+      $defs: {
+        Inner: {
+          type: "object",
+          properties: { name: { type: "string" } },
+        },
+        Alias: "string" as unknown as Record<string, unknown>,
+      },
+      type: "object",
+      properties: {},
+    });
+    const defs = result.$defs as Record<string, unknown>;
+    expect(defs.Alias).toBe("string");
+  });
+
+  it("preserves $ref properties without recursing into them", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        nested: { $ref: "#/$defs/Something", description: "A reference" },
+      },
+    });
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    expect(props.nested.$ref).toBe("#/$defs/Something");
+    expect(props.nested.description).toBe("A reference");
+    // Should NOT have title, additionalProperties, etc. added
+    expect(props.nested.title).toBeUndefined();
+  });
 });
 
 describe("GenerationGuide", () => {

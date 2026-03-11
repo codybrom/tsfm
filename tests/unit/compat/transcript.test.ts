@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { messagesToTranscript } from "../../../src/compat/transcript.js";
 import type { ChatCompletionMessageParam } from "../../../src/compat/types.js";
 
@@ -201,13 +201,75 @@ describe("messagesToTranscript", () => {
     expect(() => messagesToTranscript([])).toThrow();
   });
 
-  // 12. Last message not user → throws
-  it("throws when last message is not role user", () => {
+  // 12. Last message not user (and not tool) → throws
+  it("throws when last message is not role user or tool", () => {
     const messages: ChatCompletionMessageParam[] = [
       { role: "user", content: "Hi" },
       { role: "assistant", content: "Hello" },
     ];
     expect(() => messagesToTranscript(messages)).toThrow();
+  });
+
+  // 13. Tool as last message → synthesizes user prompt from tool results
+  it("handles tool as last message by synthesizing user prompt", () => {
+    const toolCalls = [
+      {
+        id: "call_123",
+        type: "function" as const,
+        function: { name: "get_weather", arguments: '{"city":"Tokyo"}' },
+      },
+    ];
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "What's the weather?" },
+      { role: "assistant", content: null, tool_calls: toolCalls },
+      {
+        role: "tool",
+        tool_call_id: "call_123",
+        content: JSON.stringify({ temp: 22, condition: "Sunny" }),
+      },
+    ];
+    const result = messagesToTranscript(messages);
+    expect(result.prompt).toContain("[Tool result for get_weather]:");
+    expect(result.prompt).toContain('"temp":22');
+    const parsed = JSON.parse(result.transcriptJson);
+    // history should include user + assistant + the synthetic tool-result user appended
+    // but the synthetic user is sliced off as the last, so entries are: user, assistant(tool_calls), tool
+    expect(parsed.transcript.entries.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // 14. Multiple tool results as last messages
+  it("handles multiple trailing tool messages", () => {
+    const toolCalls = [
+      {
+        id: "call_a",
+        type: "function" as const,
+        function: { name: "tool_a", arguments: "{}" },
+      },
+      {
+        id: "call_b",
+        type: "function" as const,
+        function: { name: "tool_b", arguments: "{}" },
+      },
+    ];
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "Do both" },
+      { role: "assistant", content: null, tool_calls: toolCalls },
+      { role: "tool", tool_call_id: "call_a", content: "result_a" },
+      { role: "tool", tool_call_id: "call_b", content: "result_b" },
+    ];
+    const result = messagesToTranscript(messages);
+    expect(result.prompt).toContain("[Tool result for tool_a]: result_a");
+    expect(result.prompt).toContain("[Tool result for tool_b]: result_b");
+  });
+
+  // 15. Tool as last message with unresolvable tool_call_id
+  it("tool as last message with unresolvable id uses fallback format", () => {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "Do something" },
+      { role: "tool", tool_call_id: "unknown", content: "result" },
+    ];
+    const result = messagesToTranscript(messages);
+    expect(result.prompt).toBe("[Tool result]: result");
   });
 
   // unknown role is silently ignored
@@ -286,6 +348,26 @@ describe("messagesToTranscript", () => {
     expect(parsed.version).toBe(1);
     expect(parsed.transcript).toBeDefined();
     expect(Array.isArray(parsed.transcript.entries)).toBe(true);
+  });
+
+  // image_url content parts are warned and ignored
+  it("warns and ignores image_url content parts", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Describe this image" },
+          { type: "image_url", image_url: { url: "https://example.com/img.png" } },
+        ],
+      },
+    ];
+    const result = messagesToTranscript(messages);
+    expect(result.prompt).toBe("Describe this image");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("image_url content parts are not supported"),
+    );
+    warnSpy.mockRestore();
   });
 
   // Additional: user entries have options: {}

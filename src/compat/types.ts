@@ -125,6 +125,7 @@ export type ChatCompletionCreateParams = {
   audio?: unknown;
   modalities?: string[] | null;
   user?: string;
+  stream_options?: { include_usage?: boolean } | null;
 };
 
 // ---------------------------------------------------------------------------

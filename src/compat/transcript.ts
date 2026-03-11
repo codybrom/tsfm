@@ -47,6 +47,14 @@ function extractText(
 ): string {
   if (content == null) return "";
   if (typeof content === "string") return content;
+  for (const part of content) {
+    if (part.type === "image_url") {
+      console.warn(
+        "[tsfm compat] image_url content parts are not supported by Apple Intelligence and will be ignored.",
+      );
+      break;
+    }
+  }
   return content
     .filter((part) => part.type === "text" && part.text != null)
     .map((part) => part.text as string)
@@ -91,15 +99,44 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
     throw new Error("messages array must not be empty");
   }
 
+  // When the last message is a tool result (OpenAI tool-calling flow), append
+  // a synthetic user message summarizing the tool results so the standard
+  // processing can handle it.
+  let normalized = messages;
   const last = messages[messages.length - 1];
-  if (last.role !== "user") {
-    throw new Error(`Last message must have role "user", got "${last.role}"`);
+  if (last.role === "tool") {
+    let toolStart = messages.length - 1;
+    while (toolStart > 0 && messages[toolStart - 1].role === "tool") {
+      toolStart--;
+    }
+    const toolMessages = messages.slice(toolStart);
+    const parts: string[] = [];
+    for (const msg of toolMessages) {
+      const toolMsg = msg as {
+        role: "tool";
+        tool_call_id: string;
+        content: string | Array<{ type: string; text?: string }>;
+      };
+      const content = extractText(toolMsg.content);
+      const toolName = resolveToolName(toolMsg.tool_call_id, messages);
+      parts.push(
+        toolName != null
+          ? `[Tool result for ${toolName}]: ${content}`
+          : `[Tool result]: ${content}`,
+      );
+    }
+    normalized = [...messages, { role: "user" as const, content: parts.join("\n") }];
+  }
+
+  const lastMsg = normalized[normalized.length - 1];
+  if (lastMsg.role !== "user") {
+    throw new Error(`Last message must have role "user", got "${lastMsg.role}"`);
   }
 
   // Separate the last user message from the history
-  const history = messages.slice(0, -1);
+  const history = normalized.slice(0, -1);
   const prompt = extractText(
-    (last as { role: "user"; content: string | Array<{ type: string; text?: string }> }).content,
+    (lastMsg as { role: "user"; content: string | Array<{ type: string; text?: string }> }).content,
   );
 
   const entries: TranscriptEntry[] = [];

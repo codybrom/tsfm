@@ -128,10 +128,17 @@ describe("statusToError", () => {
     expect(err.message).toContain(detail);
   });
 
-  it("maps code 255 with ModelManagerError to ServiceCrashedError", () => {
+  it("maps code 255 with ModelManagerError Code=1013 to ServiceCrashedError", () => {
     const detail = "ModelManagerServices.ModelManagerError Code=1013";
     const err = statusToError(255, detail);
     expect(err).toBeInstanceOf(ServiceCrashedError);
+  });
+
+  it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
+    const detail = "ModelManagerServices.ModelManagerError Code=1041 - schema rejected";
+    const err = statusToError(255, detail);
+    expect(err).toBeInstanceOf(InvalidGenerationSchemaError);
+    expect(err.message).toContain("rejected the schema");
   });
 
   it("maps code 255 without crash signature to generic GenerationError", () => {

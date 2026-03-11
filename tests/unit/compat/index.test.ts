@@ -473,6 +473,36 @@ describe("OpenAI compat layer", () => {
       expect(instructionsEntry.contents[0].text).toContain("get_weather");
       client.close();
     });
+
+    it("uses plain text when last message is a tool result", async () => {
+      simulateRespondSuccess("The weather in SF is sunny.");
+
+      const client = new OpenAI();
+      const result = await client.chat.completions.create({
+        messages: [
+          { role: "user", content: "What's the weather?" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_1",
+                type: "function" as const,
+                function: { name: "get_weather", arguments: '{"city":"SF"}' },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "call_1", content: "Sunny, 72°F" },
+        ],
+        tools: sampleTools,
+      });
+
+      // Should use plain respond (not structured), so finish_reason is "stop"
+      expect(result.choices[0].finish_reason).toBe("stop");
+      expect(result.choices[0].message.content).toBe("The weather in SF is sunny.");
+      expect(result.choices[0].message.tool_calls).toBeUndefined();
+      client.close();
+    });
   });
 
   describe("json_schema response format — non-streaming", () => {
@@ -515,6 +545,113 @@ describe("OpenAI compat layer", () => {
 
       expect(result.choices[0].finish_reason).toBe("stop");
       expect(result.choices[0].message.content).toBeDefined();
+      client.close();
+    });
+
+    it("reorders JSON keys to match schema property order", async () => {
+      // Model returns keys in different order than schema defines
+      simulateStructuredSuccess({ age: 30, name: "John" });
+
+      const client = new OpenAI();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "Person",
+            schema: {
+              type: "object",
+              properties: { name: { type: "string" }, age: { type: "integer" } },
+            },
+          },
+        },
+      });
+
+      // Keys should be in schema order: name first, then age
+      const content = result.choices[0].message.content!;
+      expect(content).toBe('{"name":"John","age":30}');
+      client.close();
+    });
+
+    it("preserves extra keys not in schema during reordering", async () => {
+      simulateStructuredSuccess({ name: "John", extra: "data", age: 30 });
+
+      const client = new OpenAI();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "Person",
+            schema: {
+              type: "object",
+              properties: { name: { type: "string" }, age: { type: "integer" } },
+            },
+          },
+        },
+      });
+
+      const parsed = JSON.parse(result.choices[0].message.content!);
+      expect(Object.keys(parsed)).toEqual(["name", "age", "extra"]);
+      client.close();
+    });
+
+    it("passes through invalid JSON unchanged during reordering", async () => {
+      // Make decodeAndFreeString return invalid JSON for this test
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
+        (..._args: unknown[]) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "mock-content-pointer", null);
+          }, 0);
+          return "mock-task-pointer";
+        },
+      );
+      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
+      decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
+        if (!pointer) return null;
+        return "not valid json {{{";
+      });
+
+      const client = new OpenAI();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "Test",
+            schema: {
+              type: "object",
+              properties: { x: { type: "string" } },
+            },
+          },
+        },
+      });
+
+      expect(result.choices[0].message.content).toBe("not valid json {{{");
+      client.close();
+    });
+
+    it("skips missing schema properties when reordering", async () => {
+      // Object is missing the "age" property defined in schema
+      simulateStructuredSuccess({ name: "John" });
+
+      const client = new OpenAI();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "Person",
+            schema: {
+              type: "object",
+              properties: { name: { type: "string" }, age: { type: "integer" } },
+            },
+          },
+        },
+      });
+
+      const parsed = JSON.parse(result.choices[0].message.content!);
+      expect(Object.keys(parsed)).toEqual(["name"]);
       client.close();
     });
   });

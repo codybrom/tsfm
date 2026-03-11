@@ -28,7 +28,9 @@
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "test:coverage": "vitest run --project unit --coverage"
+    "test:coverage": "vitest run --coverage",
+    "example": "tsx scripts/run-example.ts",
+    "typecheck": "tsc --noEmit"
   },
   "files": [
     "dist/",
@@ -44,6 +46,7 @@
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^9.39.4",
+    "openai": "^6.27.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",

@@ -12,19 +12,29 @@ export interface ToolParseResult {
  * The leading newline is intentional.
  */
 export function buildToolInstructions(tools: ChatCompletionTool[]): string {
-  const lines: string[] = [
-    '\nYou have access to the following tools. When you want to call a tool, respond with type "tool_call". When you want to respond with text, respond with type "text".',
-    "",
-    "Tools:",
-  ];
-
+  const toolList: string[] = [];
   for (const tool of tools) {
     const { name, description, parameters } = tool.function;
-    lines.push(`- ${name}: ${description ?? ""}`);
-    lines.push(`  Parameters: ${JSON.stringify(parameters ?? {})}`);
+    toolList.push(`  - name: "${name}"`);
+    if (description) toolList.push(`    description: ${description}`);
+    toolList.push(`    parameters: ${JSON.stringify(parameters ?? {})}`);
   }
 
-  return lines.join("\n");
+  return [
+    "",
+    "# Tool Use Instructions",
+    "",
+    "You have access to external tools. You MUST decide whether to call a tool or respond with text.",
+    "",
+    "## Available Tools",
+    ...toolList,
+    "",
+    "## Response Rules",
+    "1. If the user's request matches ANY tool's purpose, you MUST respond with type \"tool_call\".",
+    '2. Only respond with type "text" for general conversation that no tool can help with.',
+    "3. Never describe a tool call in text — always use the tool_call structure.",
+    "4. Fill in the tool arguments based on the user's request.",
+  ].join("\n");
 }
 
 /**
@@ -34,19 +44,30 @@ export function buildToolInstructions(tools: ChatCompletionTool[]): string {
 export function buildToolSchema(tools: ChatCompletionTool[]): Record<string, unknown> {
   const toolNames = tools.map((t) => t.function.name);
 
+  // Build a merged arguments schema from all tools' parameters.
+  // Apple requires fully specified schemas — no open-ended objects.
+  const mergedProperties: Record<string, unknown> = {};
+  for (const tool of tools) {
+    const params = tool.function.parameters;
+    if (params && typeof params === "object" && params.properties) {
+      const props = params.properties as Record<string, unknown>;
+      for (const [key, value] of Object.entries(props)) {
+        mergedProperties[key] = value;
+      }
+    }
+  }
+
+  // Apple's schema parser requires nested objects to use $defs/$ref —
+  // inline nested objects cause hangs or Code=1041 rejections.
+  //
+  // x-order controls generation order. Generating type first lets the model
+  // commit to "tool_call" before filling out the object. tool_call comes
+  // before content so the model fills the structured call instead of dumping
+  // tool info into the text content field.
   return {
-    type: "object",
-    required: ["type"],
-    additionalProperties: false,
-    properties: {
-      type: {
-        type: "string",
-        enum: ["text", "tool_call"],
-      },
-      content: {
-        type: "string",
-      },
-      tool_call: {
+    $defs: {
+      ToolCall: {
+        title: "ToolCall",
         type: "object",
         required: ["name", "arguments"],
         additionalProperties: false,
@@ -56,9 +77,33 @@ export function buildToolSchema(tools: ChatCompletionTool[]): Record<string, unk
             enum: toolNames,
           },
           arguments: {
-            type: "object",
+            $ref: "#/$defs/ToolArguments",
           },
         },
+        "x-order": ["name", "arguments"],
+      },
+      ToolArguments: {
+        title: "ToolArguments",
+        type: "object",
+        properties: mergedProperties,
+        required: [] as string[],
+        additionalProperties: false,
+        "x-order": Object.keys(mergedProperties),
+      },
+    },
+    type: "object",
+    required: ["type"],
+    additionalProperties: false,
+    properties: {
+      type: {
+        type: "string",
+        enum: ["tool_call", "text"],
+      },
+      tool_call: {
+        $ref: "#/$defs/ToolCall",
+      },
+      content: {
+        type: "string",
       },
     },
   };

@@ -141,12 +141,18 @@ export function statusToError(status: number, detail?: string | null): Generatio
     case GenerationErrorCode.INVALID_SCHEMA:
       return new InvalidGenerationSchemaError(`Invalid schema${suffix}`);
     default:
-      if (
-        status === GenerationErrorCode.UNKNOWN_ERROR &&
-        detail &&
-        (detail.includes("SensitiveContentAnalysisML") || detail.includes("ModelManagerError"))
-      ) {
-        return new ServiceCrashedError(detail);
+      if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
+        if (
+          detail.includes("SensitiveContentAnalysisML") ||
+          detail.includes("ModelManagerError Code=1013")
+        ) {
+          return new ServiceCrashedError(detail);
+        }
+        if (detail.includes("ModelManagerError Code=1041")) {
+          return new InvalidGenerationSchemaError(
+            `The on-device model rejected the schema${suffix}`,
+          );
+        }
       }
       return new GenerationError(`Unknown error (code ${status})${suffix}`);
   }

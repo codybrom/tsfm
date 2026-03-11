@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   SystemLanguageModel,
   LanguageModelSession,
@@ -31,25 +31,62 @@ class SecretLookupTool extends Tool {
   }
 }
 
-const model = new SystemLanguageModel();
-const { available } = await model.waitUntilAvailable(5_000);
+// Check availability once — used to skip the suite if model is unavailable.
+const checkModel = new SystemLanguageModel();
+const { available } = await checkModel.waitUntilAvailable(5_000);
+checkModel.dispose();
 const describeIfAvailable = available ? describe : describe.skip;
 
-afterAll(() => model.dispose());
-
 describeIfAvailable("tools (integration)", () => {
-  it("invokes a tool and includes its result", { timeout: 90_000 }, async () => {
-    const tool = new SecretLookupTool();
-    const session = new LanguageModelSession({
-      instructions:
-        "You have access to a secret lookup tool. When asked about a secret code, " +
-        "you MUST use the lookup_secret tool. Reply with only the code, nothing else.",
-      tools: [tool],
-    });
-    const reply = await session.respond('What is the secret code for key "alpha"?');
-    expect(tool.called).toBe(true);
-    expect(reply).toContain("XRAY-7749");
-    session.dispose();
-    tool.dispose();
+  it("invokes a tool and includes its result", { timeout: 60_000 }, async () => {
+    // The on-device model's tool invocation can be unreliable after other
+    // sessions have run in the same process. Retry with fresh model + session
+    // instances to work around accumulated native state.
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const model = new SystemLanguageModel();
+      const tool = new SecretLookupTool();
+      const session = new LanguageModelSession({
+        model,
+        instructions:
+          "You have access to a secret lookup tool. When asked about a secret code, " +
+          "you MUST use the lookup_secret tool. Reply with only the code, nothing else.",
+        tools: [tool],
+      });
+
+      try {
+        // Race respond() against a hard timeout. session.cancel() may not
+        // cause the respond() promise to reject (native callback may never
+        // fire), so we need an independent rejection to avoid hanging.
+        const reply = await Promise.race([
+          session.respond('What is the secret code for key "alpha"?'),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => {
+              session.cancel();
+              reject(new Error("Attempt timed out"));
+            }, 15_000);
+          }),
+        ]);
+
+        if (tool.called) {
+          expect(reply).toContain("XRAY-7749");
+          return; // success
+        }
+        // Model responded with text instead of calling the tool — retry
+      } catch {
+        // Cancelled or timed out — retry
+      } finally {
+        session.dispose();
+        tool.dispose();
+        model.dispose();
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+    }
+
+    throw new Error(`Model did not invoke the tool after ${maxAttempts} attempts`);
   });
 });

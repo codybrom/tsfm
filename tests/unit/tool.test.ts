@@ -40,6 +40,10 @@ vi.mock("../../src/bindings.js", () => ({
   ToolCallbackProto: "ToolCallbackProto",
 }));
 
+const { shouldThrowOnConstruct } = vi.hoisted(() => ({
+  shouldThrowOnConstruct: { value: false as boolean | string },
+}));
+
 vi.mock("../../src/schema.js", () => ({
   GenerationSchema: class MockSchema {
     _nativeSchema = "mock-schema-pointer";
@@ -47,6 +51,8 @@ vi.mock("../../src/schema.js", () => ({
   GeneratedContent: class MockContent {
     _nativeContent: unknown;
     constructor(pointer: unknown) {
+      if (shouldThrowOnConstruct.value === true) throw new Error("construct failed");
+      if (shouldThrowOnConstruct.value) throw shouldThrowOnConstruct.value;
       this._nativeContent = pointer;
     }
   },
@@ -245,6 +251,52 @@ describe("Tool", () => {
       // The callback should have created a GeneratedContent with the contentRef
       const contentArg = callSpy.mock.calls[0][0];
       expect(contentArg._nativeContent).toBe("special-content-ref");
+    });
+
+    it("finishes call with error when GeneratedContent constructor throws synchronously", async () => {
+      const tool = new TestTool();
+      tool._register();
+
+      shouldThrowOnConstruct.value = true;
+      try {
+        const callback = capturedCallbacks[0];
+        callback("bad-content-ref", 55);
+
+        await vi.waitFor(() => {
+          expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1);
+        });
+
+        expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+          "mock-tool-pointer",
+          55,
+          "Tool callback error: construct failed",
+        );
+      } finally {
+        shouldThrowOnConstruct.value = false;
+      }
+    });
+
+    it("handles non-Error synchronous throws in callback", async () => {
+      const tool = new TestTool();
+      tool._register();
+
+      shouldThrowOnConstruct.value = "raw string crash";
+      try {
+        const callback = capturedCallbacks[0];
+        callback("bad-content-ref", 66);
+
+        await vi.waitFor(() => {
+          expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1);
+        });
+
+        expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+          "mock-tool-pointer",
+          66,
+          "Tool callback error: raw string crash",
+        );
+      } finally {
+        shouldThrowOnConstruct.value = false;
+      }
     });
   });
 

@@ -76,16 +76,23 @@ export abstract class Tool {
     // it stays registered for the full lifetime of the tool because the model
     // may invoke this tool multiple times within a single session.
     this._callback = koffi.register((contentRef: NativePointer, callId: number) => {
-      const content = new GeneratedContent(contentRef);
-      this.call(content)
-        .then((result) => {
-          fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
-        })
-        .catch((err: unknown) => {
-          const cause = err instanceof Error ? err : new Error(String(err));
-          const toolErr = new ToolCallError(this.name, cause);
-          fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
-        });
+      try {
+        const content = new GeneratedContent(contentRef);
+        this.call(content)
+          .then((result) => {
+            fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
+          })
+          .catch((err: unknown) => {
+            const cause = err instanceof Error ? err : new Error(String(err));
+            const toolErr = new ToolCallError(this.name, cause);
+            fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
+          });
+      } catch (err: unknown) {
+        // If anything throws synchronously (e.g. GeneratedContent construction),
+        // we must still finish the call or the session hangs forever.
+        const msg = err instanceof Error ? err.message : String(err);
+        fn.FMBridgedToolFinishCall(this._nativeTool, callId, `Tool callback error: ${msg}`);
+      }
     }, koffi.pointer(ToolCallbackProto));
 
     const errorCode = [0];
