@@ -48,9 +48,9 @@ export function buildToolInstructions(tools: ChatCompletionTool[]): string {
  * Builds a JSON schema for structured output that discriminates between
  * a text response and a tool call.
  *
- * Each tool's parameters are namespaced under a per-tool `$defs` entry
- * to avoid property name collisions when multiple tools define parameters
- * with the same name but different types or meanings.
+ * All tool parameters are merged into a single `ToolArguments` schema.
+ * If multiple tools share the same parameter name, their schemas must be
+ * identical — otherwise an error is thrown to prevent silent conflicts.
  *
  * Throws if duplicate tool names are provided or if multiple tools define
  * the same parameter name with different schemas.

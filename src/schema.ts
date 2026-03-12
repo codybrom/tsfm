@@ -292,6 +292,7 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
   if (
     result.items &&
     typeof result.items === "object" &&
+    !Array.isArray(result.items) &&
     !("$ref" in (result.items as JsonSchema))
   ) {
     result.items = afmSchemaFormat(result.items as JsonSchema, false);

@@ -15,7 +15,16 @@ export function reorderJson(json: string, schema: JsonSchema): string {
 }
 
 export function orderKeys(value: JsonObject[string], schema: JsonSchema): JsonObject[string] {
-  if (value == null || typeof value !== "object" || Array.isArray(value)) return value;
+  if (value == null || typeof value !== "object") return value;
+
+  // Handle arrays: reorder keys inside each element using schema.items
+  if (Array.isArray(value)) {
+    const itemSchema = schema.items as JsonSchema | undefined;
+    if (itemSchema && typeof itemSchema === "object" && !Array.isArray(itemSchema)) {
+      return value.map((el) => orderKeys(el, itemSchema)) as JsonObject[];
+    }
+    return value;
+  }
 
   const props = schema.properties as Record<string, JsonSchema> | undefined;
   if (!props) return value;

@@ -86,7 +86,8 @@ export class Transcript {
   /** Return the typed transcript entries from the native JSON. */
   entries(): TranscriptEntry[] {
     const data = JSON.parse(this.toJson());
-    return data?.transcript?.entries ?? [];
+    const entries = data?.transcript?.entries;
+    return Array.isArray(entries) ? entries : [];
   }
 
   /** Deserialize a previously exported transcript JSON string. */

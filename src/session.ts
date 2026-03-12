@@ -27,12 +27,13 @@ const _sessionRegistry = new FinalizationRegistry((pointer: NativePointer) => {
 
 // Track live sessions so we can release them when the process exits.
 // Orphaned native sessions can crash the Apple Intelligence safety service.
-const _liveSessions = new Set<LanguageModelSession>();
+// Uses WeakRef so forgotten sessions can still be garbage-collected.
+const _liveSessions = new Set<WeakRef<LanguageModelSession>>();
 
 function _cleanupAllSessions(): void {
-  for (const session of _liveSessions) {
+  for (const ref of _liveSessions) {
     try {
-      session.dispose();
+      ref.deref()?.dispose();
     } catch {}
   }
   _liveSessions.clear();
@@ -46,8 +47,9 @@ function _installExitHandler(): void {
   // SIGINT (Ctrl+C) and SIGTERM (kill) don't trigger "exit" by default.
   // Clean up native sessions, then re-raise the signal so the process
   // terminates with the correct exit code / signal disposition.
+  // Use `once` so the handler removes itself before re-raising, avoiding a loop.
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.on(signal, () => {
+    process.once(signal, () => {
       _cleanupAllSessions();
       process.kill(process.pid, signal);
     });
@@ -62,6 +64,7 @@ export class LanguageModelSession {
   _nativeSession: NativePointer | null = null;
 
   private _transcript: Transcript | null = null;
+  private _weakRef: WeakRef<LanguageModelSession> | null = null;
 
   get transcript(): Transcript {
     if (!this._transcript) throw new FoundationModelsError("Session not initialized");
@@ -76,7 +79,8 @@ export class LanguageModelSession {
     this._nativeSession = pointer;
     this._transcript = transcript;
     _sessionRegistry.register(this, pointer, this);
-    _liveSessions.add(this);
+    this._weakRef = new WeakRef(this);
+    _liveSessions.add(this._weakRef);
     _installExitHandler();
   }
 
@@ -318,7 +322,10 @@ export class LanguageModelSession {
   }
 
   dispose(): void {
-    _liveSessions.delete(this);
+    if (this._weakRef) {
+      _liveSessions.delete(this._weakRef);
+      this._weakRef = null;
+    }
     if (this._nativeSession) {
       _sessionRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeSession);
