@@ -141,19 +141,24 @@ body {
   height: 192px;
   border-radius: 22%;
   background: linear-gradient(135deg, #6dd57e, #30b8d0);
+  animation: hero-hue 6s ease-in-out infinite;
   overflow: visible;
 }
 
-.hero-scene::before {
-  content: "";
+.hero-glow {
   position: absolute;
-  inset: -25%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: -1;
+  width: 150%;
+  height: 150%;
   border-radius: 50%;
-  background: var(--glow-bg, radial-gradient(circle at 50% 50%, #6dd57e, #30b8d0));
-  filter: blur(56px);
+  background: linear-gradient(135deg, #6dd57e, #30b8d0);
+  animation: hero-hue-glow 6s ease-in-out infinite;
   opacity: 0.5;
   pointer-events: none;
+  will-change: transform;
 }
 
 @media (min-width: 640px) {
@@ -176,21 +181,23 @@ body {
 
 .VPHero .text {
   font-weight: 400;
-  background: linear-gradient(90deg, #6dd57e, #30b8d0, #6dd57e, #30b8d0);
-  background-size: 300% 100%;
+  background: linear-gradient(90deg, #6dd57e, #30b8d0);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: hero-gradient 6s linear infinite;
+  animation: hero-hue 6s ease-in-out infinite;
 }
 
-@keyframes hero-gradient {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 300% 50%;
-  }
+@keyframes hero-hue {
+  0% { filter: hue-rotate(0deg); }
+  50% { filter: hue-rotate(40deg); }
+  100% { filter: hue-rotate(0deg); }
+}
+
+@keyframes hero-hue-glow {
+  0% { filter: blur(56px) hue-rotate(0deg); }
+  50% { filter: blur(56px) hue-rotate(40deg); }
+  100% { filter: blur(56px) hue-rotate(0deg); }
 }
 
 .VPHero .main::after {
