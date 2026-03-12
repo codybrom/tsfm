@@ -104,6 +104,16 @@ body {
 /* Code blocks */
 .vp-doc div[class*="language-"] {
   border-radius: 15px;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+@media (max-width: 640px) {
+  .vp-doc div[class*="language-"] {
+    margin-left: -24px;
+    margin-right: -24px;
+    border-radius: 0;
+  }
 }
 
 .vp-doc div[class*="language-"] code {
