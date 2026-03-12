@@ -1,19 +1,19 @@
-# OpenAI Compatibility API
+# Chat & Responses API Reference
 
-API reference for `tsfm-sdk/openai`. This module provides both the Responses API and Chat Completions API backed by on-device Apple Intelligence.
+API reference for `tsfm-sdk/chat`. This module provides a compatibility layer with a Responses API and Chat Completions API backed by on-device Apple Intelligence.
 
 ```ts
-import OpenAI, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/openai";
+import Client, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/chat";
 ```
 
-## OpenAI
+## Client
 
-Main client class. Drop-in replacement for the OpenAI Node SDK's `OpenAI` class.
+Main client class. Provides Chat-style and Responses-style API interfaces backed by on-device Apple Intelligence.
 
 ### Constructor
 
 ```ts
-const client = new OpenAI();
+const client = new Client();
 ```
 
 No arguments. No API key needed.
@@ -41,7 +41,7 @@ client.close(): void
 
 ### Responses
 
-Accessed via `client.responses`. The modern OpenAI API interface.
+Accessed via `client.responses`. Similar to the  modern Responses API interface used by OpenAI.
 
 #### `responses.create(params)`
 
@@ -332,7 +332,7 @@ Request parameters for `create()`.
 | `tools` | `ChatCompletionTool[]` | No | Tool definitions |
 | `response_format` | `ResponseFormat` | No | Output format constraint |
 
-All other OpenAI parameters (`n`, `stop`, `logprobs`, `frequency_penalty`, `presence_penalty`, `logit_bias`, `tool_choice`, `parallel_tool_calls`, etc.) are accepted but ignored. A warning is logged at runtime for each unsupported parameter that has a non-null value.
+All other Chat Completions parameters (`n`, `stop`, `logprobs`, `frequency_penalty`, `presence_penalty`, `logit_bias`, `tool_choice`, `parallel_tool_calls`, etc.) are accepted but ignored. A warning is logged at runtime for each unsupported parameter that has a non-null value.
 
 ---
 
@@ -553,7 +553,7 @@ The stream auto-closes on iteration completion, `break`, or error. A `Finalizati
 const MODEL_DEFAULT = "SystemLanguageModel";
 ```
 
-Placeholder model identifier for the on-device foundation model. Unlike the actual OpenAI api, it be omitted since only one model is available.
+Placeholder model identifier for the on-device foundation model. It can be omitted since only one model is available.
 
 ---
 

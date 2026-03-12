@@ -1,7 +1,7 @@
 import { SamplingMode, type GenerationOptions } from "../options.js";
 import type { ChatCompletionCreateParams } from "./types.js";
 
-/** OpenAI params accepted for type compat but not supported by Apple Foundation Models. Warned at runtime. */
+/** Params accepted for type compat but not supported by Apple Foundation Models. Warned at runtime. */
 const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
   "n",
   "stop",
@@ -30,7 +30,7 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
 ];
 
 /**
- * Maps OpenAI-style ChatCompletionCreateParams into tsfm's GenerationOptions.
+ * Maps ChatCompletionCreateParams into tsfm's GenerationOptions.
  * Emits console.warn for unsupported params and non-standard model names.
  */
 export function mapParams(params: Partial<ChatCompletionCreateParams>): GenerationOptions {

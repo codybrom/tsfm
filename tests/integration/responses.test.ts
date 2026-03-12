@@ -1,8 +1,8 @@
 import { describe, it, expect, afterAll } from "vitest";
-import OpenAI from "../../src/compat/index.js";
+import Client from "../../src/compat/index.js";
 import type { Response, ResponseStreamEvent } from "../../src/compat/responses-types.js";
 
-const client = new OpenAI();
+const client = new Client();
 afterAll(() => client.close());
 
 describe("Responses API — side-by-side with Chat Completions", () => {

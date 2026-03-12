@@ -126,5 +126,5 @@ Use **`respondWithJsonSchema`** when you already have existing JSON schemas or d
 If you don't need guides, either works. If you already have JSON schemas or are porting from another API, `respondWithJsonSchema` is the faster path.
 
 ::: tip
-The [OpenAI compatibility layer](/guide/openai-compatibility#structured-output) also supports structured output via `response_format: { type: "json_schema" }`, using the same JSON Schema format as the OpenAI API.
+The [Chat API compatibility layer](/guide/chat-api#structured-output) also supports structured output via `response_format: { type: "json_schema" }`, using the same JSON Schema format as the Chat Completions API.
 :::

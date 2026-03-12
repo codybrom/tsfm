@@ -92,7 +92,7 @@ function makeEntry(
 // ---------------------------------------------------------------------------
 
 /**
- * Convert an OpenAI-style messages array into the Foundation Models native
+ * Convert a Chat-style messages array into the Foundation Models native
  * transcript JSON format.
  *
  * The last user message is excluded from the transcript entries and returned
@@ -103,7 +103,7 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
     throw new Error("messages array must not be empty");
   }
 
-  // When the last message is a tool result (OpenAI tool-calling flow), append
+  // When the last message is a tool result (standard tool-calling flow), append
   // a synthetic user message summarizing the tool results so the standard
   // processing can handle it.
   let normalized = messages;

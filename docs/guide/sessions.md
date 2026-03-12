@@ -95,5 +95,5 @@ session.dispose();
 ```
 
 ::: tip
-If you're coming from the OpenAI SDK, you can use the [OpenAI compatibility layer](/guide/openai-compatibility) instead — it manages sessions automatically behind a familiar `chat.completions.create()` interface.
+If you prefer a higher-level interface, the [Chat API compatibility layer](/guide/chat-api) manages sessions automatically behind a more standard `chat.completions.create()` interface.
 :::

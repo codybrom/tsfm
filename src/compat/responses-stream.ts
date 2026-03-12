@@ -6,7 +6,7 @@ const _streamRegistry = new FinalizationRegistry((cleanup: () => void) => {
 
 /**
  * Async iterable wrapper for Responses API streaming events, mirroring
- * the `openai` SDK's response stream.
+ * the standard Responses API stream.
  *
  * Can only be iterated once. Call `close()` to release resources early.
  */

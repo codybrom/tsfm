@@ -1,11 +1,11 @@
-# OpenAI Compatibility
+# Chat & Responses APIs
 
-TSFM ships an OpenAI-compatible interface at `tsfm-sdk/openai`. It supports both the **Responses API** (`responses.create()`) and the **Chat Completions API** (`chat.completions.create()`) so you can swap in on-device Apple Intelligence with minimal code changes.
+TSFM ships Chat-style and Responses-style API interfaces at `tsfm-sdk/chat`. It supports both `responses.create()` and `chat.completions.create()` so you can swap in on-device Apple Intelligence with minimal code changes.
 
 ```ts
-import OpenAI from "tsfm-sdk/openai";
+import Client from "tsfm-sdk/chat";
 
-const client = new OpenAI();
+const client = new Client();
 
 // Responses API (recommended)
 const response = await client.responses.create({
@@ -28,11 +28,11 @@ console.log(completion.choices[0].message.content);
 client.close();
 ```
 
-If you've used OpenAI's Node SDK, or OpenAI-like APIs, it should feel familiar. The biggest difference is that the `model` param can be omitted or set to `"SystemLanguageModel"`
+If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is that the `model` param can be omitted or set to `"SystemLanguageModel"`
 
 ## What TSFM Supports
 
-Both APIs support the same core capabilities through the tsfm compatibility layer:
+Both APIs support the same core capabilities:
 
 | Feature | Responses API | Chat Completions API | tsfm Support |
 | --- | --- | --- | --- |
@@ -50,7 +50,7 @@ Both APIs support the same core capabilities through the tsfm compatibility laye
 
 ## Responses API
 
-The Responses API is OpenAI's modern interface. It uses a `client.responses.create()` function with a simpler input model and richer output structure.
+The Responses-style API uses a `client.responses.create()` function with a simpler input model and richer output structure.
 
 ### Basic Usage
 
@@ -266,7 +266,7 @@ The Chat Completions API uses the classic `client.chat.completions.create()` int
 
 ### Messages
 
-The compat layer accepts all standard OpenAI message roles:
+The Chat Completions API accepts all standard message roles:
 
 | Role | Behavior |
 | --- | --- |
@@ -278,7 +278,7 @@ The compat layer accepts all standard OpenAI message roles:
 
 #### Chat: Multi-turn Conversations
 
-Pass the full conversation history in the `messages` array. The compat layer converts it to a native Foundation Models [transcript](/guide/transcripts) behind the scenes — each `create()` call builds a fresh session from the messages you provide.
+Pass the full conversation history in the `messages` array. The client converts it to a native Foundation Models [transcript](/guide/transcripts) behind the scenes — each `create()` call builds a fresh session from the messages you provide.
 
 ```ts
 const response = await client.chat.completions.create({
@@ -349,7 +349,7 @@ The JSON schema is converted to Apple's native generation schema format at runti
 
 ### Chat: Tool Calling
 
-Define tools using the same format as the OpenAI API:
+Define tools using the standard function tool format:
 
 ```ts
 const tools = [
@@ -414,7 +414,7 @@ Under the hood, tool calling uses structured output with a discriminated schema.
 
 ### Chat: Generation Options
 
-| OpenAI param | Maps to |
+| Param | Maps to |
 | --- | --- |
 | `temperature` | `GenerationOptions.temperature` |
 | `max_tokens` / `max_completion_tokens` | `GenerationOptions.maximumResponseTokens` (`max_completion_tokens` takes priority) |
@@ -469,33 +469,12 @@ const response = await client.chat.completions.create({
 Call `client.close()` when you're done to release the native model pointer:
 
 ```ts
-const client = new OpenAI();
+const client = new Client();
 // ... use client ...
 client.close();
 ```
 
 Each `create()` call manages its own session lifecycle internally — sessions are created from the messages array and disposed after the response completes (or after streaming finishes).
-
-## Cross-Provider Compatibility
-
-Because the message format is identical, you can use the same conversation history with both tsfm and the real OpenAI SDK:
-
-```ts
-import OpenAI from "tsfm-sdk/openai";
-import RealOpenAI from "openai";
-
-const messages = [
-  { role: "system" as const, content: "You are helpful." },
-  { role: "user" as const, content: "Hello!" },
-];
-
-// Works with both
-const local = new OpenAI();
-const cloud = new RealOpenAI();
-
-const a = await local.chat.completions.create({ messages });
-const b = await cloud.chat.completions.create({ model: "gpt-4o", messages });
-```
 
 ## What's Next
 

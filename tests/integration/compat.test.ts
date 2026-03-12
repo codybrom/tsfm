@@ -1,11 +1,11 @@
 import { describe, it, expect, afterAll } from "vitest";
-import OpenAI from "../../src/compat/index.js";
+import Client from "../../src/compat/index.js";
 import { retryAttempts } from "./helpers/retry.js";
 
-const client = new OpenAI();
+const client = new Client();
 afterAll(() => client.close());
 
-describe("OpenAI compat integration", () => {
+describe("Chat API integration", () => {
   it("basic text generation", async () => {
     const response = await client.chat.completions.create({
       model: "SystemLanguageModel",
@@ -114,7 +114,7 @@ describe("OpenAI compat integration", () => {
 
       const { successes } = await retryAttempts(
         async () => {
-          const localClient = new OpenAI();
+          const localClient = new Client();
           try {
             // Step 1: Get model to call the tool
             const step1 = await localClient.chat.completions.create({

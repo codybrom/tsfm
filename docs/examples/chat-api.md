@@ -1,15 +1,15 @@
-# OpenAI Compatibility
+# Chat & Responses APIs
 
-Examples using the OpenAI-compatible interface at `tsfm-sdk/openai`. Both the Responses API and Chat Completions API are shown.
+Examples using the Chat-style and Responses-style API interfaces at `tsfm-sdk/chat`. Both the Responses API and Chat Completions API are shown.
 
 ## Responses API
 
 ### Basic Text Generation
 
 ```ts
-import OpenAI from "tsfm-sdk/openai";
+import Client from "tsfm-sdk/chat";
 
-const client = new OpenAI();
+const client = new Client();
 
 // String input — the simplest form
 const response = await client.responses.create({
@@ -173,9 +173,9 @@ for (const item of response.output) {
 ### Chat: Basic Text Generation
 
 ```ts
-import OpenAI from "tsfm-sdk/openai";
+import Client from "tsfm-sdk/chat";
 
-const client = new OpenAI();
+const client = new Client();
 
 const response = await client.chat.completions.create({
   messages: [
@@ -298,24 +298,4 @@ if (choice.finish_reason === "tool_calls" && choice.message.tool_calls) {
   console.log(followUp.choices[0].message.content);
   // "It's currently 22°C and sunny in Tokyo."
 }
-```
-
-## Cross-Provider Usage
-
-Both APIs work interchangeably with the real OpenAI SDK:
-
-```ts
-import LocalAI from "tsfm-sdk/openai";
-import CloudAI from "openai";
-
-// Responses API
-const local = new LocalAI();
-const a = await local.responses.create({ input: "Hello!" });
-console.log("Local:", a.output_text);
-local.close();
-
-// Cloud equivalent
-const cloud = new CloudAI();
-const b = await cloud.responses.create({ model: "gpt-4o", input: "Hello!" });
-console.log("Cloud:", b.output_text);
 ```

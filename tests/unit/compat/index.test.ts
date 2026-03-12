@@ -51,7 +51,7 @@ vi.mock("../../../src/tool.js", () => ({
   },
 }));
 
-import OpenAI, { MODEL_DEFAULT } from "../../../src/compat/index.js";
+import Client, { MODEL_DEFAULT } from "../../../src/compat/index.js";
 import type { ChatCompletionChunk } from "../../../src/compat/types.js";
 
 // ---------------------------------------------------------------------------
@@ -153,22 +153,22 @@ beforeEach(() => {
   });
 });
 
-describe("OpenAI compat layer", () => {
+describe("Chat API compat layer", () => {
   describe("exports", () => {
     it("exports MODEL_DEFAULT constant", () => {
       expect(MODEL_DEFAULT).toBe("SystemLanguageModel");
     });
 
-    it("default export is the OpenAI class", () => {
-      const client = new OpenAI();
-      expect(client).toBeInstanceOf(OpenAI);
+    it("default export is the Client class", () => {
+      const client = new Client();
+      expect(client).toBeInstanceOf(Client);
       client.close();
     });
   });
 
   describe("structure", () => {
     it("has chat.completions.create method", () => {
-      const client = new OpenAI();
+      const client = new Client();
       expect(client.chat).toBeDefined();
       expect(client.chat.completions).toBeDefined();
       expect(typeof client.chat.completions.create).toBe("function");
@@ -178,7 +178,7 @@ describe("OpenAI compat layer", () => {
 
   describe("create — non-streaming", () => {
     it("throws on empty messages", async () => {
-      const client = new OpenAI();
+      const client = new Client();
       await expect(client.chat.completions.create({ messages: [] })).rejects.toThrow(
         "messages array must not be empty",
       );
@@ -188,7 +188,7 @@ describe("OpenAI compat layer", () => {
     it("returns correct ChatCompletion shape", async () => {
       simulateRespondSuccess("Hello from Apple Intelligence");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
       });
@@ -210,7 +210,7 @@ describe("OpenAI compat layer", () => {
     it("disposes session after successful create", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.chat.completions.create({ messages: basicMessages });
 
       // Session dispose calls FMRelease on the session pointer
@@ -222,7 +222,7 @@ describe("OpenAI compat layer", () => {
       // Status 7 = RateLimitedError
       simulateRespondError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       await expect(client.chat.completions.create({ messages: basicMessages })).rejects.toThrow();
 
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
@@ -233,7 +233,7 @@ describe("OpenAI compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.chat.completions.create({
         messages: basicMessages,
         model: "gpt-4o",
@@ -247,14 +247,14 @@ describe("OpenAI compat layer", () => {
 
   describe("close", () => {
     it("disposes the model", () => {
-      const client = new OpenAI();
+      const client = new Client();
       client.close();
       // SystemLanguageModel.dispose calls FMRelease on model pointer
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-model-pointer");
     });
 
     it("supports Symbol.dispose", () => {
-      const client = new OpenAI();
+      const client = new Client();
       expect(typeof client[Symbol.dispose]).toBe("function");
       client[Symbol.dispose]();
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-model-pointer");
@@ -266,7 +266,7 @@ describe("OpenAI compat layer", () => {
       // Status 1 = ExceededContextWindowSizeError
       simulateRespondError(1, "Context window exceeded");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
       });
@@ -279,7 +279,7 @@ describe("OpenAI compat layer", () => {
       // Status 9 = RefusalError
       simulateRespondError(9, "Model refused");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
       });
@@ -292,7 +292,7 @@ describe("OpenAI compat layer", () => {
     it("re-throws RateLimitedError with status 429", async () => {
       simulateRespondError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       try {
         await client.chat.completions.create({ messages: basicMessages });
         expect.unreachable("Should have thrown");
@@ -305,7 +305,7 @@ describe("OpenAI compat layer", () => {
     it("returns finish_reason content_filter for GuardrailViolationError", async () => {
       simulateRespondError(3, "Guardrail violation");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({ messages: basicMessages });
       expect(result.choices[0].finish_reason).toBe("content_filter");
       expect(result.choices[0].message.content).toBeNull();
@@ -316,7 +316,7 @@ describe("OpenAI compat layer", () => {
       // Status 2 = AssetsUnavailableError — not specially handled by compat layer
       simulateRespondError(2, "Assets unavailable");
 
-      const client = new OpenAI();
+      const client = new Client();
       await expect(client.chat.completions.create({ messages: basicMessages })).rejects.toThrow(
         "Assets unavailable",
       );
@@ -328,7 +328,7 @@ describe("OpenAI compat layer", () => {
     it("returns a Stream instance", async () => {
       simulateStreamSuccess(["Hello", " world"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -346,7 +346,7 @@ describe("OpenAI compat layer", () => {
     it("emits first chunk with role and empty content", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -365,7 +365,7 @@ describe("OpenAI compat layer", () => {
     it("emits final chunk with finish_reason stop", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -389,7 +389,7 @@ describe("OpenAI compat layer", () => {
         tool_call: { name: "get_weather", arguments: { city: "SF" } },
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -407,7 +407,7 @@ describe("OpenAI compat layer", () => {
     it("returns empty string content when model text response has no content field", async () => {
       simulateStructuredSuccess({ type: "text" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -421,7 +421,7 @@ describe("OpenAI compat layer", () => {
     it("returns text when model responds with text despite tools", async () => {
       simulateStructuredSuccess({ type: "text", content: "I can help with that" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -436,7 +436,7 @@ describe("OpenAI compat layer", () => {
     it("injects tool instructions when no system message exists", async () => {
       simulateStructuredSuccess({ type: "text", content: "ok" });
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -457,7 +457,7 @@ describe("OpenAI compat layer", () => {
     it("appends tool instructions to existing system message", async () => {
       simulateStructuredSuccess({ type: "text", content: "ok" });
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.chat.completions.create({
         messages: [
           { role: "system", content: "Be helpful." },
@@ -480,7 +480,7 @@ describe("OpenAI compat layer", () => {
     it("uses plain text when last message is a tool result", async () => {
       simulateRespondSuccess("The weather in SF is sunny.");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: [
           { role: "user", content: "What's the weather?" },
@@ -512,7 +512,7 @@ describe("OpenAI compat layer", () => {
     it("returns parsed JSON as content string", async () => {
       simulateStructuredSuccess({ name: "John", age: 30 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -537,7 +537,7 @@ describe("OpenAI compat layer", () => {
     it("falls back to { type: 'object' } schema when json_schema.schema is omitted", async () => {
       simulateStructuredSuccess({ answer: 42 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -555,7 +555,7 @@ describe("OpenAI compat layer", () => {
       // Model returns keys in different order than schema defines
       simulateStructuredSuccess({ age: 30, name: "John" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -579,7 +579,7 @@ describe("OpenAI compat layer", () => {
     it("preserves extra keys not in schema during reordering", async () => {
       simulateStructuredSuccess({ name: "John", extra: "data", age: 30 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -615,7 +615,7 @@ describe("OpenAI compat layer", () => {
         return "not valid json {{{";
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -638,7 +638,7 @@ describe("OpenAI compat layer", () => {
       // Object is missing the "age" property defined in schema
       simulateStructuredSuccess({ name: "John" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = await client.chat.completions.create({
         messages: basicMessages,
         response_format: {
@@ -663,7 +663,7 @@ describe("OpenAI compat layer", () => {
     it("appends JSON instruction to prompt", async () => {
       simulateRespondSuccess('{"result": 42}');
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.chat.completions.create({
         messages: basicMessages,
         response_format: { type: "json_object" },
@@ -684,7 +684,7 @@ describe("OpenAI compat layer", () => {
         tool_call: { name: "get_weather", arguments: { city: "NYC" } },
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -711,7 +711,7 @@ describe("OpenAI compat layer", () => {
     it("buffers text response with missing content and emits empty string", async () => {
       simulateStructuredSuccess({ type: "text" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -733,7 +733,7 @@ describe("OpenAI compat layer", () => {
     it("buffers text response with tools and emits as chunks", async () => {
       simulateStructuredSuccess({ type: "text", content: "No tool needed" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         tools: sampleTools,
@@ -757,7 +757,7 @@ describe("OpenAI compat layer", () => {
     it("emits finish_reason length for ExceededContextWindowSizeError", async () => {
       simulateStreamError(1, "Context window exceeded");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -776,7 +776,7 @@ describe("OpenAI compat layer", () => {
     it("emits refusal chunk for RefusalError", async () => {
       simulateStreamError(9, "Model refused");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -796,7 +796,7 @@ describe("OpenAI compat layer", () => {
     it("throws CompatError with status 429 for RateLimitedError", async () => {
       simulateStreamError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -816,7 +816,7 @@ describe("OpenAI compat layer", () => {
     it("yields finish_reason content_filter for GuardrailViolationError during streaming", async () => {
       simulateStreamError(3, "Guardrail violation");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -834,7 +834,7 @@ describe("OpenAI compat layer", () => {
     it("re-throws unhandled errors directly during streaming", async () => {
       simulateStreamError(2, "Assets unavailable");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,
@@ -851,7 +851,7 @@ describe("OpenAI compat layer", () => {
     it("stream.close() disposes the session", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
         stream: true,

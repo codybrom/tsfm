@@ -5,23 +5,23 @@
     "Arial", sans-serif;
   --vp-font-family-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace;
 
-  /* Brand — Foundation Models teal (shifted from pure green for readability) */
+  /* Brand */
   --vp-c-brand-1: #0e6856;
   --vp-c-brand-2: #127a65;
   --vp-c-brand-3: #0a5445;
   --vp-c-brand-soft: rgba(14, 104, 86, 0.1);
 
-  /* Surfaces — Apple dev docs palette */
+  /* Surfaces */
   --vp-c-bg: #ffffff;
   --vp-c-bg-soft: #f5f5f7;
   --vp-c-bg-mute: #e8e8ed;
 
-  /* Text — Apple gray scale (text-3 darkened for WCAG AA 4.5:1 contrast) */
+  /* Text */
   --vp-c-text-1: #1d1d1f;
   --vp-c-text-2: #6e6e73;
   --vp-c-text-3: #707074;
 
-  /* Home hero gradient — matches the FM icon */
+  /* Home hero gradient */
   --vp-home-hero-name-color: transparent;
   --vp-home-hero-name-background: linear-gradient(135deg, #6dd57e 0%, #30b8d0 100%);
   --vp-home-hero-image-background-image: linear-gradient(
@@ -42,11 +42,11 @@
   --vp-button-brand-active-text: #ffffff;
   --vp-button-brand-active-bg: #0a5445;
 
-  /* Code — Apple dev docs style */
+  /* Code */
   --vp-code-block-bg: #f5f5f7;
   --vp-c-default-soft: rgba(142, 150, 170, 0.1);
 
-  /* Aside / callout border radius (Apple uses 15px) */
+  /* Aside */
   --vp-custom-block-tip-border: rgba(26, 127, 63, 0.4);
   --vp-custom-block-tip-bg: rgba(26, 127, 63, 0.05);
 }
@@ -74,7 +74,7 @@
   --vp-code-block-bg: #1c1c1e;
 }
 
-/* Font rendering — Apple-style antialiasing */
+/* Font rendering */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -101,7 +101,7 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Code blocks — Apple dev docs rounded style */
+/* Code blocks */
 .vp-doc div[class*="language-"] {
   border-radius: 15px;
 }
@@ -111,21 +111,13 @@ body {
   word-break: break-word;
 }
 
-/* Inline code — subtle, inherits text color */
+/* Inline code */
 .vp-doc :not(pre) > code {
   background-color: var(--vp-c-default-soft);
   border-radius: 3px;
   padding: 0.15em 0.35em;
   font-size: 0.9em;
   color: inherit;
-}
-
-/* Headings with code — no special treatment */
-.vp-doc h1 code,
-.vp-doc h2 code,
-.vp-doc h3 code,
-.vp-doc h4 code {
-  font-size: inherit;
 }
 
 /* Hero */
@@ -151,87 +143,76 @@ body {
   color: var(--vp-c-text-2);
 }
 
-/* Home page */
-.home-content {
-  max-width: 688px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 5rem;
-}
-
-/* Links — sits above code */
-.home-links {
-  text-align: center;
-  margin-bottom: 2.5rem;
-}
-
-.home-links p:first-child {
-  font-size: 1.125rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: var(--vp-c-text-1);
-  margin-bottom: 0.5rem;
-}
-
-.home-links a {
-  color: var(--vp-c-brand-1);
-}
-
-.home-links p:last-child {
-  font-size: 0.875rem;
+.VPHero .main::after {
+  content: "Requires macOS 26+ on Apple Silicon with Apple Intelligence enabled.";
+  display: block;
+  margin-top: 1.25rem;
+  font-size: 0.8125rem;
   color: var(--vp-c-text-3);
+  letter-spacing: -0.01em;
 }
 
-/* Main code block */
-.home-content > div[class*="language-"] {
-  margin-bottom: 0;
+/* Reduce default home page bottom padding */
+.VPHome {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
 }
 
-/* OpenAI box */
-.home-openai-box {
-  background: rgba(41, 210, 151, 0.06);
+/* Explore cards — prominent section links */
+.home-explore {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 2rem 2rem 1rem;
+}
+
+.home-explore-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
   border-radius: 15px;
-  padding: 2rem 2rem 1.5rem;
-  margin-top: 3.5rem;
+  background: var(--vp-c-bg-soft);
+  text-decoration: none !important;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.home-openai-box div[class*="language-"] {
-  background: var(--vp-c-bg) !important;
-  margin-top: 0;
-  margin-bottom: 1rem;
+.home-explore-card:hover {
+  background: var(--vp-c-bg-mute);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
-.home-heading {
-  font-size: 1.375rem;
+.dark .home-explore-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.home-explore-title {
+  font-size: 1rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
   color: var(--vp-c-text-1);
-  margin: 0 0 0.25rem;
+  margin-bottom: 0.25rem;
 }
 
-.home-subheading {
-  font-size: 0.9375rem;
-  color: var(--vp-c-text-2);
-  margin: -0.125rem 0 1.25rem;
-}
-
-.home-openai-link {
-  text-align: right;
-  font-size: 0.875rem;
-  margin: 0;
-}
-
-.home-openai-link a {
+.home-explore-card:hover .home-explore-title {
   color: var(--vp-c-brand-1);
 }
 
-
-/* Nav — Apple-style blur when sticking */
-.VPNav {
-  backdrop-filter: saturate(180%) blur(20px);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
+.home-explore-desc {
+  font-size: 0.8125rem;
+  color: var(--vp-c-text-2);
+  line-height: 1.4;
 }
 
-/* Buttons — Apple border radius */
+@media (max-width: 640px) {
+  .home-explore {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Buttons */
 .VPButton {
   border-radius: 18px !important;
 }
@@ -245,11 +226,6 @@ body {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
-/* Sidebar — tighter, cleaner */
-.VPSidebar .group + .group {
-  padding-top: 0.5rem;
-}
-
 /* External link icon — tighter spacing */
 :is(.vp-doc a[href*="://"], .vp-doc a[target="_blank"]):not(
     :is(.no-icon, svg a, :has(img, svg))
@@ -257,7 +233,7 @@ body {
   margin-left: 0;
 }
 
-/* Swift equivalent info boxes — caption style */
+/* Swift equivalent info boxes */
 .vp-doc .custom-block.info {
   background: none;
   border: none;

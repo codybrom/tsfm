@@ -15,54 +15,28 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/codybrom/tsfm
+    
+
+features:
+  - icon: ⚡
+    title: Streaming
+    details: "Get responses token-by-token as the model generates them."
+    link: /guide/streaming
+    linkText: Learn more
+  - icon: 🧩
+    title: Structured Output
+    details: "Type-safe JSON generation using schemas and Apple's generation guide system."
+    link: /guide/structured-output
+    linkText: Learn more
+  - icon: 🛠️
+    title: Tool Calling
+    details: "Define tools as classes, get structured invocations back from the model."
+    link: /guide/tools
+    linkText: Learn more
+  - icon: 🔌
+    title: Chat & Responses APIs
+    details: "Use familiar Chat-style and Responses-style APIs. Change your imports,  keep your code."
+    link: /guide/chat-api
+    linkText: Learn more
 
 ---
-
-<div class="home-content">
-
-<div class="home-links">
-
-[Streaming](/guide/streaming) · [Structured Output](/guide/structured-output) · [Tool Calling](/guide/tools) · [OpenAI Compatible](/guide/openai-compatibility)
-
-Requires macOS 26+ on Apple Silicon with Apple Intelligence enabled.
-
-</div>
-
-```ts
-// npm install tsfm-sdk
-
-import { LanguageModelSession } from "tsfm-sdk";
-
-const session = new LanguageModelSession();
-const reply = await session.respond("What is the capital of France?");
-console.log(reply); // "The capital of France is Paris."
-```
-
-<div class="home-openai-box">
-<div class="home-heading">Already using OpenAI?</div>
-<p class="home-subheading">Change your import and keep going.</p>
-
-```ts
-import OpenAI from "tsfm-sdk/openai"; // ← just change this
-
-const client = new OpenAI();
-
-const response = await client.responses.create({
-  // model: "gpt-4o",
-  instructions: "You are a helpful assistant.",
-  input: "What is the capital of France?",
-});
-
-console.log(response.output_text);
-
-client.close();
-```
-
-<p class="home-openai-link">
-
-[Learn more about the OpenAI compatibility layer →](/guide/openai-compatibility)
-
-</p>
-</div>
-
-</div>

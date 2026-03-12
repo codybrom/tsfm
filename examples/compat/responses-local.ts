@@ -8,9 +8,9 @@
  *   2. No model parameter needed (uses on-device Apple Intelligence)
  *   3. No API key needed
  */
-import OpenAI from "../../src/compat/index.js";
+import Client from "../../src/compat/index.js";
 
-const client = new OpenAI();
+const client = new Client();
 
 // ---------------------------------------------------------------------------
 // 1. Basic text generation

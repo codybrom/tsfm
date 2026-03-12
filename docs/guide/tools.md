@@ -93,6 +93,6 @@ The Foundation Model [`Tool` documentation](https://developer.apple.com/document
 
 The model can call multiple tools in sequence within a single `respond()` call. If the first tool's output informs a second tool call, the model handles the chaining automatically — you don't need to loop.
 
-## OpenAI-compatible Tool Calling
+## Chat API Tool Calling
 
-If you prefer the OpenAI SDK's tool calling interface, the [compat layer](/guide/openai-compatibility#tool-calling) supports `tools` with the standard `ChatCompletionTool` format. You define tools as JSON objects instead of extending the `Tool` class, and handle tool execution yourself between requests.
+If you prefer the Chat API tool calling interface, the [compatibility layer](/guide/chat-api#tool-calling) supports `tools` with the standard `ChatCompletionTool` format. You define tools as JSON objects instead of extending the `Tool` class, and handle tool execution yourself between requests.

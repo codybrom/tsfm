@@ -1,4 +1,4 @@
-// OpenAI Responses API type definitions for the Apple Foundation Models compat layer.
+// Responses API type definitions for the Apple Foundation Models compat layer.
 // This is a pure types file with no runtime code.
 
 import type { JsonSchema } from "../schema.js";
@@ -99,7 +99,7 @@ export type ResponseTextConfig = {
 /**
  * Request params for `responses.create()`.
  *
- * All OpenAI Responses API params are accepted for type compatibility. Supported
+ * All Responses API params are accepted for type compatibility. Supported
  * params are mapped to Foundation Models GenerationOptions; unsupported params
  * are warned and silently ignored at runtime.
  */

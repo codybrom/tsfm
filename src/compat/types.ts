@@ -1,4 +1,4 @@
-// OpenAI-compatible type definitions for the Apple Foundation Models compat layer.
+// Chat Completions type definitions for the Apple Foundation Models compat layer.
 // This is a pure types file with no runtime code.
 
 import type { JsonSchema, JsonObject } from "../schema.js";
@@ -100,7 +100,7 @@ export type ResponseFormat =
 /**
  * Request params for `chat.completions.create()`.
  *
- * All OpenAI params are accepted for type compatibility. Supported params are
+ * All standard params are accepted for type compatibility. Supported params are
  * mapped to Foundation Models GenerationOptions; unsupported params are warned
  * and silently ignored at runtime (see `mapParams()` and `UNSUPPORTED_PARAMS`).
  */
@@ -108,8 +108,8 @@ export type ChatCompletionCreateParams = {
   // Required
   messages: ChatCompletionMessageParam[];
 
-  // Supported params (model is optional here for convenience — OpenAI requires it,
-  // but this layer only supports one model so omitting it is safe)
+  // Supported params (model is optional here for convenience — this layer only
+  // supports one model so omitting it is safe)
   model?: string;
   temperature?: number | null;
   max_tokens?: number | null;

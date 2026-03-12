@@ -5,9 +5,9 @@ const _streamRegistry = new FinalizationRegistry((cleanup: () => void) => {
 });
 
 /**
- * Async iterable wrapper for streaming chat completion chunks, mirroring the `openai` SDK's `Stream`.
+ * Async iterable wrapper for streaming chat completion chunks, mirroring the standard Chat Completions `Stream`.
  *
- * Like the OpenAI SDK's `Stream`, this can only be iterated once. A second
+ * Like a standard `Stream`, this can only be iterated once. A second
  * `for await` loop over the same instance will yield no chunks.
  *
  * Call `close()` when done if you do not fully consume the stream, to release

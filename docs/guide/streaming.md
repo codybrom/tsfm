@@ -46,13 +46,13 @@ for await (const chunk of session.streamResponse("Explain TypeScript")) {
 console.log("\n\nFull response length:", full.length);
 ```
 
-## OpenAI-compatible Streaming
+## Chat API Streaming
 
-If you prefer the OpenAI SDK's streaming interface, the [compat layer](/guide/openai-compatibility#streaming) provides `stream: true` with `ChatCompletionChunk` objects:
+If you prefer the Chat API streaming interface, the [compatibility layer](/guide/chat-api#streaming) provides `stream: true` with `ChatCompletionChunk` objects:
 
 ```ts
-import OpenAI from "tsfm-sdk/openai";
-const client = new OpenAI();
+import Client from "tsfm-sdk/chat";
+const client = new Client();
 
 const stream = await client.chat.completions.create({
   messages: [{ role: "user", content: "Tell me a joke" }],

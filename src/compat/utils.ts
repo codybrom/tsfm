@@ -2,7 +2,7 @@ import type { JsonSchema, JsonObject } from "../schema.js";
 
 /**
  * Reorder JSON keys to match the property order defined in a JSON schema.
- * OpenAI returns keys in schema-defined order; Apple returns them in
+ * Other AI APIs return keys in schema-defined order; Apple returns them in
  * generation order. This normalizes the output for compatibility.
  */
 export function reorderJson(json: string, schema: JsonSchema): string {

@@ -51,7 +51,7 @@ vi.mock("../../../src/tool.js", () => ({
   },
 }));
 
-import OpenAI from "../../../src/compat/index.js";
+import Client from "../../../src/compat/index.js";
 import type {
   Response,
   ResponseStreamEvent,
@@ -157,7 +157,7 @@ beforeEach(() => {
 describe("Responses API compat layer", () => {
   describe("structure", () => {
     it("has responses.create method", () => {
-      const client = new OpenAI();
+      const client = new Client();
       expect(client.responses).toBeDefined();
       expect(typeof client.responses.create).toBe("function");
       client.close();
@@ -168,7 +168,7 @@ describe("Responses API compat layer", () => {
     it("returns correct Response shape for simple string input", async () => {
       simulateRespondSuccess("Hello from Apple Intelligence");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Hello",
       })) as Response;
@@ -199,7 +199,7 @@ describe("Responses API compat layer", () => {
     it("returns response for array input with user message", async () => {
       simulateRespondSuccess("Hi there");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
       })) as Response;
@@ -210,7 +210,7 @@ describe("Responses API compat layer", () => {
     });
 
     it("throws when input array has no user message", async () => {
-      const client = new OpenAI();
+      const client = new Client();
       await expect(
         client.responses.create({
           input: [{ role: "assistant", content: "I am assistant" }],
@@ -222,7 +222,7 @@ describe("Responses API compat layer", () => {
     it("handles input_text content parts in array messages", async () => {
       simulateRespondSuccess("Got it");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [
           {
@@ -244,7 +244,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("ok");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           {
@@ -267,7 +267,7 @@ describe("Responses API compat layer", () => {
     it("injects instructions into transcript", async () => {
       simulateRespondSuccess("Sure!");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "Hello",
         instructions: "Be concise.",
@@ -287,7 +287,7 @@ describe("Responses API compat layer", () => {
     it("reflects instructions in response object", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Hi",
         instructions: "Be helpful.",
@@ -302,7 +302,7 @@ describe("Responses API compat layer", () => {
     it("handles user/assistant turns in array input", async () => {
       simulateRespondSuccess("The capital of France is Paris.");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [
           { role: "user", content: "Hi" },
@@ -319,7 +319,7 @@ describe("Responses API compat layer", () => {
     it("handles system/developer messages in array input", async () => {
       simulateRespondSuccess("Done");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "system", content: "You are helpful." },
@@ -342,7 +342,7 @@ describe("Responses API compat layer", () => {
     it("passes temperature through to options", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "test",
         temperature: 0.7,
@@ -355,7 +355,7 @@ describe("Responses API compat layer", () => {
     it("passes max_output_tokens through", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "test",
         max_output_tokens: 100,
@@ -368,7 +368,7 @@ describe("Responses API compat layer", () => {
     it("passes top_p and seed through", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "test",
         top_p: 0.9,
@@ -385,7 +385,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         model: "gpt-4o",
@@ -400,7 +400,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         store: true,
@@ -417,7 +417,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         tool_choice: "required",
@@ -434,7 +434,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         tool_choice: { type: "function", name: "my_func" },
@@ -449,7 +449,7 @@ describe("Responses API compat layer", () => {
       simulateRespondSuccess("test");
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         tool_choice: "auto",
@@ -465,7 +465,7 @@ describe("Responses API compat layer", () => {
     it("includes all expected top-level fields", async () => {
       simulateRespondSuccess("Hello");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Hi",
         instructions: "Be nice",
@@ -498,7 +498,7 @@ describe("Responses API compat layer", () => {
     it("disposes session after successful create", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({ input: "test" });
 
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
@@ -508,7 +508,7 @@ describe("Responses API compat layer", () => {
     it("disposes session even on error", async () => {
       simulateRespondError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       await expect(client.responses.create({ input: "test" })).rejects.toThrow();
 
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
@@ -520,7 +520,7 @@ describe("Responses API compat layer", () => {
     it("returns parsed JSON as output_text", async () => {
       simulateStructuredSuccess({ name: "Alice", age: 25 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Generate a person",
         text: {
@@ -545,7 +545,7 @@ describe("Responses API compat layer", () => {
     it("reorders JSON keys to match schema property order", async () => {
       simulateStructuredSuccess({ age: 30, name: "Bob" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Generate",
         text: {
@@ -567,7 +567,7 @@ describe("Responses API compat layer", () => {
     it("falls back to { type: 'object' } schema when schema is omitted", async () => {
       simulateStructuredSuccess({ answer: 42 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "test",
         text: {
@@ -591,7 +591,7 @@ describe("Responses API compat layer", () => {
         tool_call: { name: "get_weather", arguments: { city: "SF" } },
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [{ role: "user", content: "What is the weather in SF?" }],
         tools: sampleFunctionTools,
@@ -614,7 +614,7 @@ describe("Responses API compat layer", () => {
     it("returns text when model responds with text despite tools", async () => {
       simulateStructuredSuccess({ type: "text", content: "I can help with that" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
         tools: sampleFunctionTools,
@@ -630,7 +630,7 @@ describe("Responses API compat layer", () => {
     it("returns empty string content when model text response has no content field", async () => {
       simulateStructuredSuccess({ type: "text" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
         tools: sampleFunctionTools,
@@ -644,7 +644,7 @@ describe("Responses API compat layer", () => {
     it("injects tool instructions when no system message exists", async () => {
       simulateStructuredSuccess({ type: "text", content: "ok" });
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
         tools: sampleFunctionTools,
@@ -663,7 +663,7 @@ describe("Responses API compat layer", () => {
     it("appends tool instructions to existing instructions", async () => {
       simulateStructuredSuccess({ type: "text", content: "ok" });
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
         instructions: "Be helpful.",
@@ -685,7 +685,7 @@ describe("Responses API compat layer", () => {
     it("uses plain text respond when last input is function_call_output", async () => {
       simulateRespondSuccess("The weather in SF is sunny.");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [
           { role: "user", content: "What's the weather?" },
@@ -715,7 +715,7 @@ describe("Responses API compat layer", () => {
     it("includes tool result text in the synthetic user message", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "user", content: "Get weather" },
@@ -747,7 +747,7 @@ describe("Responses API compat layer", () => {
     it("returns incomplete status with error for ExceededContextWindowSizeError", async () => {
       simulateRespondError(1, "Context window exceeded");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({ input: "test" })) as Response;
 
       expect(result.status).toBe("incomplete");
@@ -761,7 +761,7 @@ describe("Responses API compat layer", () => {
     it("returns refusal content for RefusalError", async () => {
       simulateRespondError(9, "Model refused");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({ input: "test" })) as Response;
 
       expect(result.status).toBe("completed");
@@ -775,7 +775,7 @@ describe("Responses API compat layer", () => {
     it("re-throws RateLimitedError with status 429", async () => {
       simulateRespondError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       try {
         await client.responses.create({ input: "test" });
         expect.unreachable("Should have thrown");
@@ -788,7 +788,7 @@ describe("Responses API compat layer", () => {
     it("returns failed with content_filter error for GuardrailViolationError", async () => {
       simulateRespondError(3, "Guardrail violation");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({ input: "test" })) as Response;
 
       expect(result.status).toBe("failed");
@@ -803,7 +803,7 @@ describe("Responses API compat layer", () => {
     it("re-throws unhandled errors directly", async () => {
       simulateRespondError(2, "Assets unavailable");
 
-      const client = new OpenAI();
+      const client = new Client();
       await expect(client.responses.create({ input: "test" })).rejects.toThrow(
         "Assets unavailable",
       );
@@ -815,7 +815,7 @@ describe("Responses API compat layer", () => {
     it("returns a ResponseStream instance", async () => {
       simulateStreamSuccess(["Hello", " world"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -833,7 +833,7 @@ describe("Responses API compat layer", () => {
     it("emits response.created and response.in_progress first", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -852,7 +852,7 @@ describe("Responses API compat layer", () => {
     it("emits text delta events during streaming", async () => {
       simulateStreamSuccess(["Hello", " world"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hi",
         stream: true,
@@ -874,7 +874,7 @@ describe("Responses API compat layer", () => {
     it("emits response.completed as final event", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -893,7 +893,7 @@ describe("Responses API compat layer", () => {
     it("emits sequence_numbers in order", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -913,7 +913,7 @@ describe("Responses API compat layer", () => {
     it("emits output_item.added, content_part.added, and output_item.done", async () => {
       simulateStreamSuccess(["Test"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hi",
         stream: true,
@@ -940,7 +940,7 @@ describe("Responses API compat layer", () => {
         tool_call: { name: "get_weather", arguments: { city: "NYC" } },
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: [{ role: "user", content: "Weather?" }],
         tools: sampleFunctionTools,
@@ -971,7 +971,7 @@ describe("Responses API compat layer", () => {
     it("emits text events when model responds with text despite tools", async () => {
       simulateStructuredSuccess({ type: "text", content: "No tool needed" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: [{ role: "user", content: "Hello" }],
         tools: sampleFunctionTools,
@@ -999,7 +999,7 @@ describe("Responses API compat layer", () => {
     it("buffers structured output and emits text events", async () => {
       simulateStructuredSuccess({ name: "Alice", age: 25 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Generate",
         stream: true,
@@ -1032,7 +1032,7 @@ describe("Responses API compat layer", () => {
     it("emits response.incomplete with error for ExceededContextWindowSizeError", async () => {
       simulateStreamError(1, "Context window exceeded");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1058,7 +1058,7 @@ describe("Responses API compat layer", () => {
     it("emits refusal via response.completed for RefusalError", async () => {
       simulateStreamError(9, "Model refused");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1081,7 +1081,7 @@ describe("Responses API compat layer", () => {
     it("throws CompatError with status 429 for RateLimitedError", async () => {
       simulateStreamError(7, "Rate limited");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1101,7 +1101,7 @@ describe("Responses API compat layer", () => {
     it("emits response.failed with content_filter error for GuardrailViolationError", async () => {
       simulateStreamError(3, "Guardrail violation");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1127,7 +1127,7 @@ describe("Responses API compat layer", () => {
     it("re-throws unhandled errors during streaming", async () => {
       simulateStreamError(2, "Assets unavailable");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1146,7 +1146,7 @@ describe("Responses API compat layer", () => {
     it("handles multiple contiguous function_call_output items", async () => {
       simulateRespondSuccess("Both results processed");
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: [
           { role: "user", content: "Get data" },
@@ -1183,7 +1183,7 @@ describe("Responses API compat layer", () => {
     it("handles duplicate system/developer messages (second becomes user entry)", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "system", content: "First system" },
@@ -1214,7 +1214,7 @@ describe("Responses API compat layer", () => {
     it("handles function_call_output with unresolvable call_id", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "user", content: "Do something" },
@@ -1236,7 +1236,7 @@ describe("Responses API compat layer", () => {
     it("handles instructions + system message in array input (instructions param takes priority)", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "system", content: "System instruction" },
@@ -1280,7 +1280,7 @@ describe("Responses API compat layer", () => {
         return "not valid json {{{";
       });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Generate",
         text: {
@@ -1304,7 +1304,7 @@ describe("Responses API compat layer", () => {
     it("function_call items in input become response transcript entries", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "user", content: "Get weather" },
@@ -1336,7 +1336,7 @@ describe("Responses API compat layer", () => {
     it("function_call_output mid-array (not trailing) enters else-if branch", async () => {
       simulateRespondSuccess("Done");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "user", content: "Do A" },
@@ -1372,7 +1372,7 @@ describe("Responses API compat layer", () => {
     it("maps top_p only (without seed) to sampling mode", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         top_p: 0.8,
@@ -1386,7 +1386,7 @@ describe("Responses API compat layer", () => {
     it("maps seed only (without top_p) to sampling mode", async () => {
       simulateRespondSuccess("test");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: "test",
         seed: 123,
@@ -1399,7 +1399,7 @@ describe("Responses API compat layer", () => {
     it("handles tool with null parameters", async () => {
       simulateStructuredSuccess({ type: "text", content: "hi" });
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [{ role: "user", content: "test" }],
         tools: [
@@ -1420,7 +1420,7 @@ describe("Responses API compat layer", () => {
       // Return object with an extra key not in schema + schema key missing from object
       simulateStructuredSuccess({ name: "Alice", extra_field: "bonus" });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Generate",
         text: {
@@ -1450,7 +1450,7 @@ describe("Responses API compat layer", () => {
       // Return an array value — orderKeys should pass it through
       simulateStructuredSuccess({ items: [1, 2, 3], value: null });
 
-      const client = new OpenAI();
+      const client = new Client();
       const result = (await client.responses.create({
         input: "Generate",
         text: {
@@ -1477,7 +1477,7 @@ describe("Responses API compat layer", () => {
     it("handles assistant messages in multi-turn array input", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "user", content: "Hi" },
@@ -1499,7 +1499,7 @@ describe("Responses API compat layer", () => {
     it("includes assistant messages in transcript", async () => {
       simulateRespondSuccess("reply");
 
-      const client = new OpenAI();
+      const client = new Client();
       const response = await client.responses.create({
         input: [
           { role: "user", content: "Hi" },
@@ -1518,7 +1518,7 @@ describe("Responses API compat layer", () => {
     it("silently skips messages with unrecognized roles", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { role: "tool" as never, content: "ignored" },
@@ -1533,7 +1533,7 @@ describe("Responses API compat layer", () => {
     it("ignores unknown item types in input array", async () => {
       simulateRespondSuccess("OK");
 
-      const client = new OpenAI();
+      const client = new Client();
       await client.responses.create({
         input: [
           { type: "some_unknown_type", data: "ignored" } as never,
@@ -1549,7 +1549,7 @@ describe("Responses API compat layer", () => {
     it("streaming structured output with schema omitted falls back to { type: 'object' }", async () => {
       simulateStructuredSuccess({ value: 42 });
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "test",
         stream: true,
@@ -1574,7 +1574,7 @@ describe("Responses API compat layer", () => {
     it("streaming refusal emits response.completed with refusal content", async () => {
       simulateStreamError(9, "I cannot do that");
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "bad request",
         stream: true,
@@ -1599,7 +1599,7 @@ describe("Responses API compat layer", () => {
     it("stream.close() disposes the session", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -1614,7 +1614,7 @@ describe("Responses API compat layer", () => {
     it("stream.close() is idempotent", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -1631,7 +1631,7 @@ describe("Responses API compat layer", () => {
     it("session is cleaned up after full iteration", async () => {
       simulateStreamSuccess(["Hello"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hi",
         stream: true,
@@ -1648,7 +1648,7 @@ describe("Responses API compat layer", () => {
     it("toReadableStream() returns a ReadableStream that yields events", async () => {
       simulateStreamSuccess(["Hi"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,
@@ -1672,7 +1672,7 @@ describe("Responses API compat layer", () => {
     it("break during iteration calls cleanup via return()", async () => {
       simulateStreamSuccess(["a", "b", "c"]);
 
-      const client = new OpenAI();
+      const client = new Client();
       const stream = await client.responses.create({
         input: "Hello",
         stream: true,

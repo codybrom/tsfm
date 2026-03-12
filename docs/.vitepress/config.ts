@@ -62,8 +62,8 @@ export default defineConfig({
           text: "Integrations",
           items: [
             {
-              text: "OpenAI Compatibility",
-              link: "/guide/openai-compatibility",
+              text: "Chat & Responses APIs",
+              link: "/guide/chat-api",
             },
           ],
         },
@@ -80,7 +80,7 @@ export default defineConfig({
             { text: "Tool", link: "/api/tool" },
             { text: "Transcript", link: "/api/transcript" },
             { text: "Errors", link: "/api/errors" },
-            { text: "OpenAI Compatibility", link: "/api/openai-compat" },
+            { text: "Chat & Responses APIs", link: "/api/chat" },
           ],
         },
       ],
@@ -98,8 +98,8 @@ export default defineConfig({
             { text: "Transcripts", link: "/examples/transcript" },
             { text: "Content Tagging", link: "/examples/content-tagging" },
             {
-              text: "OpenAI Compatibility",
-              link: "/examples/openai-compat",
+              text: "Chat & Responses APIs",
+              link: "/examples/chat-api",
             },
           ],
         },

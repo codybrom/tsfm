@@ -22,17 +22,17 @@ Complete reference for all public exports from `tsfm`.
 | [GeneratedContent](/api/generation-schema#generatedcontent) | Structured generation result |
 | [Errors](/api/errors) | Error hierarchy and error codes |
 
-## OpenAI Compatibility
+## Chat & Responses APIs
 
 | Export | Description |
 | --- | --- |
-| [OpenAI](/api/openai-compat) | Drop-in OpenAI Chat Completions client backed by on-device Apple Intelligence |
+| [Client](/api/chat) | Chat-style and Responses-style API client backed by on-device Apple Intelligence |
 
 ```ts
-import OpenAI from "tsfm-sdk/openai";
+import Client from "tsfm-sdk/chat";
 ```
 
-See the [OpenAI Compatibility API reference](/api/openai-compat) for full type documentation.
+See the [Chat & Responses API reference](/api/chat) for full type documentation.
 
 ## Installation
 
@@ -47,6 +47,6 @@ import {
   SamplingMode,
 } from "tsfm-sdk";
 
-// OpenAI-compatible interface
-import OpenAI from "tsfm-sdk/openai";
+// Chat API compatible interface
+import Client from "tsfm-sdk/chat";
 ```

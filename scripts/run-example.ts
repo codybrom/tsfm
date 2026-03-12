@@ -22,7 +22,9 @@ if (!name) {
   console.log("Usage: npm run example -- <name>\n");
   console.log("Available examples:");
   for (const f of examples) console.log(`  ${basename(f, ".ts")}`);
-  console.log("\nNote: openai-real and cross-compat require OPENAI_API_KEY in .env.local");
+  console.log(
+    "\nNote: openai-real, responses-real, and responses-advanced-real require OPENAI_API_KEY in .env.local",
+  );
   console.log("See .env.local.example for setup.");
   process.exit(1);
 }

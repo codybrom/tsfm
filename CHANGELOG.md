@@ -11,16 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **OpenAI-compatible API layer** (`tsfm-sdk/openai`) — drop-in replacement for the OpenAI SDK
+- **Chat & Responses API layer** (`tsfm-sdk/chat`) — industry-standard Chat-style and Responses-style APIs
   - **Chat Completions API** (`client.chat.completions.create()`) with full message history, streaming, structured output (`json_schema`), and tool calling
-  - **Responses API** (`client.responses.create()`) — OpenAI's newer interface with string or structured input, function tools, and streaming via `ResponseStream`
+  - **Responses API** (`client.responses.create()`) — string or structured input, function tools, and streaming via `ResponseStream`
   - Parameter mapping: `temperature`, `max_tokens`/`max_completion_tokens`, `top_p`, `seed` → native `GenerationOptions`; unsupported params warned at runtime
   - Error mapping: `ExceededContextWindowSizeError` → `finish_reason: "length"`, `GuardrailViolationError` → `finish_reason: "content_filter"`, `RefusalError` → `message.refusal`, `RateLimitedError` → HTTP 429
   - `Stream` and `ResponseStream` async iterables with `toReadableStream()`, `close()`, `Symbol.dispose`, and `FinalizationRegistry` cleanup
   - Tool calling via structured output with `$defs`/`$ref` schemas to prevent parameter name collisions
   - JSON key reordering utility to match schema-defined property order
 - `ServiceCrashedError` — detects crashed `generativeexperiencesd` service and provides recovery instructions
-- `Symbol.dispose` support on `SystemLanguageModel`, `LanguageModelSession`, `Tool`, and `OpenAI` for TC39 Explicit Resource Management
+- `Symbol.dispose` support on `SystemLanguageModel`, `LanguageModelSession`, `Tool`, and `Client` for TC39 Explicit Resource Management
 - Typed transcript entries: `TranscriptEntry`, `TranscriptContent`, `TranscriptTextContent`, `TranscriptStructuredContent`, `TranscriptToolCall`, `TranscriptEntryRole` types and `transcript.entries()` method
 - `JsonSchema` and `JsonObject` exported types
 - Automatic session cleanup on `process.exit`, `SIGINT`, and `SIGTERM` via global session tracking
@@ -28,9 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `respondWithJsonSchema()` now accepts typed `JsonSchema` instead of `Record<string, unknown>`
 - Tool callback error handling: synchronous errors in `call()` now invoke `FMBridgedToolFinishCall()` with error message to prevent session hang
 - Enhanced `statusToError()`: maps `ModelManagerError Code=1041` to `InvalidGenerationSchemaError` with descriptive message
-- Integration tests for OpenAI compat layer (chat completions and Responses API)
+- Integration tests for Chat & Responses API layer (chat completions and Responses API)
 - Unit tests for all compat modules (~4,300 lines of new test coverage)
-- 7 new examples in `examples/compat/` demonstrating Chat Completions, Responses API, and cross-provider compatibility
+- 6 new examples in `examples/compat/` demonstrating Chat Completions and Responses API
 - Retry helper for integration tests (`retryAttempts()`) for flaky on-device model responses
 
 ### Changed
@@ -43,9 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Complete OpenAI compatibility guide (505 lines), API reference (568 lines), and examples page (321 lines)
+- Complete Chat & Responses API guide (505 lines), API reference (568 lines), and examples page (321 lines)
 - Docs site visual overhaul: brand colors shifted to teal, Apple-style typography and font rendering, WCAG AA contrast fixes
-- Landing page redesigned with code examples and OpenAI compat showcase
+- Landing page redesigned with code examples and Chat API showcase
 - Swift-equivalent references extracted into caption-style info boxes across all guide pages
 - Code blocks now word-wrap; inline code uses inherited text color with subtle background
 - All guide pages updated with Apple conventions terminology alignment
