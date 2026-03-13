@@ -111,7 +111,7 @@ export abstract class Tool {
       this._callback,
       errorCode,
       null,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) {
       const err = statusToError(errorCode[0], `Failed to create tool '${this.name}'`);

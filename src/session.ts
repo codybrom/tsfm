@@ -67,7 +67,9 @@ export class LanguageModelSession {
   private _weakRef: WeakRef<LanguageModelSession> | null = null;
 
   get transcript(): Transcript {
-    if (!this._transcript) throw new FoundationModelsError("Session not initialized");
+    if (!this._transcript) {
+      throw new FoundationModelsError("Session not initialized");
+    }
     return this._transcript;
   }
 
@@ -107,7 +109,7 @@ export class LanguageModelSession {
       opts.instructions ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
     this._init(pointer, new Transcript(pointer));
@@ -135,7 +137,7 @@ export class LanguageModelSession {
       opts.model?._nativeModel ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
@@ -150,7 +152,7 @@ export class LanguageModelSession {
   /** Whether the session is currently processing a request (backed by C API). */
   get isResponding(): boolean {
     if (!this._nativeSession) return false;
-    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession);
+    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession) as boolean;
   }
 
   /**
@@ -257,7 +259,7 @@ export class LanguageModelSession {
       this._nativeSession,
       prompt,
       optionsJson,
-    );
+    ) as NativePointer;
 
     // FMLanguageModelSessionResponseStreamIterate spawns a single Swift Task
     // that calls the callback once per chunk, then once more with null content
@@ -315,6 +317,9 @@ export class LanguageModelSession {
       clearInterval(keepAlive);
       if (!streamDone) {
         unregisterCallback(callback);
+        // Reset the session after an early break so subsequent calls
+        // don't stall waiting for the cancelled stream to finish.
+        if (this._nativeSession) fn.FMLanguageModelSessionReset(this._nativeSession);
       }
       fn.FMRelease(streamPointer);
       release();
@@ -394,7 +399,7 @@ export class LanguageModelSession {
             // contentRef may be null on error; FMGeneratedContentGetJSONString
             // and FMRelease are no-ops on null per the C API contract.
             const msg = decodeAndFreeString(
-              getFunctions().FMGeneratedContentGetJSONString(contentRef),
+              getFunctions().FMGeneratedContentGetJSONString(contentRef) as NativePointer | null,
             );
             getFunctions().FMRelease(contentRef);
             reject(statusToError(status, msg ?? undefined));
@@ -410,8 +415,15 @@ export class LanguageModelSession {
   private _respondText(prompt: string, options: GenerationOptions | undefined): Promise<string> {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runResponseCallback((callback) =>
-      fn.FMLanguageModelSessionRespond(this._nativeSession, prompt, optionsJson, null, callback),
+    return this._runResponseCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespond(
+          this._nativeSession,
+          prompt,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 
@@ -422,15 +434,16 @@ export class LanguageModelSession {
   ): Promise<GeneratedContent> {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchema(
-        this._nativeSession,
-        prompt,
-        schema._nativeSchema,
-        optionsJson,
-        null,
-        callback,
-      ),
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchema(
+          this._nativeSession,
+          prompt,
+          schema._nativeSchema,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 
@@ -442,15 +455,16 @@ export class LanguageModelSession {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
-        this._nativeSession,
-        prompt,
-        schemaJson,
-        optionsJson,
-        null,
-        callback,
-      ),
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
+          this._nativeSession,
+          prompt,
+          schemaJson,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 }

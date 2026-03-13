@@ -55,7 +55,7 @@ export class SystemLanguageModel {
     this._nativeModel = fn.FMSystemLanguageModelCreate(
       opts.useCase ?? SystemLanguageModelUseCase.GENERAL,
       opts.guardrails ?? SystemLanguageModelGuardrails.DEFAULT,
-    );
+    ) as NativePointer | null;
     if (!this._nativeModel) {
       throw new FoundationModelsError("Failed to create SystemLanguageModel");
     }
@@ -74,7 +74,7 @@ export class SystemLanguageModel {
   isAvailable(): AvailabilityResult {
     const fn = getFunctions();
     const reasonOut = [0];
-    const available: boolean = fn.FMSystemLanguageModelIsAvailable(this._nativeModel, reasonOut);
+    const available = fn.FMSystemLanguageModelIsAvailable(this._nativeModel, reasonOut) as boolean;
     if (available) return { available: true };
     const code: number = reasonOut[0];
     const reason = Object.values(SystemLanguageModelUnavailableReason).includes(code)

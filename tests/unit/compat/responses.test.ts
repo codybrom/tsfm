@@ -1474,6 +1474,47 @@ describe("Responses API compat layer", () => {
       client.close();
     });
 
+    it("reorderJson reorders keys inside array items when items schema has properties", async () => {
+      simulateStructuredSuccess({
+        people: [
+          { age: 30, name: "Alice" },
+          { age: 25, name: "Bob" },
+        ],
+      });
+
+      const client = new Client();
+      const result = (await client.responses.create({
+        input: "Generate",
+        text: {
+          format: {
+            type: "json_schema",
+            name: "Test",
+            schema: {
+              type: "object",
+              properties: {
+                people: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      age: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })) as Response;
+
+      const parsed = JSON.parse(result.output_text);
+      expect(Object.keys(parsed.people[0])).toEqual(["name", "age"]);
+      expect(parsed.people[0].name).toBe("Alice");
+      expect(parsed.people[1].name).toBe("Bob");
+      client.close();
+    });
+
     it("handles assistant messages in multi-turn array input", async () => {
       simulateRespondSuccess("OK");
 

@@ -797,11 +797,52 @@ describe("LanguageModelSession", () => {
   });
 
   describe("transcript getter guard", () => {
+    it("returns transcript on initialized session", () => {
+      const session = new LanguageModelSession();
+      const transcript = session.transcript;
+      expect(transcript).toBeDefined();
+    });
+
     it("throws when transcript is accessed on uninitialized session", () => {
-      // Create session then null out internal transcript to test guard
       const session = new LanguageModelSession();
       (session as unknown as { _transcript: null })._transcript = null;
       expect(() => session.transcript).toThrow("Session not initialized");
     });
   });
+
+  describe("streaming early break reset", () => {
+    it("calls FMLanguageModelSessionReset on active session", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "Hello", 5, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      for await (const _chunk of session.streamResponse("Hi")) {
+        break;
+      }
+      expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
+    });
+
+    it("skips reset when session is already disposed", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "Hello", 5, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      for await (const _chunk of session.streamResponse("Hi")) {
+        session.dispose();
+        break;
+      }
+      expect(mockFns.FMLanguageModelSessionReset).not.toHaveBeenCalled();
+    });
+  });
+
 });
