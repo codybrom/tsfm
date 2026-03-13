@@ -382,6 +382,7 @@ export function generable<const T extends Record<string, PropertyDef>>(
   }
   return {
     schema,
+    /** Assumes model output conforms to the schema (enforced at generation time). */
     parse(content: GeneratedContent): InferSchema<T> {
       return content.toObject() as InferSchema<T>;
     },
