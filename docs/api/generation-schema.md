@@ -87,6 +87,57 @@ Get the full result as a plain object:
 toObject(): Record<string, unknown>
 ```
 
+## `generable()`
+
+Declarative schema builder with full TypeScript type inference. Returns a `Generable` object with a `schema` and a typed `parse()` method.
+
+```ts
+function generable<T extends Record<string, PropertyDef>>(
+  name: string,
+  properties: T,
+  description?: string,
+): Generable<T>
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Schema name |
+| `properties` | `Record<string, PropertyDef>` | Property definitions |
+| `description` | `string` | Optional schema description |
+
+### `Generable<T>`
+
+```ts
+interface Generable<T> {
+  readonly schema: GenerationSchema;
+  parse(content: GeneratedContent): InferSchema<T>;
+}
+```
+
+| Member | Description |
+| --- | --- |
+| `schema` | The `GenerationSchema` to pass to `respondWithSchema()` |
+| `parse(content)` | Extracts a fully typed object from `GeneratedContent` |
+
+### `PropertyDef`
+
+A union of scalar, array, and object property definitions:
+
+```ts
+// Scalar
+{ type: "string" | "integer" | "number" | "boolean"; description?: string; optional?: boolean; guides?: GenerationGuide[] }
+
+// Array
+{ type: "array"; items: PropertyDef; description?: string; optional?: boolean; guides?: GenerationGuide[] }
+
+// Nested object
+{ type: "object"; properties: Record<string, PropertyDef>; description?: string; optional?: boolean }
+```
+
+### `InferSchema<T>`
+
+Mapped type that converts a `Record<string, PropertyDef>` into a TypeScript object type. Fields with `optional: true` become optional properties.
+
 ## GenerationSchemaProperty
 
 Represents a single property in a schema. Created internally by `GenerationSchema.property()`.

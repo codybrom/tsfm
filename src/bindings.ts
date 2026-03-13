@@ -191,6 +191,26 @@ function defineFunctions() {
     // --- Task ---
     FMTaskCancel: fn("void FMTaskCancel(void * task)"),
 
+    // --- tsfm extensions (not in Apple's C bridge) ---
+    FMSystemLanguageModelGetContextSize: fn(
+      "int FMSystemLanguageModelGetContextSize(void * model)",
+    ),
+
+    // macOS 26.4+ runtime only — uncomment when targeting 26.4+
+    // FMSystemLanguageModelGetTokenCount: fn(
+    //   "int FMSystemLanguageModelGetTokenCount(void * model, str text)",
+    // ),
+
+    FMSystemLanguageModelGetSupportedLanguages: fn(
+      "void * FMSystemLanguageModelGetSupportedLanguages(void * model)",
+    ),
+    FMSystemLanguageModelSupportsLocale: fn(
+      "bool FMSystemLanguageModelSupportsLocale(void * model, str localeIdentifier)",
+    ),
+    FMLanguageModelSessionPrewarm: fn(
+      "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
+    ),
+
     // --- Memory ---
     // FMRetain: fn("void FMRetain(void * object)"),
     // ^ unused: all Swift→JS transfers are passRetained (+1 already), only FMRelease needed

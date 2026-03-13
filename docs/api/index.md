@@ -20,6 +20,10 @@ Complete reference for all public exports from `tsfm`.
 | [SamplingMode](/api/generation-options#samplingmode) | Greedy or random sampling strategies |
 | [GenerationGuide](/api/generation-schema#generationguide) | Output constraints for schema properties |
 | [GeneratedContent](/api/generation-schema#generatedcontent) | Structured generation result |
+| [generable()](/api/generation-schema#generable) | Declarative typed schema builder with `parse()` |
+| [Generable](/api/generation-schema#generable-t) | Return type of `generable()` |
+| [PropertyDef](/api/generation-schema#propertydef) | Property definition union for `generable()` |
+| [InferSchema](/api/generation-schema#inferschema-t) | Mapped type for schema type inference |
 | [Errors](/api/errors) | Error hierarchy and error codes |
 
 ## Chat & Responses APIs
@@ -42,6 +46,7 @@ import {
   LanguageModelSession,
   GenerationSchema,
   GenerationGuide,
+  generable,
   Tool,
   Transcript,
   SamplingMode,

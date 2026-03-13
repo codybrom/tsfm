@@ -70,6 +70,13 @@ export function createMockFunctions() {
     // Task
     FMTaskCancel: vi.fn(),
 
+    // tsfm extensions
+    FMSystemLanguageModelGetContextSize: vi.fn(() => 4096),
+    FMSystemLanguageModelGetSupportedLanguages: vi.fn(() => null),
+    FMSystemLanguageModelSupportsLocale: vi.fn(() => true),
+    FMSystemLanguageModelGetTokenCount: vi.fn(() => 10),
+    FMLanguageModelSessionPrewarm: vi.fn(),
+
     // Memory
     FMRelease: vi.fn(),
     FMFreeString: vi.fn(),

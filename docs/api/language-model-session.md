@@ -66,6 +66,24 @@ streamResponse(prompt: string, options?: {
 
 Each yielded string contains only the new tokens since the last iteration.
 
+### `prewarm()`
+
+Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget — the prewarm runs in the background on the native side.
+
+```ts
+prewarm(promptPrefix?: string): void
+```
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `promptPrefix` | `undefined` | Text the model should expect at the start of the first prompt |
+
+```ts
+const session = new LanguageModelSession({ instructions: "You are a helpful assistant." });
+session.prewarm("Translate the following");
+// ... later, the first respond() call will be faster
+```
+
 ### `cancel()`
 
 Cancel an in-progress request. Advisory — the response may complete before cancellation takes effect.

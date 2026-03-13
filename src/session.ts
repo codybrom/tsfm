@@ -76,6 +76,9 @@ export class LanguageModelSession {
   private _activeTask: NativePointer | null = null;
   private _queue = Promise.resolve();
 
+  /** Callback set by an active stream generator; called by cancel() to unblock it. */
+  private _cancelStream: (() => void) | null = null;
+
   /** Shared initialization for both constructor and fromTranscript. */
   private _init(pointer: NativePointer, transcript: Transcript): void {
     this._nativeSession = pointer;
@@ -149,6 +152,18 @@ export class LanguageModelSession {
     return session;
   }
 
+  /**
+   * Preload model resources and optionally cache a prompt prefix to reduce
+   * first-response latency. Fire-and-forget — the prewarm runs in the
+   * background on the native side.
+   *
+   * @param promptPrefix  Optional text the model should expect at the start of the first prompt.
+   */
+  prewarm(promptPrefix?: string): void {
+    if (!this._nativeSession) return;
+    getFunctions().FMLanguageModelSessionPrewarm(this._nativeSession, promptPrefix ?? null);
+  }
+
   /** Whether the session is currently processing a request (backed by C API). */
   get isResponding(): boolean {
     if (!this._nativeSession) return false;
@@ -169,6 +184,9 @@ export class LanguageModelSession {
       getFunctions().FMTaskCancel(this._activeTask);
       this._activeTask = null;
     }
+    // Unblock any waiting stream consumer so the generator can exit.
+    this._cancelStream?.();
+    this._cancelStream = null;
     if (this._nativeSession) getFunctions().FMLanguageModelSessionReset(this._nativeSession);
   }
 
@@ -298,14 +316,25 @@ export class LanguageModelSession {
     // Apple's ResponseStream yields cumulative snapshots, not deltas.
     // Track previous content and yield only the new suffix each iteration.
     let prevLen = 0;
+    let cancelled = false;
+
+    // Allow cancel() to unblock the consumer when the native callback stops firing.
+    this._cancelStream = () => {
+      cancelled = true;
+      queue.push({ done: true });
+      const notify = notifyConsumer;
+      notifyConsumer = null;
+      notify?.();
+    };
 
     try {
       while (true) {
-        if (queue.length === 0) {
+        while (queue.length === 0) {
           await new Promise<void>((resolve) => {
             notifyConsumer = resolve;
           });
         }
+        if (cancelled) break;
         const item = queue.shift()!;
         if ("done" in item) {
           if (item.error) throw item.error;
@@ -316,6 +345,7 @@ export class LanguageModelSession {
         if (delta) yield delta;
       }
     } finally {
+      this._cancelStream = null;
       clearInterval(keepAlive);
       if (!streamDone) {
         unregisterCallback(callback);

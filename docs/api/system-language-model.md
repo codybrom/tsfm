@@ -40,12 +40,51 @@ waitUntilAvailable(timeoutMs?: number): Promise<AvailabilityResult>
 | --- | --- | --- |
 | `timeoutMs` | `30000` | Maximum wait time in milliseconds |
 
+### `supportsLocale()`
+
+Check whether the model supports a given locale.
+
+```ts
+supportsLocale(localeIdentifier: string): boolean
+```
+
+```ts
+model.supportsLocale("en_US"); // true
+model.supportsLocale("ja_JP"); // true or false depending on model
+```
+
 ### `dispose()`
 
 Releases the native model reference.
 
 ```ts
 dispose(): void
+```
+
+## Properties
+
+### `supportedLanguages`
+
+Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+
+```ts
+readonly supportedLanguages: string[]
+```
+
+### `contextSize`
+
+The maximum number of tokens the model's context window can hold. All input — instructions, prompts, tool definitions, and responses — counts against this limit.
+
+```ts
+readonly contextSize: number
+```
+
+### `tokenCount()` <Badge type="info" text="macOS 26.4+" />
+
+Returns the number of tokens the model would use to encode the given text. Requires macOS 26.4+ runtime.
+
+```ts
+tokenCount(text: string): number
 ```
 
 ## Enums
@@ -62,6 +101,7 @@ dispose(): void
 | Value | Description |
 | --- | --- |
 | `DEFAULT` | Standard content safety guardrails |
+| `PERMISSIVE_CONTENT_TRANSFORMATIONS` | Relaxed guardrails for content transformation tasks (e.g. summarization, rewriting) |
 
 ### `SystemLanguageModelUnavailableReason`
 

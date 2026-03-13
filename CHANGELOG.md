@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `generable()` — declarative typed schema builder for structured output with full TypeScript type inference, the equivalent of the Python SDK's `@generable` decorator
+- `decodeString()` — decode a C string pointer without freeing it, for use in callbacks where the C side owns the memory
+- `Tool.onCall` now receives parsed arguments as a second parameter: `(toolName, args)` instead of `(toolName)`
+- Explicit FFI type casts (`as NativePointer`, `as boolean`, etc.) at all C call sites
+- Unit tests for `generable()`, streaming edge cases, and compat `reorderJson` with array items
+
+### Fixed
+
+- Streaming callback now receives content as `void*` instead of `str` to prevent koffi from coercing null C string pointers to the JS string `"null"`
+- Streaming iterator now resets the session (`FMLanguageModelSessionReset`) on early `break` to prevent stalled subsequent calls
+- Coerced `"null"` string chunks from koffi are filtered out during streaming
+
+### Changed
+
+- Prettier scope widened from `src/` to entire repo (excluding `*.md`); added `.prettierignore`
+- Standardized "Apple Foundation Models" terminology (dropped possessive "'s") across docs and config
+- README license section rewritten with copyright notice and Apple trademark disclaimer
+- `docs/tsconfig.json` added for VitePress theme type checking
+- CSS: added `.VPHero .tagline` max-width constraints for responsive layout
+
 ## [0.3.1] - 2026-03-12
 
 ### Added
