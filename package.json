@@ -1,7 +1,7 @@
 {
   "name": "tsfm-sdk",
   "version": "0.3.1",
-  "description": "Unofficial TypeScript bindings for Apple's Foundation Models framework (Apple Intelligence on-device LLM)",
+  "description": "Unofficial TypeScript bindings for Apple Foundation Models framework (Apple Intelligence on-device LLM)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

@@ -121,7 +121,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- TypeScript/Node.js bindings for Apple's Foundation Models framework via koffi FFI
+- TypeScript/Node.js bindings for Apple Foundation Models framework via koffi FFI
 - `SystemLanguageModel` class with availability checks and `waitUntilAvailable()`
 - `LanguageModelSession` with `respond()`, `streamResponse()`, and `respondWithJsonSchema()` for text, streaming, and structured generation
 - `GenerationSchema` and `GenerationSchemaProperty` for typed structured output with generation guides

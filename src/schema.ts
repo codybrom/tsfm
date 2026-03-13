@@ -247,7 +247,7 @@ export class GenerationSchema {
 }
 
 // ---------------------------------------------------------------------------
-// JSON Schema normalization for Apple's Foundation Models C API
+// JSON Schema normalization for Apple Foundation Models C API
 // ---------------------------------------------------------------------------
 
 /**
