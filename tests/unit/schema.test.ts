@@ -17,6 +17,7 @@ import {
   GenerationSchemaProperty,
   afmSchemaFormat,
   generable,
+  type JsonSchema,
 } from "../../src/schema.js";
 import type { NativePointer } from "../../src/bindings.js";
 
@@ -116,8 +117,8 @@ describe("afmSchemaFormat", () => {
   it("passes through falsy property values without recursing", () => {
     const result = afmSchemaFormat({
       type: "object",
-      properties: { empty: null as unknown as Record<string, unknown> },
-    });
+      properties: { empty: null },
+    } as JsonSchema);
     const props = result.properties as Record<string, unknown>;
     expect(props.empty).toBeNull();
   });
@@ -149,11 +150,11 @@ describe("afmSchemaFormat", () => {
           type: "object",
           properties: { name: { type: "string" } },
         },
-        Alias: "string" as unknown as Record<string, unknown>,
+        Alias: "string",
       },
       type: "object",
       properties: {},
-    });
+    } as JsonSchema);
     const defs = result.$defs as Record<string, unknown>;
     expect(defs.Alias).toBe("string");
   });
@@ -570,7 +571,12 @@ describe("generable", () => {
       "string",
       false,
     );
-    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith("age", null, "integer", false);
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "age",
+      null,
+      "integer",
+      false,
+    );
     expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
       "active",
       null,

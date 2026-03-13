@@ -1,11 +1,6 @@
 <template>
   <div class="home-explore">
-    <a
-      v-for="card in cards"
-      :key="card.title"
-      :href="card.link"
-      class="home-explore-card"
-    >
+    <a v-for="card in cards" :key="card.title" :href="card.link" class="home-explore-card">
       <span class="home-explore-title">{{ card.title }}</span>
       <span class="home-explore-desc">{{ card.desc }}</span>
     </a>

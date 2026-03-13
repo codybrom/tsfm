@@ -864,5 +864,4 @@ describe("LanguageModelSession", () => {
       expect(mockFns.FMLanguageModelSessionReset).not.toHaveBeenCalled();
     });
   });
-
 });

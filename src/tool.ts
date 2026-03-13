@@ -53,8 +53,11 @@ export abstract class Tool {
    * Optional callback fired at the start of each tool invocation, before
    * `call()` runs. Useful for showing UI indicators while the model waits
    * for the tool result.
+   *
+   * @param toolName - The tool's name
+   * @param args - The arguments the model supplied, as a plain object
    */
-  onCall?: (toolName: string) => void;
+  onCall?: (toolName: string, args: Record<string, unknown>) => void;
 
   /** @internal Set during registration with a session. */
   _nativeTool: NativePointer | null = null;
@@ -84,8 +87,8 @@ export abstract class Tool {
     // may invoke this tool multiple times within a single session.
     this._callback = koffi.register((contentRef: NativePointer, callId: number) => {
       try {
-        this.onCall?.(this.name);
         const content = new GeneratedContent(contentRef);
+        this.onCall?.(this.name, content.toObject() as Record<string, unknown>);
         this.call(content)
           .then((result) => {
             fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);

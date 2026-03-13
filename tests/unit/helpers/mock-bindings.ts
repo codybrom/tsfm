@@ -36,7 +36,9 @@ export function createMockFunctions() {
 
     // Transcript
     FMLanguageModelSessionGetTranscriptJSONString: vi.fn(() => "mock-json-pointer"),
-    FMTranscriptCreateFromJSONString: vi.fn((_json: string): string | null => "mock-transcript-pointer"),
+    FMTranscriptCreateFromJSONString: vi.fn(
+      (_json: string): string | null => "mock-transcript-pointer",
+    ),
 
     // GenerationSchema
     FMGenerationSchemaCreate: vi.fn(() => "mock-schema-pointer"),

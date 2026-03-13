@@ -7,7 +7,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": [
-    ".vitepress/**/*"
-  ]
+  "include": [".vitepress/**/*"]
 }
