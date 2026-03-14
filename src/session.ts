@@ -56,7 +56,12 @@ function _installExitHandler(): void {
   }
 }
 
-type ResponseCbArgs = [status: number, content: string, _length: number, userInfo: unknown];
+type ResponseCbArgs = [
+  status: number,
+  content: NativePointer | null,
+  _length: number,
+  userInfo: unknown,
+];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
 export class LanguageModelSession {
@@ -67,12 +72,17 @@ export class LanguageModelSession {
   private _weakRef: WeakRef<LanguageModelSession> | null = null;
 
   get transcript(): Transcript {
-    if (!this._transcript) throw new FoundationModelsError("Session not initialized");
+    if (!this._transcript) {
+      throw new FoundationModelsError("Session not initialized");
+    }
     return this._transcript;
   }
 
   private _activeTask: NativePointer | null = null;
   private _queue = Promise.resolve();
+
+  /** Callback set by an active stream generator; called by cancel() to unblock it. */
+  private _cancelStream: (() => void) | null = null;
 
   /** Shared initialization for both constructor and fromTranscript. */
   private _init(pointer: NativePointer, transcript: Transcript): void {
@@ -107,7 +117,7 @@ export class LanguageModelSession {
       opts.instructions ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
     this._init(pointer, new Transcript(pointer));
@@ -135,7 +145,7 @@ export class LanguageModelSession {
       opts.model?._nativeModel ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
@@ -147,10 +157,22 @@ export class LanguageModelSession {
     return session;
   }
 
+  /**
+   * Preload model resources and optionally cache a prompt prefix to reduce
+   * first-response latency. Fire-and-forget — the prewarm runs in the
+   * background on the native side.
+   *
+   * @param promptPrefix  Optional text the model should expect at the start of the first prompt.
+   */
+  prewarm(promptPrefix?: string): void {
+    if (!this._nativeSession) return;
+    getFunctions().FMLanguageModelSessionPrewarm(this._nativeSession, promptPrefix ?? null);
+  }
+
   /** Whether the session is currently processing a request (backed by C API). */
   get isResponding(): boolean {
     if (!this._nativeSession) return false;
-    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession);
+    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession) as boolean;
   }
 
   /**
@@ -167,6 +189,9 @@ export class LanguageModelSession {
       getFunctions().FMTaskCancel(this._activeTask);
       this._activeTask = null;
     }
+    // Unblock any waiting stream consumer so the generator can exit.
+    this._cancelStream?.();
+    this._cancelStream = null;
     if (this._nativeSession) getFunctions().FMLanguageModelSessionReset(this._nativeSession);
   }
 
@@ -257,7 +282,7 @@ export class LanguageModelSession {
       this._nativeSession,
       prompt,
       optionsJson,
-    );
+    ) as NativePointer;
 
     // FMLanguageModelSessionResponseStreamIterate spawns a single Swift Task
     // that calls the callback once per chunk, then once more with null content
@@ -270,19 +295,25 @@ export class LanguageModelSession {
 
     const callback = koffi.register((...args: ResponseCbArgs) => {
       const [status, content] = args;
+      // koffi delivers the void* as a usable JS value; calling koffi.decode()
+      // inside a callback context triggers N-API exceptions, so we use the
+      // value directly. The void* proto prevents koffi's null→"null" coercion.
+      const text = content as unknown as string | null;
       if (status !== 0) {
-        queue.push({ done: true, error: statusToError(status, content) });
+        queue.push({ done: true, error: statusToError(status, text) });
         streamDone = true;
         clearInterval(keepAlive);
         unregisterCallback(callback);
-      } else if (!content) {
-        // null content = end-of-stream signal
+      } else if (!text) {
+        // null/empty content = end-of-stream signal
         queue.push({ done: true });
         streamDone = true;
         clearInterval(keepAlive);
         unregisterCallback(callback);
-      } else {
-        queue.push({ content });
+      } else if (text !== "null") {
+        // Skip "null" string artifacts from koffi coercing null C string
+        // pointers during intermediate tool-call snapshots.
+        queue.push({ content: text });
       }
       const notify = notifyConsumer;
       notifyConsumer = null;
@@ -294,14 +325,25 @@ export class LanguageModelSession {
     // Apple's ResponseStream yields cumulative snapshots, not deltas.
     // Track previous content and yield only the new suffix each iteration.
     let prevLen = 0;
+    let cancelled = false;
+
+    // Allow cancel() to unblock the consumer when the native callback stops firing.
+    this._cancelStream = () => {
+      cancelled = true;
+      queue.push({ done: true });
+      const notify = notifyConsumer;
+      notifyConsumer = null;
+      notify?.();
+    };
 
     try {
       while (true) {
-        if (queue.length === 0) {
+        while (queue.length === 0) {
           await new Promise<void>((resolve) => {
             notifyConsumer = resolve;
           });
         }
+        if (cancelled) break;
         const item = queue.shift()!;
         if ("done" in item) {
           if (item.error) throw item.error;
@@ -312,9 +354,13 @@ export class LanguageModelSession {
         if (delta) yield delta;
       }
     } finally {
+      this._cancelStream = null;
       clearInterval(keepAlive);
       if (!streamDone) {
         unregisterCallback(callback);
+        // Reset the session after an early break so subsequent calls
+        // don't stall waiting for the cancelled stream to finish.
+        if (this._nativeSession) fn.FMLanguageModelSessionReset(this._nativeSession);
       }
       fn.FMRelease(streamPointer);
       release();
@@ -372,8 +418,10 @@ export class LanguageModelSession {
     return new Promise<string>((resolve, reject) => {
       const callback = this._oneShotCallback<ResponseCbArgs>(
         ResponseCallbackProto,
-        (status, content) => {
+        (status, contentPtr) => {
           this._activeTask = null;
+          // See streaming callback comment — use value directly, not koffi.decode()
+          const content = contentPtr as unknown as string | null;
           if (status !== 0) reject(statusToError(status, content));
           else resolve(content ?? "");
         },
@@ -394,7 +442,7 @@ export class LanguageModelSession {
             // contentRef may be null on error; FMGeneratedContentGetJSONString
             // and FMRelease are no-ops on null per the C API contract.
             const msg = decodeAndFreeString(
-              getFunctions().FMGeneratedContentGetJSONString(contentRef),
+              getFunctions().FMGeneratedContentGetJSONString(contentRef) as NativePointer | null,
             );
             getFunctions().FMRelease(contentRef);
             reject(statusToError(status, msg ?? undefined));
@@ -410,8 +458,15 @@ export class LanguageModelSession {
   private _respondText(prompt: string, options: GenerationOptions | undefined): Promise<string> {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runResponseCallback((callback) =>
-      fn.FMLanguageModelSessionRespond(this._nativeSession, prompt, optionsJson, null, callback),
+    return this._runResponseCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespond(
+          this._nativeSession,
+          prompt,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 
@@ -422,15 +477,16 @@ export class LanguageModelSession {
   ): Promise<GeneratedContent> {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchema(
-        this._nativeSession,
-        prompt,
-        schema._nativeSchema,
-        optionsJson,
-        null,
-        callback,
-      ),
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchema(
+          this._nativeSession,
+          prompt,
+          schema._nativeSchema,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 
@@ -442,15 +498,16 @@ export class LanguageModelSession {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
-        this._nativeSession,
-        prompt,
-        schemaJson,
-        optionsJson,
-        null,
-        callback,
-      ),
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
+          this._nativeSession,
+          prompt,
+          schemaJson,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
     );
   }
 }

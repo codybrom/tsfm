@@ -4,7 +4,7 @@ All SDK errors extend `FoundationModelsError`. Import specific error classes to 
 
 ## Hierarchy
 
-```
+```text
 FoundationModelsError
 ├── GenerationError
 │   ├── ExceededContextWindowSizeError

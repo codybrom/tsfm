@@ -58,7 +58,8 @@ console.log();
 console.log("=== Nested structured output ===");
 const nested = await client.responses.create({
   model: MODEL,
-  input: "Extract: The Acme Corp team has Alice (engineer, 28) and Bob (designer, 35). They are in Seattle.",
+  input:
+    "Extract: The Acme Corp team has Alice (engineer, 28) and Bob (designer, 35). They are in Seattle.",
   text: {
     format: {
       type: "json_schema",
@@ -183,7 +184,11 @@ if (translateCall && translateCall.type === "function_call") {
       {
         type: "function_call_output",
         call_id: translateCall.call_id,
-        output: JSON.stringify({ translated_text: "おはようございます", source: "en", target: "ja" }),
+        output: JSON.stringify({
+          translated_text: "おはようございます",
+          source: "en",
+          target: "ja",
+        }),
       },
     ],
     tools,

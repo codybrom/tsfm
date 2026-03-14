@@ -38,6 +38,11 @@ vi.mock("koffi", () => ({
 
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
+  decodeString: vi.fn((pointer: unknown) => {
+    if (!pointer) return null;
+    if (typeof pointer === "string") return pointer;
+    return null;
+  }),
   decodeAndFreeString: decodeAndFreeStringMock,
   unregisterCallback: vi.fn(),
   ResponseCallbackProto: "ResponseCallbackProto",
@@ -1471,6 +1476,47 @@ describe("Responses API compat layer", () => {
       const parsed = JSON.parse(result.output_text);
       expect(parsed.items).toEqual([1, 2, 3]);
       expect(parsed.value).toBeNull();
+      client.close();
+    });
+
+    it("reorderJson reorders keys inside array items when items schema has properties", async () => {
+      simulateStructuredSuccess({
+        people: [
+          { age: 30, name: "Alice" },
+          { age: 25, name: "Bob" },
+        ],
+      });
+
+      const client = new Client();
+      const result = (await client.responses.create({
+        input: "Generate",
+        text: {
+          format: {
+            type: "json_schema",
+            name: "Test",
+            schema: {
+              type: "object",
+              properties: {
+                people: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      age: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })) as Response;
+
+      const parsed = JSON.parse(result.output_text);
+      expect(Object.keys(parsed.people[0])).toEqual(["name", "age"]);
+      expect(parsed.people[0].name).toBe("Alice");
+      expect(parsed.people[1].name).toBe("Bob");
       client.close();
     });
 

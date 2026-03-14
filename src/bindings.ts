@@ -191,6 +191,26 @@ function defineFunctions() {
     // --- Task ---
     FMTaskCancel: fn("void FMTaskCancel(void * task)"),
 
+    // --- tsfm extensions (not in Apple's C bridge) ---
+    FMSystemLanguageModelGetContextSize: fn(
+      "int FMSystemLanguageModelGetContextSize(void * model)",
+    ),
+
+    // macOS 26.4+ runtime only — uncomment when targeting 26.4+
+    // FMSystemLanguageModelGetTokenCount: fn(
+    //   "int FMSystemLanguageModelGetTokenCount(void * model, str text)",
+    // ),
+
+    FMSystemLanguageModelGetSupportedLanguages: fn(
+      "void * FMSystemLanguageModelGetSupportedLanguages(void * model)",
+    ),
+    FMSystemLanguageModelSupportsLocale: fn(
+      "bool FMSystemLanguageModelSupportsLocale(void * model, str localeIdentifier)",
+    ),
+    FMLanguageModelSessionPrewarm: fn(
+      "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
+    ),
+
     // --- Memory ---
     // FMRetain: fn("void FMRetain(void * object)"),
     // ^ unused: all Swift→JS transfers are passRetained (+1 already), only FMRelease needed
@@ -231,15 +251,26 @@ export function unregisterCallback(callback: KoffiCallback): void {
   koffi.unregister(callback);
 }
 
-export function decodeAndFreeString(pointer: NativePointer | null): string | null {
+/**
+ * Decode a null-terminated C string from a raw pointer without freeing it.
+ * Returns null if the pointer is null.
+ *
+ * Use this for callback parameters where the C side owns the memory.
+ */
+export function decodeString(pointer: NativePointer | null): string | null {
   if (!pointer) return null;
   // 'char *' would treat pointer as char** (pointer-to-pointer) and segfault.
   // 'char' with -1 reads the null-terminated byte sequence at pointer directly.
   // koffi may return a string or an array of char codes depending on version;
   // we handle both and re-encode via TextDecoder to preserve UTF-8.
   const raw = koffi.decode(pointer, "char", -1);
-  getFunctions().FMFreeString(pointer);
   if (typeof raw === "string") return raw;
   const codes: number[] = raw;
   return new TextDecoder("utf-8").decode(new Uint8Array(codes.map((c) => c & 0xff)));
+}
+
+export function decodeAndFreeString(pointer: NativePointer | null): string | null {
+  const str = decodeString(pointer);
+  if (pointer) getFunctions().FMFreeString(pointer);
+  return str;
 }

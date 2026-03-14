@@ -1,4 +1,4 @@
-import { getFunctions, type NativePointer } from "./bindings.js";
+import { decodeAndFreeString, getFunctions, type NativePointer } from "./bindings.js";
 import { FoundationModelsError } from "./errors.js";
 
 const _modelRegistry = new FinalizationRegistry((pointer: NativePointer) => {
@@ -55,7 +55,7 @@ export class SystemLanguageModel {
     this._nativeModel = fn.FMSystemLanguageModelCreate(
       opts.useCase ?? SystemLanguageModelUseCase.GENERAL,
       opts.guardrails ?? SystemLanguageModelGuardrails.DEFAULT,
-    );
+    ) as NativePointer | null;
     if (!this._nativeModel) {
       throw new FoundationModelsError("Failed to create SystemLanguageModel");
     }
@@ -74,7 +74,7 @@ export class SystemLanguageModel {
   isAvailable(): AvailabilityResult {
     const fn = getFunctions();
     const reasonOut = [0];
-    const available: boolean = fn.FMSystemLanguageModelIsAvailable(this._nativeModel, reasonOut);
+    const available = fn.FMSystemLanguageModelIsAvailable(this._nativeModel, reasonOut) as boolean;
     if (available) return { available: true };
     const code: number = reasonOut[0];
     const reason = Object.values(SystemLanguageModelUnavailableReason).includes(code)
@@ -104,6 +104,45 @@ export class SystemLanguageModel {
       if (Date.now() >= deadline) return result;
       await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
     }
+  }
+
+  /**
+   * The maximum number of tokens the model's context window can hold.
+   * All input — instructions, prompts, tool definitions, and responses — counts
+   * against this limit.
+   */
+  get contextSize(): number {
+    return getFunctions().FMSystemLanguageModelGetContextSize(this._nativeModel) as number;
+  }
+
+  // macOS 26.4+ runtime only — uncomment when targeting 26.4+
+  // /** Returns the number of tokens the model would use to encode the given text. */
+  // tokenCount(text: string): number {
+  //   return getFunctions().FMSystemLanguageModelGetTokenCount(this._nativeModel, text) as number;
+  // }
+
+  /**
+   * Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+   */
+  get supportedLanguages(): string[] {
+    const pointer = getFunctions().FMSystemLanguageModelGetSupportedLanguages(
+      this._nativeModel,
+    ) as NativePointer | null;
+    const json = decodeAndFreeString(pointer);
+    if (!json) return [];
+    return JSON.parse(json) as string[];
+  }
+
+  /**
+   * Check whether the model supports a given locale.
+   *
+   * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)
+   */
+  supportsLocale(localeIdentifier: string): boolean {
+    return getFunctions().FMSystemLanguageModelSupportsLocale(
+      this._nativeModel,
+      localeIdentifier,
+    ) as boolean;
   }
 
   dispose(): void {

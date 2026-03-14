@@ -16,13 +16,12 @@ onMounted(async () => {
   const glowEl = glowRef.value;
   if (!el || !glowEl) return;
 
-  const [THREE, { LineSegments2 }, { LineSegmentsGeometry }, { LineMaterial }] =
-    await Promise.all([
-      import("three"),
-      import("three/addons/lines/LineSegments2.js"),
-      import("three/addons/lines/LineSegmentsGeometry.js"),
-      import("three/addons/lines/LineMaterial.js"),
-    ]);
+  const [THREE, { LineSegments2 }, { LineSegmentsGeometry }, { LineMaterial }] = await Promise.all([
+    import("three"),
+    import("three/addons/lines/LineSegments2.js"),
+    import("three/addons/lines/LineSegmentsGeometry.js"),
+    import("three/addons/lines/LineMaterial.js"),
+  ]);
 
   // --- Scene setup ---
   const scene = new THREE.Scene();
@@ -38,34 +37,51 @@ onMounted(async () => {
   el.appendChild(renderer.domElement);
 
   // --- Lattice shape ---
+  // 11 nodes: two poles (top/bot), a center, and two rings of 4
   const S = 0.7;
-  const top = [0, 1, 0], bot = [0, -1, 0], mid = [0, 0, 0];
-  const ulf = [-S, .4, S], ulb = [-S, .4, -S]; // upper-left  front/back
-  const urf = [S, .4, S], urb = [S, .4, -S]; //  upper-right front/back
-  const llf = [-S, -.4, S], llb = [-S, -.4, -S]; // lower-left  front/back
-  const lrf = [S, -.4, S], lrb = [S, -.4, -S]; //  lower-right front/back
+  const top = [0, 1, 0],
+    bot = [0, -1, 0],
+    mid = [0, 0, 0];
+  const ulf = [-S, 0.4, S],
+    ulb = [-S, 0.4, -S];
+  const urf = [S, 0.4, S],
+    urb = [S, 0.4, -S];
+  const llf = [-S, -0.4, S],
+    llb = [-S, -0.4, -S];
+  const lrf = [S, -0.4, S],
+    lrb = [S, -0.4, -S];
 
-  const allNodes = [top, ulf, ulb, urf, urb, mid, llf, llb, lrf, lrb, bot];
+  const upper = [ulf, ulb, urf, urb];
+  const lower = [llf, llb, lrf, lrb];
+  const allNodes = [top, ...upper, mid, ...lower, bot];
 
-  // Each pair of entries = one line segment
-  type P = number[];
-  const seg = (...pairs: [P, P][]) => pairs.flatMap(([a, b]) => [...a, ...b]);
-  const linePoints = seg(
-    // top/bottom spokes
-    [top, ulf], [top, ulb], [top, urf], [top, urb], [top, mid],
-    [bot, llf], [bot, llb], [bot, lrf], [bot, lrb], [bot, mid],
-    // center spokes
-    [mid, ulf], [mid, ulb], [mid, urf], [mid, urb],
-    [mid, llf], [mid, llb], [mid, lrf], [mid, lrb],
-    // front face
-    [ulf, urf], [urf, lrf], [lrf, llf], [llf, ulf], [ulf, lrf], [urf, llf],
-    // back face
-    [ulb, urb], [urb, lrb], [lrb, llb], [llb, ulb], [ulb, lrb], [urb, llb],
-    // left face
-    [ulf, ulb], [ulb, llb], [llb, llf], [llf, ulf], [ulf, llb], [ulb, llf],
-    // right face
-    [urf, urb], [urb, lrb], [lrb, lrf], [lrf, urf], [urf, lrb], [urb, lrf],
-  );
+  // hub: connect one node to many others
+  const hub = (c: number[], ...spokes: number[][]) => spokes.flatMap((s) => [...c, ...s]);
+  // quad: 4 outline edges + 2 diagonal crossbars
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => [
+    ...a,
+    ...b,
+    ...b,
+    ...c,
+    ...c,
+    ...d,
+    ...d,
+    ...a,
+    ...a,
+    ...c,
+    ...b,
+    ...d,
+  ];
+
+  const linePoints = [
+    ...hub(top, ...upper, mid),
+    ...hub(bot, ...lower, mid),
+    ...hub(mid, ...upper, ...lower),
+    ...quad(ulf, urf, lrf, llf), // front
+    ...quad(ulb, urb, lrb, llb), // back
+    ...quad(ulf, ulb, llb, llf), // left
+    ...quad(urf, urb, lrb, lrf), // right
+  ];
 
   const group = new THREE.Group();
   scene.add(group);

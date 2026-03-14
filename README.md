@@ -63,11 +63,11 @@ model.dispose();
 
 ## Requirements
 
-- Mac running macOS 26 (Tahoe) or later on Apple Silicon
+- Apple Silicon (M-Series) Mac running macOS 26 or later
 - Apple Intelligence enabled in System Settings
 - Node.js 20+
 
-Xcode **not** required (prebuilt dylib is bundled with the npm package)
+Unless you are building from source, Xcode is not required.
 
 ## Development
 
@@ -84,5 +84,10 @@ Issues and PRs welcome. If something doesn't work on your machine or you find a 
 
 ## License
 
-Apache 2.0 - See [LICENSE.md](LICENSE.md)  
-The npm package bundles Apple's Foundation Models C bindings and prebuilt dylib (also Apache 2.0 - see [NOTICE](NOTICE))
+© 2026 Cody Bromley and contributors.
+
+tsfm is licensed under the Apache 2.0 license. For complete licensing information, see this project's [LICENSE file](LICENSE.md).
+
+The `tsfm-sdk` package available from NPM contains precompiled C bindings and libraries for working with macOS 26 Foundation Models adapted from [python-apple-fm-sdk](https://github.com/apple/python-apple-fm-sdk) which is Copyright Apple Inc. and licensed under the Apache 2.0 license.
+
+<small>This project is unaffiliated with Apple, Inc. The terms "Apple" and "Apple Intelligence" are trademarks of Apple Inc., registered in the U.S. and other countries and regions.</small>

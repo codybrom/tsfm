@@ -87,7 +87,7 @@ const response = await client.responses.create({
 });
 
 // Outputs are available on the response object
-console.log(response.output_text); 
+console.log(response.output_text);
 ```
 
 ### Instructions
@@ -206,9 +206,9 @@ const response = await client.responses.create({
 // Check for function calls in the output
 for (const item of response.output) {
   if (item.type === "function_call") {
-    console.log(item.name);      // "get_weather"
+    console.log(item.name); // "get_weather"
     console.log(item.arguments); // '{"city":"Tokyo"}'
-    console.log(item.call_id);   // "call_<uuid>" — use this to send results back
+    console.log(item.call_id); // "call_<uuid>" — use this to send results back
   }
 }
 ```
@@ -223,14 +223,16 @@ const fc = response.output.find((item) => item.type === "function_call")!;
 const followUp = await client.responses.create({
   input: [
     { role: "user", content: "What's the weather in Tokyo?" },
-    fc,  // pass the function_call back
+    fc, // pass the function_call back
     {
       type: "function_call_output",
       call_id: fc.call_id,
       output: JSON.stringify({ temp: 22, condition: "Sunny" }),
     },
   ],
-  tools: [/* same tools */],
+  tools: [
+    /* same tools */
+  ],
 });
 
 console.log(followUp.output_text);
@@ -406,7 +408,7 @@ When the model decides to call a tool, the response has `finish_reason: "tool_ca
 const choice = response.choices[0];
 if (choice.finish_reason === "tool_calls" && choice.message.tool_calls) {
   const call = choice.message.tool_calls[0];
-  console.log(call.function.name);      // "get_weather"
+  console.log(call.function.name); // "get_weather"
   console.log(call.function.arguments); // '{"city":"Tokyo"}'
 }
 ```

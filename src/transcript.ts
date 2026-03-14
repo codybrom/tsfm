@@ -72,7 +72,7 @@ export class Transcript {
       this._nativeSession,
       null,
       null,
-    );
+    ) as NativePointer | null;
     const json = decodeAndFreeString(pointer);
     if (!json) throw new FoundationModelsError("Failed to export transcript");
     return json;
@@ -94,7 +94,11 @@ export class Transcript {
   static fromJson(json: string): Transcript {
     const fn = getFunctions();
     const errorCode = [0];
-    const pointer = fn.FMTranscriptCreateFromJSONString(json, errorCode, null);
+    const pointer = fn.FMTranscriptCreateFromJSONString(
+      json,
+      errorCode,
+      null,
+    ) as NativePointer | null;
     if (!pointer) {
       throw statusToError(errorCode[0], "Failed to deserialize transcript");
     }

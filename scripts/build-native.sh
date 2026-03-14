@@ -58,6 +58,14 @@ if [[ "$XCODE_MAJOR" -lt 26 ]]; then
 fi
 log "Xcode $XCODE_VERSION ✓"
 
+# --- Prefer Xcode beta if installed (enables back-deployed 26.4 APIs) ---
+
+XCODE_BETA="/Applications/Xcode-beta.app"
+if [[ -d "$XCODE_BETA" ]]; then
+  export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
+  log "Using Xcode beta (for back-deployed APIs)"
+fi
+
 # --- Locate or clone foundation-models-c ---
 
 if [[ -n "${1:-}" ]]; then
@@ -75,6 +83,17 @@ else
   fi
   FM_C_DIR="$CLONE_DIR/foundation-models-c"
   log "SDK source: $FM_C_DIR"
+fi
+
+# --- Copy tsfm extensions into the Apple source tree ---
+
+EXTENSIONS_DIR="$PACKAGE_DIR/native/extensions"
+BINDINGS_SRC="$FM_C_DIR/Sources/FoundationModelsCBindings"
+if [[ -d "$EXTENSIONS_DIR" ]]; then
+  for f in "$EXTENSIONS_DIR"/*.swift; do
+    [[ -f "$f" ]] && cp -f "$f" "$BINDINGS_SRC/"
+    log "Injected: $(basename "$f")"
+  done
 fi
 
 # --- Build (redirect verbose Swift output to log file) ---
@@ -95,6 +114,16 @@ cp -f "$BUILD_DIR/libFoundationModels.dylib" "$NATIVE_DIR/"
 log "Copied: libFoundationModels.dylib"
 
 cp -f "$FM_C_DIR/Sources/FoundationModelsCBindings/include/FoundationModels.h" "$NATIVE_DIR/"
+# Append tsfm extension headers
+for f in "$EXTENSIONS_DIR"/*.h; do
+  if [[ -f "$f" ]]; then
+    # Insert before the final #endif
+    sed -i '' '/#endif/d' "$NATIVE_DIR/FoundationModels.h"
+    cat "$f" >> "$NATIVE_DIR/FoundationModels.h"
+    printf '\n#endif /* FoundationModels_h */\n' >> "$NATIVE_DIR/FoundationModels.h"
+    log "Merged header: $(basename "$f")"
+  fi
+done
 log "Copied: FoundationModels.h"
 
 log ""

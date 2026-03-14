@@ -187,7 +187,7 @@ export class GenerationSchemaProperty {
       opts.description ?? null,
       type,
       opts.optional ?? false,
-    );
+    ) as NativePointer;
 
     for (const guide of opts.guides ?? []) {
       guide._applyToProperty(this._nativeProperty);
@@ -205,7 +205,7 @@ export class GenerationSchema {
 
   constructor(name: string, description?: string) {
     const fn = getFunctions();
-    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null);
+    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null) as NativePointer;
   }
 
   addProperty(property: GenerationSchemaProperty): this {
@@ -239,7 +239,7 @@ export class GenerationSchema {
       this._nativeSchema,
       errorCode,
       null,
-    );
+    ) as NativePointer | null;
     const json = decodeAndFreeString(pointer);
     if (!json) throw statusToError(errorCode[0], "Failed to serialize GenerationSchema");
     return JSON.parse(json);
@@ -247,7 +247,150 @@ export class GenerationSchema {
 }
 
 // ---------------------------------------------------------------------------
-// JSON Schema normalization for Apple's Foundation Models C API
+// generable() — declarative schema builder with typed parsing
+// ---------------------------------------------------------------------------
+
+/** Property definition for scalar types. */
+export interface ScalarPropertyDef {
+  type: "string" | "integer" | "number" | "boolean";
+  description?: string;
+  optional?: boolean;
+  guides?: GenerationGuide[];
+}
+
+/** Property definition for array types. */
+export interface ArrayPropertyDef {
+  type: "array";
+  items: PropertyDef;
+  description?: string;
+  optional?: boolean;
+  guides?: GenerationGuide[];
+}
+
+/** Property definition for nested object types. */
+export interface ObjectPropertyDef {
+  type: "object";
+  properties: Record<string, PropertyDef>;
+  description?: string;
+  optional?: boolean;
+}
+
+/** Union of all property definition shapes. */
+export type PropertyDef = ScalarPropertyDef | ArrayPropertyDef | ObjectPropertyDef;
+
+/** Maps a scalar type string to its TypeScript type. */
+type InferScalar<T extends string> = T extends "string"
+  ? string
+  : T extends "integer" | "number"
+    ? number
+    : T extends "boolean"
+      ? boolean
+      : unknown;
+
+/** Maps a single PropertyDef to its TypeScript type. */
+type InferPropertyType<D extends PropertyDef> = D extends {
+  type: "array";
+  items: infer I extends PropertyDef;
+}
+  ? InferPropertyType<I>[]
+  : D extends { type: "object"; properties: infer P extends Record<string, PropertyDef> }
+    ? InferSchema<P>
+    : D extends { type: infer T extends string }
+      ? InferScalar<T>
+      : unknown;
+
+/** Keys of T where optional is not literally true. */
+type RequiredKeys<T extends Record<string, PropertyDef>> = {
+  [K in keyof T]: T[K] extends { optional: true } ? never : K;
+}[keyof T];
+
+/** Keys of T where optional is literally true. */
+type OptionalKeys<T extends Record<string, PropertyDef>> = {
+  [K in keyof T]: T[K] extends { optional: true } ? K : never;
+}[keyof T];
+
+/** Maps a record of PropertyDefs to a typed object, respecting optional fields. */
+export type InferSchema<T extends Record<string, PropertyDef>> = {
+  [K in RequiredKeys<T>]: InferPropertyType<T[K]>;
+} & {
+  [K in OptionalKeys<T>]?: InferPropertyType<T[K]>;
+};
+
+/** The return type of `generable()`. */
+export interface Generable<T extends Record<string, PropertyDef>> {
+  /** The GenerationSchema ready to pass to `respondWithSchema()`. */
+  readonly schema: GenerationSchema;
+  /** Parse a GeneratedContent into a fully typed object. */
+  parse(content: GeneratedContent): InferSchema<T>;
+}
+
+/** Recursively adds a property definition to a GenerationSchema. */
+function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef): void {
+  if (def.type === "object") {
+    const nested = new GenerationSchema(name, def.description);
+    for (const [key, nestedDef] of Object.entries(def.properties)) {
+      addPropertyDef(nested, key, nestedDef);
+    }
+    schema.addReferenceSchema(nested);
+    schema.property(name, "object", { optional: def.optional });
+  } else if (def.type === "array" && def.items.type === "object") {
+    const itemSchema = new GenerationSchema(name, def.items.description);
+    for (const [key, nestedDef] of Object.entries(def.items.properties)) {
+      addPropertyDef(itemSchema, key, nestedDef);
+    }
+    schema.addReferenceSchema(itemSchema);
+    schema.property(name, "array", {
+      description: def.description,
+      optional: def.optional,
+      guides: def.guides,
+    });
+  } else {
+    schema.property(name, def.type, {
+      description: def.description,
+      optional: def.optional,
+      guides: "guides" in def ? def.guides : undefined,
+    });
+  }
+}
+
+/**
+ * Define a typed schema for structured generation.
+ *
+ * Returns an object with a `schema` (for `respondWithSchema()`) and a typed
+ * `parse()` method that converts `GeneratedContent` into a plain object.
+ *
+ * ```ts
+ * const MovieReview = generable("MovieReview", {
+ *   title: { type: "string", description: "Movie title" },
+ *   rating: { type: "integer", guides: [GenerationGuide.range(1, 5)] },
+ *   review: { type: "string" },
+ * });
+ *
+ * const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+ * const review = MovieReview.parse(content);
+ * // review.title: string, review.rating: number, review.review: string
+ * ```
+ */
+export function generable<const T extends Record<string, PropertyDef>>(
+  name: string,
+  properties: T,
+  description?: string,
+): Generable<T> {
+  const schema = new GenerationSchema(name, description);
+  for (const [key, def] of Object.entries(properties)) {
+    addPropertyDef(schema, key, def);
+  }
+  return {
+    schema,
+    /** Assumes model output conforms to the schema (enforced at generation time). */
+    parse(content: GeneratedContent): InferSchema<T> {
+      return content.toObject() as InferSchema<T>;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// JSON Schema normalization for Apple Foundation Models C API
 // ---------------------------------------------------------------------------
 
 /**
@@ -334,18 +477,24 @@ export class GeneratedContent {
   static fromJson(jsonString: string): GeneratedContent {
     const fn = getFunctions();
     const errorCode = [0];
-    const pointer = fn.FMGeneratedContentCreateFromJSON(jsonString, errorCode, null);
+    const pointer = fn.FMGeneratedContentCreateFromJSON(
+      jsonString,
+      errorCode,
+      null,
+    ) as NativePointer | null;
     if (!pointer) throw statusToError(errorCode[0], "Failed to create GeneratedContent from JSON");
     return new GeneratedContent(pointer);
   }
 
   get isComplete(): boolean {
-    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent);
+    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent) as boolean;
   }
 
   /** Returns the raw JSON string of the generated content. */
   toJson(): string {
-    const pointer = getFunctions().FMGeneratedContentGetJSONString(this._nativeContent);
+    const pointer = getFunctions().FMGeneratedContentGetJSONString(
+      this._nativeContent,
+    ) as NativePointer | null;
     return decodeAndFreeString(pointer) ?? "{}";
   }
 
@@ -377,7 +526,7 @@ export class GeneratedContent {
       propertyName,
       null,
       null,
-    );
+    ) as NativePointer | null;
     const raw = decodeAndFreeString(pointer);
     if (raw !== null) {
       try {

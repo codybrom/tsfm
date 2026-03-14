@@ -165,7 +165,7 @@ export function generateLlmTxt(): string {
   const lines: string[] = [
     "# tsfm",
     "",
-    "> TypeScript SDK for Apple's Foundation Models framework — on-device Apple Intelligence inference in Node.js via FFI. macOS 26+, Apple Silicon only.",
+    "> TypeScript SDK for Apple Foundation Models framework — on-device Apple Intelligence inference in Node.js via FFI. macOS 26+, Apple Silicon only.",
     "",
   ];
 
@@ -218,7 +218,7 @@ export async function generateLlmsFullTxt(srcDir: string): Promise<string> {
   const parts: string[] = [
     "# tsfm — Complete Documentation",
     "",
-    "> TypeScript SDK for Apple's Foundation Models framework — on-device Apple Intelligence inference in Node.js via FFI. macOS 26+, Apple Silicon only.",
+    "> TypeScript SDK for Apple Foundation Models framework — on-device Apple Intelligence inference in Node.js via FFI. macOS 26+, Apple Silicon only.",
     "",
   ];
 

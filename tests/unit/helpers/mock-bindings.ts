@@ -36,7 +36,9 @@ export function createMockFunctions() {
 
     // Transcript
     FMLanguageModelSessionGetTranscriptJSONString: vi.fn(() => "mock-json-pointer"),
-    FMTranscriptCreateFromJSONString: vi.fn((_json: string): string | null => "mock-transcript-pointer"),
+    FMTranscriptCreateFromJSONString: vi.fn(
+      (_json: string): string | null => "mock-transcript-pointer",
+    ),
 
     // GenerationSchema
     FMGenerationSchemaCreate: vi.fn(() => "mock-schema-pointer"),
@@ -67,6 +69,13 @@ export function createMockFunctions() {
 
     // Task
     FMTaskCancel: vi.fn(),
+
+    // tsfm extensions
+    FMSystemLanguageModelGetContextSize: vi.fn(() => 4096),
+    FMSystemLanguageModelGetSupportedLanguages: vi.fn(() => null),
+    FMSystemLanguageModelSupportsLocale: vi.fn(() => true),
+    FMSystemLanguageModelGetTokenCount: vi.fn(() => 10),
+    FMLanguageModelSessionPrewarm: vi.fn(),
 
     // Memory
     FMRelease: vi.fn(),
