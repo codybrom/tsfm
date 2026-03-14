@@ -38,6 +38,11 @@ vi.mock("koffi", () => ({
 
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
+  decodeString: vi.fn((pointer: unknown) => {
+    if (!pointer) return null;
+    if (typeof pointer === "string") return pointer;
+    return null;
+  }),
   decodeAndFreeString: decodeAndFreeStringMock,
   unregisterCallback: vi.fn(),
   ResponseCallbackProto: "ResponseCallbackProto",

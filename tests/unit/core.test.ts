@@ -18,9 +18,10 @@ const { capturedRegistryCallback } = vi.hoisted(() => {
 });
 
 const mockFns = createMockFunctions();
+const mockDecodeAndFreeString = vi.fn();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: vi.fn(),
+  decodeAndFreeString: (...args: unknown[]) => mockDecodeAndFreeString(...args),
 }));
 
 import {
@@ -183,6 +184,50 @@ describe("SystemLanguageModel", () => {
       model[Symbol.dispose]();
       expect(model._nativeModel).toBeNull();
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-model-pointer");
+    });
+  });
+
+  describe("contextSize", () => {
+    it("returns the value from the C API", () => {
+      const model = new SystemLanguageModel();
+      expect(model.contextSize).toBe(4096);
+      expect(mockFns.FMSystemLanguageModelGetContextSize).toHaveBeenCalledWith(
+        "mock-model-pointer",
+      );
+    });
+  });
+
+  describe("supportedLanguages", () => {
+    it("parses JSON array from the C API", () => {
+      mockDecodeAndFreeString.mockReturnValueOnce('["en-US","es-ES"]');
+      const model = new SystemLanguageModel();
+      expect(model.supportedLanguages).toEqual(["en-US", "es-ES"]);
+      expect(mockFns.FMSystemLanguageModelGetSupportedLanguages).toHaveBeenCalledWith(
+        "mock-model-pointer",
+      );
+    });
+
+    it("returns empty array when pointer is null", () => {
+      mockDecodeAndFreeString.mockReturnValueOnce(null);
+      const model = new SystemLanguageModel();
+      expect(model.supportedLanguages).toEqual([]);
+    });
+  });
+
+  describe("supportsLocale", () => {
+    it("passes locale identifier to C API and returns result", () => {
+      const model = new SystemLanguageModel();
+      expect(model.supportsLocale("en_US")).toBe(true);
+      expect(mockFns.FMSystemLanguageModelSupportsLocale).toHaveBeenCalledWith(
+        "mock-model-pointer",
+        "en_US",
+      );
+    });
+
+    it("returns false when C API reports unsupported", () => {
+      mockFns.FMSystemLanguageModelSupportsLocale.mockReturnValueOnce(false);
+      const model = new SystemLanguageModel();
+      expect(model.supportsLocale("xx_XX")).toBe(false);
     });
   });
 });

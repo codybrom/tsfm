@@ -31,6 +31,13 @@ vi.mock("koffi", () => ({
 
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
+  decodeString: vi.fn((pointer: unknown) => {
+    if (!pointer) return null;
+    // In tests, callbacks receive plain strings as mock pointers —
+    // pass them through so existing assertions work unchanged.
+    if (typeof pointer === "string") return pointer;
+    return null;
+  }),
   decodeAndFreeString: vi.fn((pointer: unknown) => {
     if (!pointer) return null;
     return '{"key":"value"}';
@@ -827,6 +834,22 @@ describe("LanguageModelSession", () => {
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
 
+    it("cancel() unblocks a waiting stream consumer", async () => {
+      // The callback never fires — the stream blocks until cancel() is called.
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
+
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+
+      // Schedule cancel() after the stream has started waiting.
+      setTimeout(() => session.cancel(), 10);
+
+      for await (const chunk of session.streamResponse("Hi")) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([]);
+    });
+
     it("skips coerced null string chunks from koffi", async () => {
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
         (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
@@ -847,6 +870,23 @@ describe("LanguageModelSession", () => {
       expect(chunks).toEqual(["real content"]);
     });
 
+    it("treats null pointer as end-of-stream signal", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, null, 0, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      for await (const chunk of session.streamResponse("Hi")) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([]);
+    });
+
     it("skips reset when session is already disposed", async () => {
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
         (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
@@ -862,6 +902,33 @@ describe("LanguageModelSession", () => {
         break;
       }
       expect(mockFns.FMLanguageModelSessionReset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("prewarm", () => {
+    it("calls C API with prompt prefix", () => {
+      const session = new LanguageModelSession();
+      session.prewarm("Hello");
+      expect(mockFns.FMLanguageModelSessionPrewarm).toHaveBeenCalledWith(
+        "mock-session-pointer",
+        "Hello",
+      );
+    });
+
+    it("passes null when no prompt prefix is provided", () => {
+      const session = new LanguageModelSession();
+      session.prewarm();
+      expect(mockFns.FMLanguageModelSessionPrewarm).toHaveBeenCalledWith(
+        "mock-session-pointer",
+        null,
+      );
+    });
+
+    it("is a no-op on a disposed session", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      session.prewarm("Hello");
+      expect(mockFns.FMLanguageModelSessionPrewarm).not.toHaveBeenCalled();
     });
   });
 });

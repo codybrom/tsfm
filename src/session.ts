@@ -56,7 +56,12 @@ function _installExitHandler(): void {
   }
 }
 
-type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
+type ResponseCbArgs = [
+  status: number,
+  content: NativePointer | null,
+  _length: number,
+  userInfo: unknown,
+];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
 export class LanguageModelSession {
@@ -290,21 +295,25 @@ export class LanguageModelSession {
 
     const callback = koffi.register((...args: ResponseCbArgs) => {
       const [status, content] = args;
+      // koffi delivers the void* as a usable JS value; calling koffi.decode()
+      // inside a callback context triggers N-API exceptions, so we use the
+      // value directly. The void* proto prevents koffi's null→"null" coercion.
+      const text = content as unknown as string | null;
       if (status !== 0) {
-        queue.push({ done: true, error: statusToError(status, content) });
+        queue.push({ done: true, error: statusToError(status, text) });
         streamDone = true;
         clearInterval(keepAlive);
         unregisterCallback(callback);
-      } else if (!content) {
+      } else if (!text) {
         // null/empty content = end-of-stream signal
         queue.push({ done: true });
         streamDone = true;
         clearInterval(keepAlive);
         unregisterCallback(callback);
-      } else if (content !== "null") {
+      } else if (text !== "null") {
         // Skip "null" string artifacts from koffi coercing null C string
         // pointers during intermediate tool-call snapshots.
-        queue.push({ content });
+        queue.push({ content: text });
       }
       const notify = notifyConsumer;
       notifyConsumer = null;
@@ -409,8 +418,10 @@ export class LanguageModelSession {
     return new Promise<string>((resolve, reject) => {
       const callback = this._oneShotCallback<ResponseCbArgs>(
         ResponseCallbackProto,
-        (status, content) => {
+        (status, contentPtr) => {
           this._activeTask = null;
+          // See streaming callback comment — use value directly, not koffi.decode()
+          const content = contentPtr as unknown as string | null;
           if (status !== 0) reject(statusToError(status, content));
           else resolve(content ?? "");
         },
