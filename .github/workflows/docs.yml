@@ -3,6 +3,10 @@ name: Deploy Docs
 on:
   push:
     branches: [main]
+  # Build docs on PRs too. Dead links and missing pages only surface at
+  # docs-build time, so nothing in typecheck, lint, or test catches them.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +33,8 @@ jobs:
 
   deploy:
     needs: build
+    # Pull requests validate the build above; only main publishes.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
