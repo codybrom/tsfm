@@ -84,9 +84,7 @@ export type ResponseFormatJsonSchema = {
 };
 
 export type ResponseFormatConfig =
-  | ResponseFormatText
-  | ResponseFormatJsonObject
-  | ResponseFormatJsonSchema;
+  ResponseFormatText | ResponseFormatJsonObject | ResponseFormatJsonSchema;
 
 export type ResponseTextConfig = {
   format?: ResponseFormatConfig;
