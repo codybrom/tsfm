@@ -13,8 +13,9 @@ import { SystemLanguageModel } from "./core.js";
 import { Tool } from "./tool.js";
 import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
 import { GenerationOptions, serializeOptions } from "./options.js";
-import { statusToError, FoundationModelsError, PromptAttachmentError } from "./errors.js";
+import { statusToError, FoundationModelsError } from "./errors.js";
 import { Transcript } from "./transcript.js";
+import { composePrompt, type PromptInput } from "./prompt.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
 const _FROM_POINTER = Symbol("fromPointer");
@@ -62,75 +63,6 @@ function _installExitHandler(): void {
 
 type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
-
-/** A file attached to a prompt. Requires a macOS 27 runtime and SDK. */
-export interface PromptAttachment {
-  /** Filesystem path to the image or document. */
-  path: string;
-  /** Optional label shown to the model alongside the attachment. */
-  label?: string;
-}
-
-/** A prompt with attachments. Pass a plain string when you only need text. */
-export interface PromptInput {
-  text: string;
-  attachments?: PromptAttachment[];
-}
-
-/**
- * Build a native ComposedPrompt from prompt text.
- *
- * Upstream's C bridge takes an opaque prompt object rather than a string, so
- * every request builds one. `FMComposedPromptInitialize` hands back a +1
- * reference the caller owns: release it once the request that uses it has
- * finished, not when the call returns, since the native side reads it for the
- * duration of the response.
- */
-function composePrompt(
-  fn: ReturnType<typeof getFunctions>,
-  prompt: string | PromptInput,
-): NativePointer {
-  const composed = fn.FMComposedPromptInitialize() as NativePointer;
-  try {
-    fn.FMComposedPromptAddText(composed, typeof prompt === "string" ? prompt : prompt.text);
-    if (typeof prompt !== "string") {
-      for (const attachment of prompt.attachments ?? []) {
-        const outError = [0];
-        const added = fn.FMComposedPromptAddAttachment(
-          composed,
-          attachment.path,
-          attachment.label ?? null,
-          outError,
-        ) as boolean;
-        if (!added) throw attachmentError(outError[0], attachment.path);
-      }
-    }
-  } catch (err) {
-    // We own the +1 from Initialize, and no request will take it from here.
-    fn.FMRelease(composed);
-    throw err;
-  }
-  return composed;
-}
-
-/** Map FMComposedPromptAddImageError to a typed error. */
-function attachmentError(code: number, path: string): PromptAttachmentError {
-  switch (code) {
-    case 1:
-      return new PromptAttachmentError(
-        `Cannot attach ${path}: attachments require a macOS 27 runtime.`,
-        "unsupported-os",
-      );
-    case 2:
-      return new PromptAttachmentError(
-        `Cannot attach ${path}: this native library was built without the macOS 27 SDK, ` +
-          `so attachments are unavailable. Rebuild with an Xcode that includes it.`,
-        "unsupported-sdk",
-      );
-    default:
-      return new PromptAttachmentError(`Cannot attach ${path}.`, "unknown");
-  }
-}
 
 export class LanguageModelSession {
   /** @internal */

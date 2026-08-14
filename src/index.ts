@@ -6,7 +6,8 @@ export {
   type AvailabilityResult,
 } from "./core.js";
 
-export { LanguageModelSession, type PromptInput, type PromptAttachment } from "./session.js";
+export { LanguageModelSession } from "./session.js";
+export { type PromptInput, type PromptAttachment } from "./prompt.js";
 
 export {
   Transcript,

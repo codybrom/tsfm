@@ -64,6 +64,14 @@ export const StructuredResponseCallbackProto = koffi.proto("StructuredResponseCa
   "void *",
 ]);
 
+// void (*)(int status, int tokenCount, const char *errorDescription, void *userInfo)
+export const TokenCountCallbackProto = koffi.proto("TokenCountCallback", "void", [
+  "int",
+  "int",
+  "str",
+  "void *",
+]);
+
 // void (*)(void *generatedContent, unsigned int callId)
 export const ToolCallbackProto = koffi.proto("ToolCallback", "void", ["void *", "uint"]);
 
@@ -103,6 +111,26 @@ function defineFunctions() {
       "bool FMLanguageModelSessionIsResponding(void * session)",
     ),
     FMLanguageModelSessionReset: fn("void FMLanguageModelSessionReset(void * session)"),
+
+    // --- Token counting ---
+    // Each dispatches asynchronously and reports through the callback. The
+    // returned task must be released, and may be cancelled with FMTaskCancel.
+    FMSystemLanguageModelTokenCountForPrompt: fn(
+      "void * FMSystemLanguageModelTokenCountForPrompt(void * model, void * composedPrompt, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForInstructions: fn(
+      "void * FMSystemLanguageModelTokenCountForInstructions(void * model, str instructions, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForTools: fn(
+      "void * FMSystemLanguageModelTokenCountForTools(void * model, void * * tools, int toolCount, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForSchema: fn(
+      "void * FMSystemLanguageModelTokenCountForSchema(void * model, void * schema, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForTranscript: fn(
+      "void * FMSystemLanguageModelTokenCountForTranscript(void * model, void * transcriptSession, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMTaskCancel: fn("void FMTaskCancel(void * task)"),
 
     // --- Prompt construction ---
     // FMComposedPromptInitialize returns a +1 reference; every path that builds
@@ -204,7 +232,6 @@ function defineFunctions() {
     ),
 
     // --- Task ---
-    FMTaskCancel: fn("void FMTaskCancel(void * task)"),
 
     // --- tsfm extensions (not in Apple's C bridge) ---
     FMSystemLanguageModelGetContextSize: fn(

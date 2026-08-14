@@ -1,5 +1,28 @@
-import { decodeAndFreeString, getFunctions, type NativePointer } from "./bindings.js";
-import { FoundationModelsError } from "./errors.js";
+import koffi from "koffi";
+import {
+  decodeAndFreeString,
+  getFunctions,
+  unregisterCallback,
+  TokenCountCallbackProto,
+  type NativePointer,
+  type KoffiCallback,
+} from "./bindings.js";
+import { FoundationModelsError, statusToError } from "./errors.js";
+import { composePrompt, type PromptInput } from "./prompt.js";
+import type { Tool } from "./tool.js";
+import type { GenerationSchema } from "./schema.js";
+import type { Transcript } from "./transcript.js";
+
+/**
+ * What to measure with `tokenCount()`. Exactly one field applies per call —
+ * the C bridge exposes a separate entry point for each kind of input.
+ */
+export type TokenCountInput =
+  | { prompt: string | PromptInput }
+  | { instructions: string }
+  | { tools: Tool[] }
+  | { schema: GenerationSchema }
+  | { transcript: Transcript };
 
 const _modelRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
@@ -151,6 +174,104 @@ export class SystemLanguageModel {
       this._nativeModel,
       localeIdentifier,
     ) as boolean;
+  }
+
+  /**
+   * Count the tokens a prompt, instruction set, tool list, schema, or
+   * transcript would consume against the context window.
+   *
+   * Requires a macOS 26.4+ runtime; the C bridge reports an error below that.
+   * Each call dispatches asynchronously and owns a native task that is
+   * released once the count arrives.
+   */
+  tokenCount(input: TokenCountInput): Promise<number> {
+    const fn = getFunctions();
+    const model = this._nativeModel;
+    if (!model) throw new FoundationModelsError("Model has been disposed");
+
+    let composed: NativePointer | null = null;
+    if ("prompt" in input) composed = composePrompt(fn, input.prompt);
+
+    // Keeps the event loop alive while the native side works, mirroring the
+    // response paths.
+    const keepAlive = setInterval(() => {}, 10000);
+
+    return new Promise<number>((resolve, reject) => {
+      const handle: { task: NativePointer | null; callback: KoffiCallback | null } = {
+        task: null,
+        callback: null,
+      };
+
+      const finish = () => {
+        clearInterval(keepAlive);
+        if (handle.callback) {
+          unregisterCallback(handle.callback);
+          handle.callback = null;
+        }
+        if (handle.task) {
+          fn.FMRelease(handle.task);
+          handle.task = null;
+        }
+        if (composed) {
+          fn.FMRelease(composed);
+          composed = null;
+        }
+      };
+
+      handle.callback = koffi.register(
+        (status: number, count: number, errorDescription: string | null) => {
+          finish();
+          if (status !== 0) reject(statusToError(status, errorDescription ?? undefined));
+          else resolve(count);
+        },
+        koffi.pointer(TokenCountCallbackProto),
+      );
+
+      try {
+        const cb = handle.callback;
+        if ("prompt" in input) {
+          handle.task = fn.FMSystemLanguageModelTokenCountForPrompt(
+            model,
+            composed,
+            null,
+            cb,
+          ) as NativePointer;
+        } else if ("instructions" in input) {
+          handle.task = fn.FMSystemLanguageModelTokenCountForInstructions(
+            model,
+            input.instructions,
+            null,
+            cb,
+          ) as NativePointer;
+        } else if ("tools" in input) {
+          const pointers = input.tools.map((t) => t._nativeTool);
+          handle.task = fn.FMSystemLanguageModelTokenCountForTools(
+            model,
+            pointers.length > 0 ? koffi.as(pointers, "void **") : null,
+            pointers.length,
+            null,
+            cb,
+          ) as NativePointer;
+        } else if ("schema" in input) {
+          handle.task = fn.FMSystemLanguageModelTokenCountForSchema(
+            model,
+            input.schema._nativeSchema,
+            null,
+            cb,
+          ) as NativePointer;
+        } else {
+          handle.task = fn.FMSystemLanguageModelTokenCountForTranscript(
+            model,
+            input.transcript._nativeSession,
+            null,
+            cb,
+          ) as NativePointer;
+        }
+      } catch (err) {
+        finish();
+        reject(err);
+      }
+    });
   }
 
   dispose(): void {

@@ -17,11 +17,31 @@ const { capturedRegistryCallback } = vi.hoisted(() => {
   };
 });
 
+const { lastTokenCallback } = vi.hoisted(() => {
+  const holder: { cb: ((...args: unknown[]) => void) | null } = { cb: null };
+  return { lastTokenCallback: holder };
+});
+
+vi.mock("koffi", () => ({
+  default: {
+    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
+      lastTokenCallback.cb = cb;
+      return "mock-cb-pointer";
+    }),
+    unregister: vi.fn(),
+    as: vi.fn(() => "mock-arr-pointer"),
+    pointer: vi.fn(() => "mock-proto-pointer"),
+    proto: vi.fn(() => "mock-proto"),
+  },
+}));
+
 const mockFns = createMockFunctions();
 const mockDecodeAndFreeString = vi.fn();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
   decodeAndFreeString: (...args: unknown[]) => mockDecodeAndFreeString(...args),
+  unregisterCallback: vi.fn(),
+  TokenCountCallbackProto: "mock-token-proto",
 }));
 
 import {
@@ -229,5 +249,51 @@ describe("SystemLanguageModel", () => {
       const model = new SystemLanguageModel();
       expect(model.supportsLocale("xx_XX")).toBe(false);
     });
+  });
+});
+
+describe("SystemLanguageModel.tokenCount", () => {
+  it("resolves the count the callback reports", async () => {
+    const model = new SystemLanguageModel();
+    const promise = model.tokenCount({ instructions: "Be brief." });
+    queueMicrotask(() => lastTokenCallback.cb?.(0, 42, null, null));
+    await expect(promise).resolves.toBe(42);
+  });
+
+  it("passes instructions straight to the C API", async () => {
+    const model = new SystemLanguageModel();
+    const promise = model.tokenCount({ instructions: "Be brief." });
+    queueMicrotask(() => lastTokenCallback.cb?.(0, 7, null, null));
+    await promise;
+    expect(mockFns.FMSystemLanguageModelTokenCountForInstructions).toHaveBeenCalledWith(
+      "mock-model-pointer",
+      "Be brief.",
+      null,
+      "mock-cb-pointer",
+    );
+  });
+
+  it("rejects with the description the callback reports", async () => {
+    const model = new SystemLanguageModel();
+    const promise = model.tokenCount({ instructions: "x" });
+    queueMicrotask(() => lastTokenCallback.cb?.(5, 0, "model unavailable", null));
+    await expect(promise).rejects.toThrow(/model unavailable/);
+  });
+
+  it("releases the task handle once the count arrives", async () => {
+    const model = new SystemLanguageModel();
+    const promise = model.tokenCount({ instructions: "x" });
+    queueMicrotask(() => lastTokenCallback.cb?.(0, 1, null, null));
+    await promise;
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-token-task");
+  });
+
+  it("builds and releases a composed prompt for a text prompt", async () => {
+    const model = new SystemLanguageModel();
+    const promise = model.tokenCount({ prompt: "Hello" });
+    queueMicrotask(() => lastTokenCallback.cb?.(0, 3, null, null));
+    await promise;
+    expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
   });
 });
