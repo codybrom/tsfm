@@ -1,0 +1,16 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "cSpell.words": [
+    "catchable",
+    "chatcmpl",
+    "fontawesome",
+    "generativeexperiencesd",
+    "koffi",
+    "Llms",
+    "Siri",
+    "tsfm",
+    "vitepress",
+    "vitest"
+  ]
+}

@@ -7,7 +7,6 @@ foundation-models-c
 native/*
 !native/extensions/
 coverage
-.vscode/settings.json
 docs/.vitepress/dist
 docs/.vitepress/cache
 .env.local
