@@ -29,20 +29,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for `generable()`, streaming edge cases, compat `reorderJson` with array items, disposed session guards, stream queue-stall recovery, and all 3 new examples
 
 ### Fixed
+
+- `Transcript.fromJson()` and `fromDict()` leaked their native object. Each allocated a C object with no way to release it, since the class had no `dispose()`, no `Symbol.dispose`, and no `FinalizationRegistry`.
+- Building from source validated the wrong toolchain: the Xcode version check ran before `DEVELOPER_DIR` was repointed at an installed `Xcode-beta.app`, so the build could use an SDK that was never checked.
 - Streaming no longer discards a response whose text is exactly `null`. The callback treated that string as a koffi coercion artifact, so such a response streamed as nothing at all. koffi marshals the end-of-stream signal to JS `null`, never to the string, so there was no artifact to filter.
 - Upstream C bridge moved to apple/python-apple-fm-sdk@e868e608, which changed the prompt parameter of all four response entry points from `const char *` to an opaque composed-prompt object. The build now pins that revision, since koffi binds by symbol name and cannot see a changed parameter type.
 
 - Stream setup failures no longer stall the request queue permanently (native init moved inside try/finally)
-- Stream idle timeout (30s) prevents permanent hangs when native callbacks stop firing after tool-call snapshots
+- Stream idle timeout (30s) prevents permanent hangs when native callbacks stop firing. Armed between snapshots rather than after a tool-call snapshot, since the artifact it originally keyed on does not occur.
 - Disposed session methods (`respond`, `respondWithSchema`, `respondWithJsonSchema`, `streamResponse`) now throw `FoundationModelsError` immediately instead of calling into freed native memory
 - `FinalizationRegistry` callbacks across all classes now log warnings via `console.warn` instead of silently swallowing errors
 - Better error message when `libFoundationModels.dylib` is not found — lists all searched paths and suggests `npm run build`
-- Streaming callback now receives content as `void*` instead of `str` to prevent koffi from coercing null C string pointers to the JS string `"null"`
 - Streaming iterator now resets the session (`FMLanguageModelSessionReset`) on early `break` to prevent stalled subsequent calls
-- Coerced `"null"` string chunks from koffi are filtered out during streaming
 
 ### Changed
 
+- Declare `generable()` property maps with `satisfies Record<string, PropertyDef>` (or inline them at the call). Assigning them to a plain `const` first widens `optional: true` to `boolean`, and `InferSchema` then marks every property required. The bundled examples show the pattern.
+- **Breaking:** `engines.node` raised from `>=20` to `>=24`. Installing on Node 20 or 22 no longer works.
+- `koffi` upgraded from `^2.15.1` to `^3.1.5`. This is the runtime FFI dependency, and its marshalling of null C strings differs from 2.x — see the streaming fix above.
+- Development toolchain moved to TypeScript 7 (`@typescript/native`, with 6.0.2 available as `tsc6`), `openai` 7, `@types/node` 26, and ESLint 10.
+- Building the dylib from source now requires **Xcode 26.4+**, the first SDK that declares `SystemLanguageModel.contextSize`. The bundled prebuilt library is unaffected.
 - `generable()` array properties now use compound type names (`"array<string>"`, `"array<Name>"`) matching the Python SDK's C bridge convention
 - `GenerationSchema.property()` rejects bare `"array"` type — use compound form like `"array<string>"` or use `generable()` for automatic type resolution
 - Prettier scope widened from `src/` to entire repo (excluding `*.md`); added `.prettierignore`
@@ -177,7 +183,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
-[Unreleased]: https://github.com/codybrom/tsfm/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/codybrom/tsfm/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/codybrom/tsfm/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/codybrom/tsfm/compare/v0.2.3...v0.3.0
