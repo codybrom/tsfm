@@ -741,7 +741,7 @@ describe("Responses API compat layer", () => {
 
       // The prompt should include the tool result text
       const respondArgs = mockFns.FMLanguageModelSessionRespond.mock.calls[0];
-      const prompt = respondArgs[1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("Tool result");
       expect(prompt).toContain("Rainy, 55F");
       client.close();
@@ -1232,7 +1232,7 @@ describe("Responses API compat layer", () => {
       });
 
       const respondArgs = mockFns.FMLanguageModelSessionRespond.mock.calls[0];
-      const prompt = respondArgs[1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("[Tool result]:");
       expect(prompt).not.toContain("[Tool result for ");
       client.close();
@@ -1556,7 +1556,7 @@ describe("Responses API compat layer", () => {
 
       expect(response.output).toHaveLength(1);
       expect(mockFns.FMLanguageModelSessionRespond).toHaveBeenCalled();
-      const prompt = mockFns.FMLanguageModelSessionRespond.mock.calls[0][1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toBe("How are you?");
       client.close();
     });

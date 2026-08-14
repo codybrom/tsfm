@@ -104,22 +104,33 @@ function defineFunctions() {
     ),
     FMLanguageModelSessionReset: fn("void FMLanguageModelSessionReset(void * session)"),
 
+    // --- Prompt construction ---
+    // FMComposedPromptInitialize returns a +1 reference; every path that builds
+    // one must FMRelease it, including error and early-exit paths.
+    FMComposedPromptInitialize: fn("void * FMComposedPromptInitialize()"),
+    FMComposedPromptAddText: fn("void FMComposedPromptAddText(void * composedPrompt, str text)"),
+    // Attachment support is compiled behind FM_HAS_MACOS_27_SDK and gated on a
+    // macOS 27 runtime, so on a 26.x build this always reports UnsupportedSDK.
+    FMComposedPromptAddAttachment: fn(
+      "bool FMComposedPromptAddAttachment(void * composedPrompt, str imagePath, str label, _Out_ int * outError)",
+    ),
+
     // --- Text generation ---
     FMLanguageModelSessionRespond: fn(
-      "void * FMLanguageModelSessionRespond(void * session, str prompt, str optionsJSON, void * userInfo, ResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespond(void * session, void * composedPrompt, str optionsJSON, void * userInfo, ResponseCallback * callback)",
     ),
 
     // --- Structured generation ---
     FMLanguageModelSessionRespondWithSchema: fn(
-      "void * FMLanguageModelSessionRespondWithSchema(void * session, str prompt, void * schema, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchema(void * session, void * composedPrompt, void * schema, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
     FMLanguageModelSessionRespondWithSchemaFromJSON: fn(
-      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, str prompt, str schemaJSON, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, void * composedPrompt, str schemaJSON, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
 
     // --- Streaming ---
     FMLanguageModelSessionStreamResponse: fn(
-      "void * FMLanguageModelSessionStreamResponse(void * session, str prompt, str optionsJSON)",
+      "void * FMLanguageModelSessionStreamResponse(void * session, void * composedPrompt, str optionsJSON)",
     ),
     FMLanguageModelSessionResponseStreamIterate: fn(
       "void FMLanguageModelSessionResponseStreamIterate(void * stream, void * userInfo, ResponseCallback * callback)",

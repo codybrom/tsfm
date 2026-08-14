@@ -9,6 +9,11 @@ export function createMockFunctions() {
       return true;
     }),
 
+    // Prompt construction
+    FMComposedPromptInitialize: vi.fn((): string => "mock-composed-prompt"),
+    FMComposedPromptAddText: vi.fn(),
+    FMComposedPromptAddAttachment: vi.fn((..._args: unknown[]): boolean => true),
+
     // Session creation
     FMLanguageModelSessionCreateFromSystemLanguageModel: vi.fn(
       (): string | null => "mock-session-pointer",

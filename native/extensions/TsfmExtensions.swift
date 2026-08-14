@@ -10,16 +10,6 @@ import FoundationModelsCDeclarations
 
 // MARK: - SystemLanguageModel extensions (requires Xcode 26.4+ to compile)
 
-// contextSize is @backDeployed(before: macOS 26.4) so it runs on 26.0+.
-// Requires Xcode 26.4+ SDK to see the declaration.
-@_cdecl("FMSystemLanguageModelGetContextSize")
-public func FMSystemLanguageModelGetContextSize(
-  model: FMSystemLanguageModelRef
-) -> Int32 {
-  let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
-  return Int32(model.contextSize)
-}
-
 // tokenCount(for:) is macOS 26.4 Beta only (no back-deployment) and requires
 // async bridging (takes Instructions, returns async throws Int).
 // Uncomment when targeting macOS 26.4+ runtime.

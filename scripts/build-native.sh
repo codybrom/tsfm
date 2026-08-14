@@ -18,16 +18,13 @@ LOG_FILE="$PACKAGE_DIR/build-native.log"
 
 # Upstream C bridge revision this SDK is built and tested against.
 #
-# Pinned deliberately: apple/python-apple-fm-sdk changed the prompt parameter of
-# FMLanguageModelSessionRespond and FMLanguageModelSessionStreamResponse from
-# `const char *` to an opaque FMComposedPrompt, and added its own
-# FMSystemLanguageModelGetContextSize that collides with the one in
-# native/extensions. koffi binds by symbol name and cannot see either change, so
-# an unpinned clone yields a dylib that builds but misbehaves at runtime.
+# Pinned deliberately: koffi binds by symbol name and cannot see a changed
+# parameter type, so an unpinned clone yields a dylib that links but misbehaves
+# at runtime. src/bindings.ts is written against exactly this revision.
 #
 # To try a newer revision: FM_SDK_REF=<sha> bash scripts/build-native.sh
 # Moving the pin means updating src/bindings.ts and native/extensions to match.
-FM_SDK_REF="${FM_SDK_REF:-8d56a2d9432a0ea71c939e7357a5c4524730bbd3}"
+FM_SDK_REF="${FM_SDK_REF:-e868e60811aa0706feb2ccb33cfe7e27626287b7}"
 CLONE_DIR="$PACKAGE_DIR/.build/python-apple-fm-sdk"
 
 log() { echo "$*" | tee -a "$LOG_FILE"; }

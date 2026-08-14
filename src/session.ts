@@ -63,6 +63,21 @@ function _installExitHandler(): void {
 type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
+/**
+ * Build a native ComposedPrompt from prompt text.
+ *
+ * Upstream's C bridge takes an opaque prompt object rather than a string, so
+ * every request builds one. `FMComposedPromptInitialize` hands back a +1
+ * reference the caller owns: release it once the request that uses it has
+ * finished, not when the call returns, since the native side reads it for the
+ * duration of the response.
+ */
+function composePrompt(fn: ReturnType<typeof getFunctions>, prompt: string): NativePointer {
+  const composed = fn.FMComposedPromptInitialize() as NativePointer;
+  fn.FMComposedPromptAddText(composed, prompt);
+  return composed;
+}
+
 export class LanguageModelSession {
   /** @internal */
   _nativeSession: NativePointer | null = null;
@@ -300,6 +315,7 @@ export class LanguageModelSession {
     let keepAlive: ReturnType<typeof setInterval> | null = null;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let streamDone = false;
+    let composedPrompt: NativePointer | null = null;
 
     type QueueItem = { content: string } | { done: true; error?: Error };
     const queue: QueueItem[] = [];
@@ -309,9 +325,10 @@ export class LanguageModelSession {
       fn = getFunctions();
       const optionsJson = serializeOptions(opts.options);
 
+      composedPrompt = composePrompt(fn, prompt);
       streamPointer = fn.FMLanguageModelSessionStreamResponse(
         this._nativeSession,
-        prompt,
+        composedPrompt,
         optionsJson,
       ) as NativePointer;
 
@@ -439,6 +456,7 @@ export class LanguageModelSession {
         if (this._nativeSession) fn.FMLanguageModelSessionReset(this._nativeSession);
       }
       if (fn && streamPointer) fn.FMRelease(streamPointer);
+      if (fn && composedPrompt) fn.FMRelease(composedPrompt);
       release();
     }
   }
@@ -536,16 +554,17 @@ export class LanguageModelSession {
     this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
+    const composedPrompt = composePrompt(fn, prompt);
     return this._runResponseCallback(
       (callback) =>
         fn.FMLanguageModelSessionRespond(
           this._nativeSession,
-          prompt,
+          composedPrompt,
           optionsJson,
           null,
           callback,
         ) as NativePointer,
-    );
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 
   private _respondWithSchema(
@@ -556,17 +575,18 @@ export class LanguageModelSession {
     this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
+    const composedPrompt = composePrompt(fn, prompt);
     return this._runStructuredCallback(
       (callback) =>
         fn.FMLanguageModelSessionRespondWithSchema(
           this._nativeSession,
-          prompt,
+          composedPrompt,
           schema._nativeSchema,
           optionsJson,
           null,
           callback,
         ) as NativePointer,
-    );
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 
   private _respondWithJsonSchema(
@@ -578,16 +598,17 @@ export class LanguageModelSession {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
+    const composedPrompt = composePrompt(fn, prompt);
     return this._runStructuredCallback(
       (callback) =>
         fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
           this._nativeSession,
-          prompt,
+          composedPrompt,
           schemaJson,
           optionsJson,
           null,
           callback,
         ) as NativePointer,
-    );
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 }

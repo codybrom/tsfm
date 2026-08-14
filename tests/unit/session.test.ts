@@ -101,6 +101,47 @@ describe("LanguageModelSession", () => {
     });
   });
 
+  describe("composed prompt lifetime", () => {
+    it("passes the prompt text through a composed prompt, not as a string", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(0, "hi", 2, null));
+      await promise;
+
+      expect(mockFns.FMComposedPromptInitialize).toHaveBeenCalled();
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+      expect(mockFns.FMLanguageModelSessionRespond.mock.calls[0][1]).toBe("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt after the response resolves", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(0, "hi", 2, null));
+      await promise;
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt when the response fails", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(7, "boom", 4, null));
+      await expect(promise).rejects.toThrow();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt when the stream ends", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("Hello");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "chunk", 5, null);
+        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+  });
+
   describe("respond", () => {
     it("resolves with response text on success", async () => {
       mockFns.FMLanguageModelSessionRespond.mockImplementation(() => {
@@ -325,9 +366,13 @@ describe("LanguageModelSession", () => {
         options: { temperature: 0.5 },
       });
 
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "Describe",
+      );
       expect(mockFns.FMLanguageModelSessionRespondWithSchema).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Describe",
+        "mock-composed-prompt",
         "mock-schema-pointer",
         JSON.stringify({ temperature: 0.5 }),
         null,
@@ -486,9 +531,13 @@ describe("LanguageModelSession", () => {
         { options: { maximumResponseTokens: 100 } },
       );
 
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "Extract",
+      );
       expect(mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Extract",
+        "mock-composed-prompt",
         expect.any(String),
         JSON.stringify({ maximum_response_tokens: 100 }),
         null,
@@ -654,9 +703,10 @@ describe("LanguageModelSession", () => {
       })) {
         // drain
       }
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hi");
       expect(mockFns.FMLanguageModelSessionStreamResponse).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Hi",
+        "mock-composed-prompt",
         JSON.stringify({ temperature: 0.8 }),
       );
     });
@@ -766,16 +816,15 @@ describe("LanguageModelSession", () => {
     it("serializes concurrent respond calls", async () => {
       const callOrder: number[] = [];
 
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(
-        (_pointer: unknown, prompt: unknown, _opts: unknown, _ui: unknown, _cbPointer: unknown) => {
-          const idx = prompt === "first" ? 1 : 2;
-          callOrder.push(idx);
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
-          }, 0);
-          return "mock-task-pointer";
-        },
-      );
+      mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
+        const text = mockFns.FMComposedPromptAddText.mock.calls.at(-1)?.[1];
+        const idx = text === "first" ? 1 : 2;
+        callOrder.push(idx);
+        setTimeout(() => {
+          lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
+        }, 0);
+        return "mock-task-pointer";
+      });
 
       const session = new LanguageModelSession();
       const [r1, r2] = await Promise.all([session.respond("first"), session.respond("second")]);
