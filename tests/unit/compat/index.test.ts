@@ -675,7 +675,6 @@ describe("Chat API compat layer", () => {
       });
 
       // Check that the prompt passed to FMLanguageModelSessionRespond includes JSON instruction
-      const respondArgs = mockFns.FMLanguageModelSessionRespond.mock.calls[0];
       const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("Respond with valid JSON only");
       client.close();
