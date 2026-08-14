@@ -25,7 +25,7 @@ new LanguageModelSession(options?: {
 Generate a text response.
 
 ```ts
-respond(prompt: string, options?: {
+respond(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
 }): Promise<string>
 ```
@@ -68,7 +68,7 @@ change. Plain string prompts are unaffected.
 Generate structured output matching a `GenerationSchema`.
 
 ```ts
-respondWithSchema(prompt: string, schema: GenerationSchema, options?: {
+respondWithSchema(prompt: string | PromptInput, schema: GenerationSchema, options?: {
   options?: GenerationOptions
 }): Promise<GeneratedContent>
 ```
@@ -80,7 +80,7 @@ Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with typ
 Generate structured output from a JSON Schema object.
 
 ```ts
-respondWithJsonSchema(prompt: string, schema: object, options?: {
+respondWithJsonSchema(prompt: string | PromptInput, schema: object, options?: {
   options?: GenerationOptions
 }): Promise<GeneratedContent>
 ```
@@ -92,7 +92,7 @@ Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with `to
 Stream a response token-by-token.
 
 ```ts
-streamResponse(prompt: string, options?: {
+streamResponse(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
 }): AsyncIterable<string>
 ```

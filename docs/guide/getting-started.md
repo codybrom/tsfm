@@ -72,4 +72,4 @@ cd tsfm
 npm run build
 ```
 
-Rebuilding from source requires **Xcode 26+** to compile the libFoundationModels.dylib Swift bridge.
+Rebuilding from source requires **Xcode 26.4+** to compile the libFoundationModels.dylib Swift bridge. The 26.4 SDK is the first that declares `SystemLanguageModel.contextSize`, which the bridge reads.

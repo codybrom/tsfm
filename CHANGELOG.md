@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for `generable()`, streaming edge cases, compat `reorderJson` with array items, disposed session guards, stream queue-stall recovery, and all 3 new examples
 
 ### Fixed
+- Streaming no longer discards a response whose text is exactly `null`. The callback treated that string as a koffi coercion artifact, so such a response streamed as nothing at all. koffi marshals the end-of-stream signal to JS `null`, never to the string, so there was no artifact to filter.
 - Upstream C bridge moved to apple/python-apple-fm-sdk@e868e608, which changed the prompt parameter of all four response entry points from `const char *` to an opaque composed-prompt object. The build now pins that revision, since koffi binds by symbol name and cannot see a changed parameter type.
 
 - Stream setup failures no longer stall the request queue permanently (native init moved inside try/finally)

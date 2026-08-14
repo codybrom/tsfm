@@ -24,6 +24,8 @@ Complete reference for all public exports from `tsfm`.
 | [Generable](/api/generation-schema#generable-t) | Return type of `generable()` |
 | [PropertyDef](/api/generation-schema#propertydef) | Property definition union for `generable()` |
 | [InferSchema](/api/generation-schema#inferschema-t) | Mapped type for schema type inference |
+| [PromptInput](/api/language-model-session#prompt-attachments) | Prompt with attachments, accepted anywhere a string is |
+| [PromptAttachment](/api/language-model-session#prompt-attachments) | A file attached to a prompt |
 | [Errors](/api/errors) | Error hierarchy and error codes |
 
 ## Chat & Responses APIs

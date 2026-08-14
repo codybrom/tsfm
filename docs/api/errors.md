@@ -17,6 +17,7 @@ FoundationModelsError
 │   ├── ConcurrentRequestsError
 │   ├── RefusalError
 │   └── InvalidGenerationSchemaError
+├── PromptAttachmentError
 └── ToolCallError
 ```
 
@@ -34,6 +35,7 @@ FoundationModelsError
 | `ConcurrentRequestsError` | 8 | Session already responding |
 | `RefusalError` | 9 | Model declined to answer |
 | `InvalidGenerationSchemaError` | 10 | Malformed schema |
+| `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw |
 
 ## GenerationErrorCode
@@ -80,3 +82,17 @@ try {
   }
 }
 ```
+
+## PromptAttachmentError
+
+Thrown when an attachment cannot be added to a prompt. Carries a `reason`:
+
+| Reason | Meaning |
+| --- | --- |
+| `unsupported-sdk` | The native library was built without the macOS 27 SDK |
+| `unsupported-os` | The library supports attachments, but this macOS does not |
+| `unknown` | The bridge refused the attachment without saying why |
+
+Attachments need macOS 27 both to build and to run, so the bundled library —
+built on macOS 26 — reports `unsupported-sdk` for every attachment. See
+[prompt attachments](/api/language-model-session#prompt-attachments).
