@@ -45,7 +45,7 @@ checkModel.dispose();
 const describeIfAvailable = available ? describe : describe.skip;
 
 describeIfAvailable("tools (integration)", () => {
-  it("invokes a tool and includes its result", { timeout: 40_000 }, async () => {
+  it("invokes a tool and includes its result", { timeout: 100_000 }, async () => {
     const { successes } = await retryAttempts(
       async () => {
         const model = new SystemLanguageModel();
@@ -64,11 +64,14 @@ describeIfAvailable("tools (integration)", () => {
               'Use the lookup_secret tool to find the secret code for key "alpha". ' +
                 "Do not guess — call the tool.",
             ),
+            // A tool round-trip is two model turns: measured at 4-10s to the
+            // tool call and 15-27s to the final reply on a warm device, so a
+            // short cap here fails every attempt regardless of correctness.
             new Promise<never>((_, reject) => {
               setTimeout(() => {
                 session.cancel();
                 reject(new Error("Attempt timed out"));
-              }, 5_000);
+              }, 30_000);
             }),
           ]);
 
@@ -87,7 +90,7 @@ describeIfAvailable("tools (integration)", () => {
           model.dispose();
         }
       },
-      { maxAttempts: 5, requiredSuccesses: 1, label: "tools test" },
+      { maxAttempts: 3, requiredSuccesses: 1, label: "tools test" },
     );
 
     expect(successes).toBeGreaterThanOrEqual(1);
