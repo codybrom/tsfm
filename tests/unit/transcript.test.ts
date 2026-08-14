@@ -221,5 +221,62 @@ describe("Transcript", () => {
       transcript._updateNativeSession(mockPointer("new-session"));
       expect(transcript._nativeSession).toBe("new-session");
     });
+
+    it("releases an owned pointer it is about to overwrite", () => {
+      // fromTranscript() repoints a standalone transcript at the new session.
+      // Without this the deserialized C object is orphaned with no way to free it.
+      const transcript = Transcript.fromJson("{}");
+      transcript._updateNativeSession(mockPointer("new-session"));
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+    });
+
+    it("does not release the session pointer it was handed", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript._updateNativeSession(mockPointer("new-session"));
+      mockFns.FMRelease.mockClear();
+      transcript.dispose();
+      expect(mockFns.FMRelease).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("dispose", () => {
+    it("releases the C object owned by fromJson", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+    });
+
+    it("releases the C object owned by fromDict", () => {
+      const transcript = Transcript.fromDict({});
+      transcript.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+    });
+
+    it("is safe to call more than once", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript.dispose();
+      transcript.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not release a pointer owned by a live session", () => {
+      // LanguageModelSession.dispose() frees this pointer; releasing it here
+      // as well would be a double free.
+      const transcript = new Transcript(mockPointer("mock-session"));
+      transcript.dispose();
+      expect(mockFns.FMRelease).not.toHaveBeenCalled();
+    });
+
+    it("is invoked by Symbol.dispose", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript[Symbol.dispose]();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+    });
+
+    it("makes subsequent toJson() throw rather than read freed memory", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript.dispose();
+      expect(() => transcript.toJson()).toThrow(/disposed/i);
+    });
   });
 });
