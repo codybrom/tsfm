@@ -60,12 +60,7 @@ function _installExitHandler(): void {
   }
 }
 
-type ResponseCbArgs = [
-  status: number,
-  content: NativePointer | null,
-  _length: number,
-  userInfo: unknown,
-];
+type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
 export class LanguageModelSession {
@@ -357,11 +352,12 @@ export class LanguageModelSession {
       };
 
       callback = koffi.register((...args: ResponseCbArgs) => {
-        const [status, content] = args;
-        // koffi delivers the void* as a usable JS value; calling koffi.decode()
-        // inside a callback context triggers N-API exceptions, so we use the
-        // value directly. The void* proto prevents koffi's null→"null" coercion.
-        const text = content as unknown as string | null;
+        const [status, text] = args;
+        // The `str` parameter of ResponseCallbackProto is marshalled by koffi
+        // before the handler runs: a non-null char* arrives as a JS string and
+        // the end-of-stream null pointer arrives as JS null. Calling
+        // koffi.decode() here would trigger N-API exceptions, so the value is
+        // used as delivered.
         if (status !== 0) {
           queue.push({ done: true, error: statusToError(status, text) });
           streamDone = true;
@@ -500,10 +496,9 @@ export class LanguageModelSession {
     return new Promise<string>((resolve, reject) => {
       const callback = this._oneShotCallback<ResponseCbArgs>(
         ResponseCallbackProto,
-        (status, contentPtr) => {
+        (status, content) => {
           this._activeTask = null;
           // See streaming callback comment — use value directly, not koffi.decode()
-          const content = contentPtr as unknown as string | null;
           if (status !== 0) reject(statusToError(status, content));
           else resolve(content ?? "");
         },
