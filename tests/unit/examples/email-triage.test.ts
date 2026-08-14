@@ -1,11 +1,11 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { koffiMock, coreBindingsMock, errorsMock } from "./_helpers.js";
+import { koffiMock, coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
 
 vi.mock("koffi", () => koffiMock());
 vi.mock("../../../src/bindings.js", () => coreBindingsMock());
 vi.mock("../../../src/errors.js", () => errorsMock());
 
-import { GeneratedContent } from "tsfm-sdk";
+import { GeneratedContent, type JsonObject } from "tsfm-sdk";
 import {
   FetchEmailsTool,
   SaveDraftTool,
@@ -15,9 +15,9 @@ import {
   type TriageResult,
 } from "../../../examples/email-triage/email-triage.js";
 
-function mockContent(values: Record<string, unknown>): GeneratedContent {
+function mockContent(values: JsonObject): GeneratedContent {
   const json = JSON.stringify(values);
-  const content = new GeneratedContent("mock-ptr" as never);
+  const content = new GeneratedContent(mockPointer());
   vi.spyOn(content, "toJson").mockReturnValue(json);
   vi.spyOn(content, "toObject").mockReturnValue(values);
   const valueMap = new Map(Object.entries(values));
@@ -37,36 +37,35 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("triageSchema", () => {
+  const results = triageSchema.properties.results;
+
   it("is a valid JSON Schema with required results array", () => {
     expect(triageSchema.type).toBe("object");
     expect(triageSchema.required).toContain("results");
-    expect(triageSchema.properties!.results.type).toBe("array");
+    expect(results.type).toBe("array");
   });
 
   it("defines priority as integer with range 1-5", () => {
-    const itemProps = (triageSchema.properties!.results as JsonSchemaArray).items.properties;
+    const itemProps = results.items.properties;
     expect(itemProps.priority.type).toBe("integer");
     expect(itemProps.priority.minimum).toBe(1);
     expect(itemProps.priority.maximum).toBe(5);
   });
 
   it("defines category as enum", () => {
-    const itemProps = (triageSchema.properties!.results as JsonSchemaArray).items.properties;
+    const itemProps = results.items.properties;
     expect(itemProps.category.enum).toContain("action-required");
     expect(itemProps.category.enum).toContain("fyi");
     expect(itemProps.category.enum).toContain("scheduling");
   });
 
   it("defines suggested_action as enum", () => {
-    const itemProps = (triageSchema.properties!.results as JsonSchemaArray).items.properties;
+    const itemProps = results.items.properties;
     expect(itemProps.suggested_action.enum).toContain("reply-now");
     expect(itemProps.suggested_action.enum).toContain("archive");
     expect(itemProps.suggested_action.enum).toContain("unsubscribe");
   });
 });
-
-// Helper type for test access into nested schema
-type JsonSchemaArray = { type: "array"; items: { properties: Record<string, { type?: string; enum?: string[]; minimum?: number; maximum?: number }> } };
 
 // ---------------------------------------------------------------------------
 // FetchEmailsTool

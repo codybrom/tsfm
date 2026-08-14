@@ -1,16 +1,21 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { koffiMock, coreBindingsMock, errorsMock } from "./_helpers.js";
+import { koffiMock, coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
 
 vi.mock("koffi", () => koffiMock());
 vi.mock("../../../src/bindings.js", () => coreBindingsMock());
 vi.mock("../../../src/errors.js", () => errorsMock());
 
-import { GeneratedContent } from "tsfm-sdk";
-import { ContactCard, formatContactCard, sampleContacts, type ContactCardData } from "../../../examples/contact-card/contact-card.js";
+import { GeneratedContent, type JsonObject } from "tsfm-sdk";
+import {
+  ContactCard,
+  formatContactCard,
+  sampleContacts,
+  type ContactCardData,
+} from "../../../examples/contact-card/contact-card.js";
 
-function mockContent(obj: Record<string, unknown>): GeneratedContent {
+function mockContent(obj: JsonObject): GeneratedContent {
   const json = JSON.stringify(obj);
-  const content = new GeneratedContent("mock-ptr" as never);
+  const content = new GeneratedContent(mockPointer());
   vi.spyOn(content, "toJson").mockReturnValue(json);
   vi.spyOn(content, "toObject").mockReturnValue(obj);
   return content;

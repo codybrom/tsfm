@@ -7,6 +7,19 @@
 
 import { vi } from "vitest";
 
+import type { NativePointer } from "../../../src/bindings.js";
+
+/**
+ * Stand-in for a native content pointer.
+ *
+ * `NativePointer` is an opaque branded type, so no test can produce a real one
+ * while the binding layer is mocked. Confine that assertion here rather than
+ * repeating it at every construction site.
+ */
+export function mockPointer(): NativePointer {
+  return "mock-ptr" as unknown as NativePointer;
+}
+
 /** Koffi mock factory. */
 export function koffiMock() {
   return {

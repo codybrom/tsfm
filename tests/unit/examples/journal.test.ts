@@ -1,5 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { koffiMock, coreBindingsMock, errorsMock } from "./_helpers.js";
+import { koffiMock, coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,7 +8,7 @@ vi.mock("koffi", () => koffiMock());
 vi.mock("../../../src/bindings.js", () => coreBindingsMock());
 vi.mock("../../../src/errors.js", () => errorsMock());
 
-import { GeneratedContent } from "tsfm-sdk";
+import { GeneratedContent, type JsonObject } from "tsfm-sdk";
 import {
   JournalStore,
   JournalAnalysis,
@@ -19,9 +19,9 @@ import {
   type JournalAnalysisData,
 } from "../../../examples/journal/journal.js";
 
-function mockContent(values: Record<string, unknown>): GeneratedContent {
+function mockContent(values: JsonObject): GeneratedContent {
   const json = JSON.stringify(values);
-  const content = new GeneratedContent("mock-ptr" as never);
+  const content = new GeneratedContent(mockPointer());
   vi.spyOn(content, "toJson").mockReturnValue(json);
   vi.spyOn(content, "toObject").mockReturnValue(values);
   const valueMap = new Map(Object.entries(values));
@@ -78,7 +78,14 @@ describe("JournalStore", () => {
     writeFileSync(
       path,
       JSON.stringify([
-        { date: "2026-03-27", mood: "joyful", intensity: 8, themes: ["fun"], summary: "Great day.", raw: "!" },
+        {
+          date: "2026-03-27",
+          mood: "joyful",
+          intensity: 8,
+          themes: ["fun"],
+          summary: "Great day.",
+          raw: "!",
+        },
       ]),
     );
     const store = new JournalStore(path);
@@ -88,9 +95,30 @@ describe("JournalStore", () => {
 
   it("filters by after_date", () => {
     const { store } = tmpStore();
-    store.add({ date: "2026-03-25", mood: "anxious", intensity: 7, themes: ["work"], summary: "Busy.", raw: "..." });
-    store.add({ date: "2026-03-27", mood: "calm", intensity: 4, themes: ["rest"], summary: "Relaxed.", raw: "..." });
-    store.add({ date: "2026-03-29", mood: "energized", intensity: 8, themes: ["gym"], summary: "Strong.", raw: "..." });
+    store.add({
+      date: "2026-03-25",
+      mood: "anxious",
+      intensity: 7,
+      themes: ["work"],
+      summary: "Busy.",
+      raw: "...",
+    });
+    store.add({
+      date: "2026-03-27",
+      mood: "calm",
+      intensity: 4,
+      themes: ["rest"],
+      summary: "Relaxed.",
+      raw: "...",
+    });
+    store.add({
+      date: "2026-03-29",
+      mood: "energized",
+      intensity: 8,
+      themes: ["gym"],
+      summary: "Strong.",
+      raw: "...",
+    });
 
     const recent = store.query("2026-03-27");
     expect(recent).toHaveLength(2);
@@ -208,8 +236,22 @@ describe("QueryEntryTool", () => {
 
   it("filters by after_date when provided", async () => {
     const { store } = tmpStore();
-    store.add({ date: "2026-03-25", mood: "anxious", intensity: 7, themes: ["work"], summary: "Busy.", raw: "..." });
-    store.add({ date: "2026-03-29", mood: "calm", intensity: 4, themes: ["rest"], summary: "Easy.", raw: "..." });
+    store.add({
+      date: "2026-03-25",
+      mood: "anxious",
+      intensity: 7,
+      themes: ["work"],
+      summary: "Busy.",
+      raw: "...",
+    });
+    store.add({
+      date: "2026-03-29",
+      mood: "calm",
+      intensity: 4,
+      themes: ["rest"],
+      summary: "Easy.",
+      raw: "...",
+    });
 
     const tool = new QueryEntryTool(store);
     const args = mockContent({ after_date: "2026-03-28" });
