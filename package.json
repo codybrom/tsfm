@@ -3,6 +3,14 @@
   "version": "0.4.0",
   "description": "Unofficial TypeScript bindings for Apple Foundation Models framework (Apple Intelligence on-device LLM)",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codybrom/tsfm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codybrom/tsfm/issues"
+  },
+  "homepage": "https://tsfm.dev",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
