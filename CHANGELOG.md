@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SystemLanguageModel.supportsLocale()` — check if a specific locale is supported
 - `LanguageModelSession.prewarm()` — preload model resources and optionally cache a prompt prefix to reduce first-response latency
 - `GeneratedContent.dispose()` / `Symbol.dispose` — explicit resource cleanup for structured output results, with `FinalizationRegistry` auto-cleanup as a safety net
+- `Transcript.dispose()` / `Symbol.dispose` — release the C object behind a standalone transcript from `fromJson()` / `fromDict()`, with `FinalizationRegistry` auto-cleanup as a safety net. No-op for the transcript reached through `session.transcript`, which the session frees.
+- `GeneratedContent.toObject<T>()` — pass the shape the schema guarantees instead of asserting at the call site. Defaults to `JsonObject`, so existing calls are unaffected.
 - `NativeTypeName` type export — compound array type names (`"array<string>"`, `"array<integer>"`, etc.) for use with `GenerationSchema.property()`
 - `decodeString()` — decode a C string pointer without freeing it, for use in callbacks where the C side owns the memory
 - `Tool.onCall` now receives parsed arguments as a second parameter: `(toolName, args)` instead of `(toolName)`

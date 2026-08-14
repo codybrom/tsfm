@@ -190,6 +190,24 @@ const person = content.toObject();
 
 The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
 
+`toObject()` returns `JsonObject` by default. Pass the shape your schema
+guarantees to get it typed, rather than asserting at the call site:
+
+```ts
+interface Person {
+  name: string;
+  age: number;
+  occupation: string;
+}
+
+const person = content.toObject<Person>();
+person.age; // number
+```
+
+The type argument is a claim about model output that guided generation
+enforces when the response is produced — it is not a runtime check, so it does
+not validate the JSON a second time.
+
 ## Picking a Schema Format
 
 Both methods are capable of producing constrained output. The choice comes down to whether you need [generation guides](#generation-guides) and what format you already have.
