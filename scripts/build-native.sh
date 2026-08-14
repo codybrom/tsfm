@@ -16,6 +16,19 @@ PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 NATIVE_DIR="$PACKAGE_DIR/native"
 LOG_FILE="$PACKAGE_DIR/build-native.log"
 
+# Upstream C bridge revision this SDK is built and tested against.
+#
+# Pinned deliberately: apple/python-apple-fm-sdk changed the prompt parameter of
+# FMLanguageModelSessionRespond and FMLanguageModelSessionStreamResponse from
+# `const char *` to an opaque FMComposedPrompt, and added its own
+# FMSystemLanguageModelGetContextSize that collides with the one in
+# native/extensions. koffi binds by symbol name and cannot see either change, so
+# an unpinned clone yields a dylib that builds but misbehaves at runtime.
+#
+# To try a newer revision: FM_SDK_REF=<sha> bash scripts/build-native.sh
+# Moving the pin means updating src/bindings.ts and native/extensions to match.
+FM_SDK_REF="${FM_SDK_REF:-8d56a2d9432a0ea71c939e7357a5c4524730bbd3}"
+
 log() { echo "$*" | tee -a "$LOG_FILE"; }
 
 log "=== tsfm native build ==="
@@ -78,11 +91,29 @@ if [[ -n "${1:-}" ]]; then
 else
   CLONE_DIR="$PACKAGE_DIR/.build/python-apple-fm-sdk"
   if [[ ! -d "$CLONE_DIR" ]]; then
-    log "Cloning apple/python-apple-fm-sdk..."
-    git clone --depth 1 https://github.com/apple/python-apple-fm-sdk "$CLONE_DIR" >> "$LOG_FILE" 2>&1
+    log "Cloning apple/python-apple-fm-sdk at ${FM_SDK_REF:0:8}..."
+    git init -q "$CLONE_DIR" >> "$LOG_FILE" 2>&1
+    git -C "$CLONE_DIR" remote add origin https://github.com/apple/python-apple-fm-sdk >> "$LOG_FILE" 2>&1
+    git -C "$CLONE_DIR" fetch -q --depth 1 origin "$FM_SDK_REF" >> "$LOG_FILE" 2>&1
+    git -C "$CLONE_DIR" checkout -q FETCH_HEAD >> "$LOG_FILE" 2>&1
   fi
+
+  # An existing checkout is reused, so confirm it is the pinned revision rather
+  # than whatever a previous run happened to leave behind.
+  CURRENT_REF="$(git -C "$CLONE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+  if [[ "$CURRENT_REF" != "$FM_SDK_REF" ]]; then
+    log "Existing checkout is at ${CURRENT_REF:0:8}, expected ${FM_SDK_REF:0:8} — fetching pin..."
+    if ! git -C "$CLONE_DIR" fetch -q --depth 1 origin "$FM_SDK_REF" >> "$LOG_FILE" 2>&1 \
+      || ! git -C "$CLONE_DIR" checkout -q FETCH_HEAD >> "$LOG_FILE" 2>&1; then
+      log "error: could not check out $FM_SDK_REF in $CLONE_DIR."
+      log "       Remove the directory and re-run, or set FM_SDK_REF to a revision you have."
+      exit 1
+    fi
+    CURRENT_REF="$(git -C "$CLONE_DIR" rev-parse HEAD)"
+  fi
+
   FM_C_DIR="$CLONE_DIR/foundation-models-c"
-  log "SDK source: $FM_C_DIR"
+  log "SDK source: $FM_C_DIR @ ${CURRENT_REF:0:8}"
 fi
 
 # --- Copy tsfm extensions into the Apple source tree ---
