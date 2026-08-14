@@ -81,11 +81,35 @@ readonly contextSize: number
 
 ### `tokenCount()` <Badge type="info" text="macOS 26.4+" />
 
-Returns the number of tokens the model would use to encode the given text. Requires macOS 26.4+ runtime.
+Counts the tokens an input consumes against the [context window](#contextsize).
+Asynchronous, and requires a macOS 26.4+ runtime.
 
 ```ts
-tokenCount(text: string): number
+tokenCount(input: TokenCountInput): Promise<number>
+
+type TokenCountInput =
+  | { prompt: string | PromptInput }
+  | { instructions: string }
+  | { tools: Tool[] }
+  | { schema: GenerationSchema }
+  | { transcript: Transcript };
 ```
+
+Exactly one field applies per call — the C bridge exposes a separate entry point
+for each kind of input:
+
+```ts
+await model.tokenCount({ prompt: "Summarize this article." });
+await model.tokenCount({ instructions: "You are a helpful assistant." });
+await model.tokenCount({ tools: [weatherTool] });
+await model.tokenCount({ schema: ContactCard.schema });
+await model.tokenCount({ transcript: session.transcript });
+```
+
+Useful for staying inside `contextSize` before sending a request — tool
+definitions and schemas are often larger than they look. Measured against the
+on-device model, a five-word prompt costs 15 tokens while a single-argument
+tool definition costs 83.
 
 ## Enums
 

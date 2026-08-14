@@ -30,6 +30,39 @@ respond(prompt: string, options?: {
 }): Promise<string>
 ```
 
+### Prompt attachments <Badge type="warning" text="macOS 27" />
+
+Every method that takes a prompt accepts either a string or `PromptInput`:
+
+```ts
+interface PromptInput {
+  text: string;
+  attachments?: { path: string; label?: string }[];
+}
+
+await session.respond({
+  text: "What is in this picture?",
+  attachments: [{ path: "/tmp/chart.png", label: "quarterly chart" }],
+});
+```
+
+Attachments require **macOS 27** at runtime, and a native library built against
+the macOS 27 SDK. The bundled library is built on macOS 26, so today every
+attachment is rejected with a `PromptAttachmentError`:
+
+```ts
+try {
+  await session.respond({ text: "…", attachments: [{ path: "/tmp/a.png" }] });
+} catch (err) {
+  if (err instanceof PromptAttachmentError) {
+    err.reason; // "unsupported-sdk" | "unsupported-os" | "unknown"
+  }
+}
+```
+
+Rebuilding on an Xcode that ships the macOS 27 SDK enables them with no code
+change. Plain string prompts are unaffected.
+
 ### `respondWithSchema()`
 
 Generate structured output matching a `GenerationSchema`.

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `generable()` — declarative typed schema builder for structured output with full TypeScript type inference, the equivalent of the Python SDK's `@generable` decorator
 - `SystemLanguageModel.contextSize` — read the model's context window size (back-deployed from macOS 26.4 SDK)
+- `SystemLanguageModel.tokenCount()` — count the tokens a prompt, instruction set, tool list, schema, or transcript consumes against the context window. Asynchronous, requires a macOS 26.4+ runtime.
+- Prompt attachments — every method taking a prompt now accepts `{ text, attachments }` as well as a string. Requires macOS 27 and a native library built against the macOS 27 SDK; until then each attachment is refused with a `PromptAttachmentError` naming the reason.
 - `SystemLanguageModel.supportedLanguages` — list supported language codes
 - `SystemLanguageModel.supportsLocale()` — check if a specific locale is supported
 - `LanguageModelSession.prewarm()` — preload model resources and optionally cache a prompt prefix to reduce first-response latency
@@ -27,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for `generable()`, streaming edge cases, compat `reorderJson` with array items, disposed session guards, stream queue-stall recovery, and all 3 new examples
 
 ### Fixed
+- Upstream C bridge moved to apple/python-apple-fm-sdk@e868e608, which changed the prompt parameter of all four response entry points from `const char *` to an opaque composed-prompt object. The build now pins that revision, since koffi binds by symbol name and cannot see a changed parameter type.
 
 - Stream setup failures no longer stall the request queue permanently (native init moved inside try/finally)
 - Stream idle timeout (30s) prevents permanent hangs when native callbacks stop firing after tool-call snapshots
