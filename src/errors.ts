@@ -20,6 +20,26 @@ export class FoundationModelsError extends Error {
   }
 }
 
+/** Why the C bridge refused a prompt attachment. */
+export type PromptAttachmentFailure = "unsupported-os" | "unsupported-sdk" | "unknown";
+
+/**
+ * Raised when an attachment cannot be added to a prompt.
+ *
+ * Attachments are a macOS 27 feature: the C bridge compiles them only against
+ * the macOS 27 SDK and gates them on a macOS 27 runtime, so a dylib built on
+ * macOS 26 reports `unsupported-sdk` for every attachment.
+ */
+export class PromptAttachmentError extends FoundationModelsError {
+  readonly reason: PromptAttachmentFailure;
+
+  constructor(message: string, reason: PromptAttachmentFailure) {
+    super(message);
+    this.name = "PromptAttachmentError";
+    this.reason = reason;
+  }
+}
+
 export class GenerationError extends FoundationModelsError {
   constructor(message: string) {
     super(message);

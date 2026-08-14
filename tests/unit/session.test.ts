@@ -101,6 +101,67 @@ describe("LanguageModelSession", () => {
     });
   });
 
+  describe("prompt attachments", () => {
+    it("adds an attachment with its label", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond({
+        text: "What is this?",
+        attachments: [{ path: "/tmp/a.jpg", label: "diagram" }],
+      });
+      queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
+      await promise;
+
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "What is this?",
+      );
+      expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "/tmp/a.jpg",
+        "diagram",
+        expect.anything(),
+      );
+    });
+
+    it("passes null for an attachment with no label", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] });
+      queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
+      await promise;
+      expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "/tmp/a.jpg",
+        null,
+        expect.anything(),
+      );
+    });
+
+    it("reports why the bridge refused the attachment", async () => {
+      // 2 = FMComposedPromptAddImageErrorUnsupportedSDK, which is what a
+      // dylib built without the macOS 27 SDK always returns.
+      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
+        (_args[3] as number[])[0] = 2;
+        return false;
+      });
+      const session = new LanguageModelSession();
+      await expect(
+        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
+      ).rejects.toThrow(/macOS 27/i);
+    });
+
+    it("releases the composed prompt when an attachment is refused", async () => {
+      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
+        (_args[3] as number[])[0] = 1;
+        return false;
+      });
+      const session = new LanguageModelSession();
+      await expect(
+        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
+      ).rejects.toThrow();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+  });
+
   describe("composed prompt lifetime", () => {
     it("passes the prompt text through a composed prompt, not as a string", async () => {
       const session = new LanguageModelSession();

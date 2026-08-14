@@ -13,7 +13,7 @@ import { SystemLanguageModel } from "./core.js";
 import { Tool } from "./tool.js";
 import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
 import { GenerationOptions, serializeOptions } from "./options.js";
-import { statusToError, FoundationModelsError } from "./errors.js";
+import { statusToError, FoundationModelsError, PromptAttachmentError } from "./errors.js";
 import { Transcript } from "./transcript.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
@@ -63,6 +63,20 @@ function _installExitHandler(): void {
 type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
+/** A file attached to a prompt. Requires a macOS 27 runtime and SDK. */
+export interface PromptAttachment {
+  /** Filesystem path to the image or document. */
+  path: string;
+  /** Optional label shown to the model alongside the attachment. */
+  label?: string;
+}
+
+/** A prompt with attachments. Pass a plain string when you only need text. */
+export interface PromptInput {
+  text: string;
+  attachments?: PromptAttachment[];
+}
+
 /**
  * Build a native ComposedPrompt from prompt text.
  *
@@ -72,10 +86,50 @@ type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: un
  * finished, not when the call returns, since the native side reads it for the
  * duration of the response.
  */
-function composePrompt(fn: ReturnType<typeof getFunctions>, prompt: string): NativePointer {
+function composePrompt(
+  fn: ReturnType<typeof getFunctions>,
+  prompt: string | PromptInput,
+): NativePointer {
   const composed = fn.FMComposedPromptInitialize() as NativePointer;
-  fn.FMComposedPromptAddText(composed, prompt);
+  try {
+    fn.FMComposedPromptAddText(composed, typeof prompt === "string" ? prompt : prompt.text);
+    if (typeof prompt !== "string") {
+      for (const attachment of prompt.attachments ?? []) {
+        const outError = [0];
+        const added = fn.FMComposedPromptAddAttachment(
+          composed,
+          attachment.path,
+          attachment.label ?? null,
+          outError,
+        ) as boolean;
+        if (!added) throw attachmentError(outError[0], attachment.path);
+      }
+    }
+  } catch (err) {
+    // We own the +1 from Initialize, and no request will take it from here.
+    fn.FMRelease(composed);
+    throw err;
+  }
   return composed;
+}
+
+/** Map FMComposedPromptAddImageError to a typed error. */
+function attachmentError(code: number, path: string): PromptAttachmentError {
+  switch (code) {
+    case 1:
+      return new PromptAttachmentError(
+        `Cannot attach ${path}: attachments require a macOS 27 runtime.`,
+        "unsupported-os",
+      );
+    case 2:
+      return new PromptAttachmentError(
+        `Cannot attach ${path}: this native library was built without the macOS 27 SDK, ` +
+          `so attachments are unavailable. Rebuild with an Xcode that includes it.`,
+        "unsupported-sdk",
+      );
+    default:
+      return new PromptAttachmentError(`Cannot attach ${path}.`, "unknown");
+  }
 }
 
 export class LanguageModelSession {
@@ -233,7 +287,10 @@ export class LanguageModelSession {
    * rather than racing over the same session. Throws a `GenerationError`
    * subclass on failure.
    */
-  async respond(prompt: string, opts: { options?: GenerationOptions } = {}): Promise<string> {
+  async respond(
+    prompt: string | PromptInput,
+    opts: { options?: GenerationOptions } = {},
+  ): Promise<string> {
     this._assertNotDisposed();
     return this._enqueue(() => this._respondText(prompt, opts.options));
   }
@@ -246,7 +303,7 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass on failure.
    */
   async respondWithSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     schema: GenerationSchema,
     opts: { options?: GenerationOptions } = {},
   ): Promise<GeneratedContent> {
@@ -264,7 +321,7 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass on failure.
    */
   async respondWithJsonSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     opts: { options?: GenerationOptions } = {},
   ): Promise<GeneratedContent> {
@@ -294,7 +351,7 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass if the stream ends with an error.
    */
   async *streamResponse(
-    prompt: string,
+    prompt: string | PromptInput,
     opts: { options?: GenerationOptions } = {},
   ): AsyncGenerator<string> {
     this._assertNotDisposed();
@@ -550,7 +607,10 @@ export class LanguageModelSession {
     });
   }
 
-  private _respondText(prompt: string, options: GenerationOptions | undefined): Promise<string> {
+  private _respondText(
+    prompt: string | PromptInput,
+    options: GenerationOptions | undefined,
+  ): Promise<string> {
     this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
@@ -568,7 +628,7 @@ export class LanguageModelSession {
   }
 
   private _respondWithSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     schema: GenerationSchema,
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
@@ -590,7 +650,7 @@ export class LanguageModelSession {
   }
 
   private _respondWithJsonSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {

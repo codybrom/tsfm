@@ -6,7 +6,7 @@ export {
   type AvailabilityResult,
 } from "./core.js";
 
-export { LanguageModelSession } from "./session.js";
+export { LanguageModelSession, type PromptInput, type PromptAttachment } from "./session.js";
 
 export {
   Transcript,
@@ -54,4 +54,6 @@ export {
   InvalidGenerationSchemaError,
   ServiceCrashedError,
   ToolCallError,
+  PromptAttachmentError,
+  type PromptAttachmentFailure,
 } from "./errors.js";
