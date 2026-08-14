@@ -75,27 +75,37 @@ if ! command -v swift &>/dev/null; then
   exit 1
 fi
 
-XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
-XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
-XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
-XCODE_MINOR="$(echo "$XCODE_VERSION" | cut -d. -f2)"
-# native/extensions reads SystemLanguageModel.contextSize, whose declaration
-# first appears in the Xcode 26.4 SDK. Earlier Xcode 26.x passes a major-only
-# check and then fails mid-compile on a missing member.
-if [[ "$XCODE_MAJOR" -lt 26 || ( "$XCODE_MAJOR" -eq 26 && "$XCODE_MINOR" -lt 4 ) ]]; then
-  log "error: Xcode 26.4+ required (found $XCODE_VERSION)."
-  log "       The tsfm extensions need the 26.4 SDK to see SystemLanguageModel.contextSize."
-  exit 1
-fi
-log "Xcode $XCODE_VERSION ✓"
-
-# --- Prefer Xcode beta if installed (enables back-deployed 26.4 APIs) ---
+# --- Select the toolchain, then validate the one that was selected ---
+#
+# A beta is preferred when present: it is how you get an SDK newer than the
+# released Xcode, which is what prompt attachments need (macOS 27 SDK). This
+# has to happen before the version check below, or the check validates the
+# selected Xcode while swift build uses the beta.
 
 XCODE_BETA="/Applications/Xcode-beta.app"
 if [[ -d "$XCODE_BETA" ]]; then
   export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
-  log "Using Xcode beta (for back-deployed APIs)"
+  log "Preferring Xcode beta at $XCODE_BETA"
 fi
+
+# Reads whatever DEVELOPER_DIR now points at.
+XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
+XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
+XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
+XCODE_MINOR="$(echo "$XCODE_VERSION" | cut -d. -f2)"
+# The bridge reads SystemLanguageModel.contextSize, whose declaration first
+# appears in the Xcode 26.4 SDK. Earlier Xcode 26.x passes a major-only check
+# and then fails mid-compile on a missing member.
+if [[ "$XCODE_MAJOR" -lt 26 || ( "$XCODE_MAJOR" -eq 26 && "$XCODE_MINOR" -lt 4 ) ]]; then
+  log "error: Xcode 26.4+ required (found $XCODE_VERSION)."
+  if [[ -n "${DEVELOPER_DIR:-}" ]]; then
+    log "       Selected toolchain: $DEVELOPER_DIR"
+    log "       Remove or update that beta, or unset DEVELOPER_DIR, to use the released Xcode."
+  fi
+  log "       The C bridge needs the 26.4 SDK to see SystemLanguageModel.contextSize."
+  exit 1
+fi
+log "Xcode $XCODE_VERSION ✓"
 
 # --- Locate or clone foundation-models-c ---
 
