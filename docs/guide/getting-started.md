@@ -2,7 +2,7 @@
 
 TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a pre-compiled dynamic library [via FFI](https://koffi.dev/), allowing it the same access as native Swift and ObjC applications.
 
-TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥20 on an Apple Silicon Mac running macOS 26+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
+TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
@@ -10,7 +10,7 @@ You might use TSFM for CLI tools, local dev tooling, Electron apps, automation s
 
 - **macOS 26** (Tahoe) or later, Apple Silicon
 - **Apple Intelligence** enabled in System Settings
-- **Node.js 20+**
+- **Node.js 24+**
 
 ## Installation
 

@@ -65,7 +65,7 @@ model.dispose();
 
 - Apple Silicon (M-Series) Mac running macOS 26 or later
 - Apple Intelligence enabled in System Settings
-- Node.js 20+
+- Node.js 24+
 
 Unless you are building from source, Xcode is not required.
 
