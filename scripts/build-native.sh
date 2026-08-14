@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the Foundation Models C dylib from Apple's python-apple-fm-sdk repo.
-# Requires: macOS 26.0+, Xcode 26.0+, Swift toolchain in PATH
+# Requires: macOS 26.0+, Xcode 26.4+, Swift toolchain in PATH
 #
 # Usage:
 #   bash scripts/build-native.sh [/path/to/foundation-models-c]
@@ -28,12 +28,28 @@ LOG_FILE="$PACKAGE_DIR/build-native.log"
 # To try a newer revision: FM_SDK_REF=<sha> bash scripts/build-native.sh
 # Moving the pin means updating src/bindings.ts and native/extensions to match.
 FM_SDK_REF="${FM_SDK_REF:-8d56a2d9432a0ea71c939e7357a5c4524730bbd3}"
+CLONE_DIR="$PACKAGE_DIR/.build/python-apple-fm-sdk"
 
 log() { echo "$*" | tee -a "$LOG_FILE"; }
 
 log "=== tsfm native build ==="
 log "Log: $LOG_FILE"
 > "$LOG_FILE"  # truncate
+
+# --- Warn if the checkout has drifted from the pin ---
+#
+# Deliberately ahead of the skip-if-built shortcut below: a stale dylib next to
+# a drifted checkout would otherwise skip the build and the pin check together,
+# leaving no sign that the artifact and the source no longer agree. Reads local
+# HEAD only, so it costs nothing.
+
+if [[ -d "$CLONE_DIR" ]]; then
+  CLONE_REF="$(git -C "$CLONE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
+  if [[ "$CLONE_REF" != "$FM_SDK_REF" ]]; then
+    log "warning: $CLONE_DIR is at ${CLONE_REF:0:8}, pinned revision is ${FM_SDK_REF:0:8}."
+    log "         Delete native/libFoundationModels.dylib to rebuild at the pin."
+  fi
+fi
 
 # --- Skip if already built ---
 
@@ -65,8 +81,13 @@ fi
 XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
 XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
-if [[ "$XCODE_MAJOR" -lt 26 ]]; then
-  log "error: Xcode 26.0+ required (found $XCODE_VERSION)."
+XCODE_MINOR="$(echo "$XCODE_VERSION" | cut -d. -f2)"
+# native/extensions reads SystemLanguageModel.contextSize, whose declaration
+# first appears in the Xcode 26.4 SDK. Earlier Xcode 26.x passes a major-only
+# check and then fails mid-compile on a missing member.
+if [[ "$XCODE_MAJOR" -lt 26 || ( "$XCODE_MAJOR" -eq 26 && "$XCODE_MINOR" -lt 4 ) ]]; then
+  log "error: Xcode 26.4+ required (found $XCODE_VERSION)."
+  log "       The tsfm extensions need the 26.4 SDK to see SystemLanguageModel.contextSize."
   exit 1
 fi
 log "Xcode $XCODE_VERSION ✓"
@@ -89,7 +110,6 @@ if [[ -n "${1:-}" ]]; then
   fi
   log "SDK source: $FM_C_DIR"
 else
-  CLONE_DIR="$PACKAGE_DIR/.build/python-apple-fm-sdk"
   if [[ ! -d "$CLONE_DIR" ]]; then
     log "Cloning apple/python-apple-fm-sdk at ${FM_SDK_REF:0:8}..."
     git init -q "$CLONE_DIR" >> "$LOG_FILE" 2>&1
