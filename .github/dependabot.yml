@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  # The SDK itself. This project tracks bleeding-edge toolchains (TypeScript 7,
+  # koffi 3), so minor and patch bumps are grouped to keep the noise down while
+  # majors still arrive as individual PRs worth reading.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # The VitePress site has its own lockfile.
+  - package-ecosystem: npm
+    directory: "/docs"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Workflow actions drift quietly; nothing fails when they fall behind.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

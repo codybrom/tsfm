@@ -66,6 +66,9 @@ function guideSidebar() {
         { text: "Generation Options", link: "/examples/generation-options" },
         { text: "Transcripts", link: "/examples/transcript" },
         { text: "Content Tagging", link: "/examples/content-tagging" },
+        { text: "Contact Card", link: "/examples/contact-card" },
+        { text: "Journal", link: "/examples/journal" },
+        { text: "Email Triage", link: "/examples/email-triage" },
         { text: "Chat & Responses APIs", link: "/examples/chat-api" },
       ],
     },
@@ -79,7 +82,7 @@ function guideSidebar() {
 export default defineConfig({
   title: "tsfm",
   description:
-    "TypeScript SDK for Apple's Foundation Models framework — on-device Apple Intelligence in Node.js",
+    "TypeScript SDK for Apple Foundation Models framework — on-device Apple Intelligence in Node.js",
 
   base: "/",
   cleanUrls: true,
@@ -109,7 +112,7 @@ export default defineConfig({
       {
         property: "og:description",
         content:
-          "TypeScript SDK for Apple's Foundation Models — on-device AI inference in Node.js. No keys. No fees. It just works.",
+          "TypeScript SDK for Apple Foundation Models — on-device AI inference in Node.js. No keys. No fees. It just works.",
       },
     ],
     ["meta", { property: "og:image", content: "https://tsfm.dev/og-image.png" }],
@@ -125,7 +128,7 @@ export default defineConfig({
       {
         name: "twitter:description",
         content:
-          "TypeScript SDK for Apple's Foundation Models. On-device AI inference in Node.js. No keys. No fees. It just works.",
+          "TypeScript SDK for Apple Foundation Models. On-device AI inference in Node.js. No keys. No fees. It just works.",
       },
     ],
     ["meta", { name: "twitter:image", content: "https://tsfm.dev/og-image.png" }],

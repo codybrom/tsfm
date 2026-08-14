@@ -38,6 +38,11 @@ vi.mock("koffi", () => ({
 
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
+  decodeString: vi.fn((pointer: unknown) => {
+    if (!pointer) return null;
+    if (typeof pointer === "string") return pointer;
+    return null;
+  }),
   decodeAndFreeString: decodeAndFreeStringMock,
   unregisterCallback: vi.fn(),
   ResponseCallbackProto: "ResponseCallbackProto",
@@ -735,8 +740,7 @@ describe("Responses API compat layer", () => {
       });
 
       // The prompt should include the tool result text
-      const respondArgs = mockFns.FMLanguageModelSessionRespond.mock.calls[0];
-      const prompt = respondArgs[1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("Tool result");
       expect(prompt).toContain("Rainy, 55F");
       client.close();
@@ -1226,8 +1230,7 @@ describe("Responses API compat layer", () => {
         ],
       });
 
-      const respondArgs = mockFns.FMLanguageModelSessionRespond.mock.calls[0];
-      const prompt = respondArgs[1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("[Tool result]:");
       expect(prompt).not.toContain("[Tool result for ");
       client.close();
@@ -1474,6 +1477,47 @@ describe("Responses API compat layer", () => {
       client.close();
     });
 
+    it("reorderJson reorders keys inside array items when items schema has properties", async () => {
+      simulateStructuredSuccess({
+        people: [
+          { age: 30, name: "Alice" },
+          { age: 25, name: "Bob" },
+        ],
+      });
+
+      const client = new Client();
+      const result = (await client.responses.create({
+        input: "Generate",
+        text: {
+          format: {
+            type: "json_schema",
+            name: "Test",
+            schema: {
+              type: "object",
+              properties: {
+                people: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      age: { type: "integer" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      })) as Response;
+
+      const parsed = JSON.parse(result.output_text);
+      expect(Object.keys(parsed.people[0])).toEqual(["name", "age"]);
+      expect(parsed.people[0].name).toBe("Alice");
+      expect(parsed.people[1].name).toBe("Bob");
+      client.close();
+    });
+
     it("handles assistant messages in multi-turn array input", async () => {
       simulateRespondSuccess("OK");
 
@@ -1510,7 +1554,7 @@ describe("Responses API compat layer", () => {
 
       expect(response.output).toHaveLength(1);
       expect(mockFns.FMLanguageModelSessionRespond).toHaveBeenCalled();
-      const prompt = mockFns.FMLanguageModelSessionRespond.mock.calls[0][1] as string;
+      const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toBe("How are you?");
       client.close();
     });

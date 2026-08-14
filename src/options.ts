@@ -62,8 +62,16 @@ export function serializeOptions(options: GenerationOptions | undefined): string
 
   const obj: SerializedOptions = {};
 
-  if (options.temperature !== undefined) obj.temperature = options.temperature;
+  if (options.temperature !== undefined) {
+    if (options.temperature < 0) {
+      throw new Error("'temperature' must be non-negative");
+    }
+    obj.temperature = options.temperature;
+  }
   if (options.maximumResponseTokens !== undefined) {
+    if (!Number.isInteger(options.maximumResponseTokens) || options.maximumResponseTokens <= 0) {
+      throw new Error("'maximumResponseTokens' must be a positive integer");
+    }
     // Key name aligned with Python SDK: maximum_response_tokens
     obj.maximum_response_tokens = options.maximumResponseTokens;
   }

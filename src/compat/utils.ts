@@ -9,7 +9,8 @@ export function reorderJson(json: string, schema: JsonSchema): string {
   try {
     const obj = JSON.parse(json);
     return JSON.stringify(orderKeys(obj, schema));
-  } catch {
+  } catch (err) {
+    console.warn("[tsfm compat] Failed to reorder JSON keys, returning original:", err);
     return json;
   }
 }

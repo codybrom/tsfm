@@ -4,9 +4,9 @@ dist
 build-native.log
 foundation-models-c
 .build
-native/
+native/*
+!native/extensions/
 coverage
-.vscode/settings.json
 docs/.vitepress/dist
 docs/.vitepress/cache
 .env.local

@@ -14,9 +14,11 @@ interface GenerationOptions {
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `temperature` | `number` | Controls randomness. Higher = more varied. |
-| `maximumResponseTokens` | `number` | Max tokens in the response. |
+| `temperature` | `number` | Controls randomness. Higher = more varied. Must be ≥ 0. |
+| `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
+
+Invalid values throw immediately when the options are serialized (before the native call).
 
 ## Usage
 

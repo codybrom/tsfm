@@ -3,6 +3,10 @@ name: Deploy Docs
 on:
   push:
     branches: [main]
+  # Build docs on PRs too. Dead links and missing pages only surface at
+  # docs-build time, so nothing in typecheck, lint, or test catches them.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -18,21 +22,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - run: cd docs && npm install && npm run build
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs/.vitepress/dist
 
   deploy:
     needs: build
+    # Pull requests validate the build above; only main publishes.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

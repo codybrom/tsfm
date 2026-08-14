@@ -40,6 +40,19 @@ waitUntilAvailable(timeoutMs?: number): Promise<AvailabilityResult>
 | --- | --- | --- |
 | `timeoutMs` | `30000` | Maximum wait time in milliseconds |
 
+### `supportsLocale()`
+
+Check whether the model supports a given locale.
+
+```ts
+supportsLocale(localeIdentifier: string): boolean
+```
+
+```ts
+model.supportsLocale("en_US"); // true
+model.supportsLocale("ja_JP"); // true or false depending on model
+```
+
 ### `dispose()`
 
 Releases the native model reference.
@@ -47,6 +60,56 @@ Releases the native model reference.
 ```ts
 dispose(): void
 ```
+
+## Properties
+
+### `supportedLanguages`
+
+Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+
+```ts
+readonly supportedLanguages: string[]
+```
+
+### `contextSize`
+
+The maximum number of tokens the model's context window can hold. All input — instructions, prompts, tool definitions, and responses — counts against this limit.
+
+```ts
+readonly contextSize: number
+```
+
+### `tokenCount()` <Badge type="info" text="macOS 26.4+" />
+
+Counts the tokens an input consumes against the [context window](#contextsize).
+Asynchronous, and requires a macOS 26.4+ runtime.
+
+```ts
+tokenCount(input: TokenCountInput): Promise<number>
+
+type TokenCountInput =
+  | { prompt: string | PromptInput }
+  | { instructions: string }
+  | { tools: Tool[] }
+  | { schema: GenerationSchema }
+  | { transcript: Transcript };
+```
+
+Exactly one field applies per call — the C bridge exposes a separate entry point
+for each kind of input:
+
+```ts
+await model.tokenCount({ prompt: "Summarize this article." });
+await model.tokenCount({ instructions: "You are a helpful assistant." });
+await model.tokenCount({ tools: [weatherTool] });
+await model.tokenCount({ schema: ContactCard.schema });
+await model.tokenCount({ transcript: session.transcript });
+```
+
+Useful for staying inside `contextSize` before sending a request — tool
+definitions and schemas are often larger than they look. Measured against the
+on-device model, a five-word prompt costs 15 tokens while a single-argument
+tool definition costs 83.
 
 ## Enums
 
@@ -62,6 +125,7 @@ dispose(): void
 | Value | Description |
 | --- | --- |
 | `DEFAULT` | Standard content safety guardrails |
+| `PERMISSIVE_CONTENT_TRANSFORMATIONS` | Relaxed guardrails for content transformation tasks (e.g. summarization, rewriting) |
 
 ### `SystemLanguageModelUnavailableReason`
 

@@ -104,6 +104,7 @@ const toolCall = await client.responses.create({
   tools: [
     {
       type: "function",
+      strict: null,
       name: "get_weather",
       description: "Get current weather for a city",
       parameters: {
@@ -137,6 +138,7 @@ if (fc && fc.type === "function_call") {
     tools: [
       {
         type: "function",
+        strict: null,
         name: "get_weather",
         description: "Get current weather for a city",
         parameters: {

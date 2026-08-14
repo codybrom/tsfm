@@ -5,7 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-14
+
+### Added
+
+- `generable()` — declarative typed schema builder for structured output with full TypeScript type inference, the equivalent of the Python SDK's `@generable` decorator
+- `SystemLanguageModel.contextSize` — read the model's context window size (back-deployed from macOS 26.4 SDK)
+- `SystemLanguageModel.tokenCount()` — count the tokens a prompt, instruction set, tool list, schema, or transcript consumes against the context window. Asynchronous, requires a macOS 26.4+ runtime.
+- Prompt attachments — every method taking a prompt now accepts `{ text, attachments }` as well as a string. Requires macOS 27 and a native library built against the macOS 27 SDK; until then each attachment is refused with a `PromptAttachmentError` naming the reason.
+- `SystemLanguageModel.supportedLanguages` — list supported language codes
+- `SystemLanguageModel.supportsLocale()` — check if a specific locale is supported
+- `LanguageModelSession.prewarm()` — preload model resources and optionally cache a prompt prefix to reduce first-response latency
+- `GeneratedContent.dispose()` / `Symbol.dispose` — explicit resource cleanup for structured output results, with `FinalizationRegistry` auto-cleanup as a safety net
+- `Transcript.dispose()` / `Symbol.dispose` — release the C object behind a standalone transcript from `fromJson()` / `fromDict()`, with `FinalizationRegistry` auto-cleanup as a safety net. No-op for the transcript reached through `session.transcript`, which the session frees.
+- `GeneratedContent.toObject<T>()` — pass the shape the schema guarantees instead of asserting at the call site. Defaults to `JsonObject`, so existing calls are unaffected.
+- `NativeTypeName` type export — compound array type names (`"array<string>"`, `"array<integer>"`, etc.) for use with `GenerationSchema.property()`
+- `decodeString()` — decode a C string pointer without freeing it, for use in callbacks where the C side owns the memory
+- `Tool.onCall` now receives parsed arguments as a second parameter: `(toolName, args)` instead of `(toolName)`
+- Input validation: `temperature` must be ≥ 0, `maximumResponseTokens` must be a positive integer — both throw immediately on invalid values
+- Explicit FFI type casts (`as NativePointer`, `as boolean`, etc.) at all C call sites
+- 3 new examples: `contact-card` (nested generable schemas), `email-triage` (JSON Schema + streaming + tools), `journal` (tools + transcript persistence)
+- ESLint: `no-floating-promises` and `no-console` for `src/`, `no-eval` and `no-debugger` globally
+- Unit tests for `generable()`, streaming edge cases, compat `reorderJson` with array items, disposed session guards, stream queue-stall recovery, and all 3 new examples
+
+### Fixed
+
+- `Transcript.fromJson()` and `fromDict()` leaked their native object. Each allocated a C object with no way to release it, since the class had no `dispose()`, no `Symbol.dispose`, and no `FinalizationRegistry`.
+- Building from source validated the wrong toolchain: the Xcode version check ran before `DEVELOPER_DIR` was repointed at an installed `Xcode-beta.app`, so the build could use an SDK that was never checked.
+- Streaming no longer discards a response whose text is exactly `null`. The callback treated that string as a koffi coercion artifact, so such a response streamed as nothing at all. koffi marshals the end-of-stream signal to JS `null`, never to the string, so there was no artifact to filter.
+- Upstream C bridge moved to apple/python-apple-fm-sdk@e868e608, which changed the prompt parameter of all four response entry points from `const char *` to an opaque composed-prompt object. The build now pins that revision, since koffi binds by symbol name and cannot see a changed parameter type.
+
+- Stream setup failures no longer stall the request queue permanently (native init moved inside try/finally)
+- Stream idle timeout (30s) prevents permanent hangs when native callbacks stop firing. Armed between snapshots rather than after a tool-call snapshot, since the artifact it originally keyed on does not occur.
+- Disposed session methods (`respond`, `respondWithSchema`, `respondWithJsonSchema`, `streamResponse`) now throw `FoundationModelsError` immediately instead of calling into freed native memory
+- `FinalizationRegistry` callbacks across all classes now log warnings via `console.warn` instead of silently swallowing errors
+- Better error message when `libFoundationModels.dylib` is not found — lists all searched paths and suggests `npm run build`
+- Streaming iterator now resets the session (`FMLanguageModelSessionReset`) on early `break` to prevent stalled subsequent calls
+
+### Changed
+
+- Declare `generable()` property maps with `satisfies Record<string, PropertyDef>` (or inline them at the call). Assigning them to a plain `const` first widens `optional: true` to `boolean`, and `InferSchema` then marks every property required. The bundled examples show the pattern.
+- **Breaking:** `engines.node` raised from `>=20` to `>=24`. Installing on Node 20 or 22 no longer works.
+- `koffi` upgraded from `^2.15.1` to `^3.1.5`. This is the runtime FFI dependency, and its marshalling of null C strings differs from 2.x — see the streaming fix above.
+- Development toolchain moved to TypeScript 7 (`@typescript/native`, with 6.0.2 available as `tsc6`), `openai` 7, `@types/node` 26, and ESLint 10.
+- Building the dylib from source now requires **Xcode 26.4+**, the first SDK that declares `SystemLanguageModel.contextSize`. The bundled prebuilt library is unaffected.
+- `generable()` array properties now use compound type names (`"array<string>"`, `"array<Name>"`) matching the Python SDK's C bridge convention
+- `GenerationSchema.property()` rejects bare `"array"` type — use compound form like `"array<string>"` or use `generable()` for automatic type resolution
+- Prettier scope widened from `src/` to entire repo (excluding `*.md`); added `.prettierignore`
+- Standardized "Apple Foundation Models" terminology (dropped possessive "'s") across docs and config
+- README license section rewritten with copyright notice and Apple trademark disclaimer
+- `docs/tsconfig.json` added for VitePress theme type checking
+- CSS: added `.VPHero .tagline` max-width constraints for responsive layout
 
 ## [0.3.1] - 2026-03-12
 
@@ -121,7 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- TypeScript/Node.js bindings for Apple's Foundation Models framework via koffi FFI
+- TypeScript/Node.js bindings for Apple Foundation Models framework via koffi FFI
 - `SystemLanguageModel` class with availability checks and `waitUntilAvailable()`
 - `LanguageModelSession` with `respond()`, `streamResponse()`, and `respondWithJsonSchema()` for text, streaming, and structured generation
 - `GenerationSchema` and `GenerationSchemaProperty` for typed structured output with generation guides
@@ -133,7 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
-[Unreleased]: https://github.com/codybrom/tsfm/compare/v0.3.1...HEAD
+[0.4.0]: https://github.com/codybrom/tsfm/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/codybrom/tsfm/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/codybrom/tsfm/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/codybrom/tsfm/compare/v0.2.2...v0.2.3

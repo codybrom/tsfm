@@ -81,6 +81,20 @@ tool.dispose();
 
 Tools can be reused across sessions — just dispose after all sessions are done.
 
+## `onCall` Callback
+
+Tools support an optional `onCall` callback that fires at the start of each invocation, before `call()` runs. Use it for UI indicators or logging:
+
+```ts
+const tool = new WeatherTool();
+tool.onCall = (name, args) => {
+  console.log(`Tool invoked: ${name}`, args);
+  // e.g. show a spinner, log to analytics, etc.
+};
+```
+
+The callback receives the tool name and the parsed arguments object. It is best-effort — if it throws, the tool call still proceeds.
+
 ## Best Practices
 
 The Foundation Model [`Tool` documentation](https://developer.apple.com/documentation/foundationmodels/tool) recommends:

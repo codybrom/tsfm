@@ -14,4 +14,7 @@ Runnable examples demonstrating each feature of the SDK. All examples are in the
 | [Generation Options](/examples/generation-options) | Temperature, sampling, token limits |
 | [Transcripts](/examples/transcript) | Session history persistence |
 | [Content Tagging](/examples/content-tagging) | Content tagging use case |
+| [Contact Card](/examples/contact-card) | Nested `generable()` schemas, GenerationGuide constraints, `prewarm()` |
+| [Journal](/examples/journal) | Tool subclasses, `onCall` callback, `generable()`, streaming, transcript persistence |
+| [Email Triage](/examples/email-triage) | JSON Schema, streaming drafts, per-call generation options, tools |
 | [Chat & Responses APIs](/examples/chat-api) | Chat-style and Responses-style API interface |

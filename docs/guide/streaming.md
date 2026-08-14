@@ -66,6 +66,38 @@ for await (const chunk of stream) {
 client.close();
 ```
 
+## Early Break
+
+You can `break` out of a stream at any time. The SDK automatically resets the session so subsequent calls work correctly:
+
+```ts
+for await (const chunk of session.streamResponse("Write a long essay")) {
+  process.stdout.write(chunk);
+  if (chunk.includes("conclusion")) break; // safe — session is reset internally
+}
+
+// The session is still usable
+const next = await session.respond("Summarize what you said");
+```
+
+## Cancellation
+
+Call `session.cancel()` to stop a stream mid-generation. The stream iterator will terminate on the next iteration:
+
+```ts
+// From another context (e.g. a timeout or user action)
+setTimeout(() => session.cancel(), 5000);
+
+for await (const chunk of session.streamResponse("Write a long essay")) {
+  process.stdout.write(chunk);
+}
+// Loop exits after cancel() fires — session is still usable
+```
+
+::: tip
+If the stream stalls during a tool call (no new tokens for 30 seconds), an internal idle timeout terminates the stream with an error rather than hanging indefinitely.
+:::
+
 ## Cleanup
 
 The stream reference is released automatically when iteration completes or the session is disposed. The SDK keeps the Node.js event loop alive while streaming, so the process won't exit mid-stream.

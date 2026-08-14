@@ -1,0 +1,37 @@
+[
+  {
+    "id": "msg-001",
+    "from": "Lisa Park <lisa.park@designteam.co>",
+    "subject": "Urgent: Brand assets needed for tomorrow's client deck",
+    "date": "2026-03-30T09:14:00Z",
+    "body": "Hey — the Acme client presentation is tomorrow at 10am and I just realized we don't have the updated logo files in the shared drive. Can you upload the SVG and PNG versions to the Brand Assets folder by end of day? The old ones have the wrong color palette. Thanks!"
+  },
+  {
+    "id": "msg-002",
+    "from": "GitHub <notifications@github.com>",
+    "subject": "[acme/dashboard] PR #347: Fix timezone offset in date picker",
+    "date": "2026-03-30T08:22:00Z",
+    "body": "mrodriguez requested your review on PR #347. Changes: Updated DatePicker component to use UTC offset instead of local timezone. 3 files changed, 12 insertions, 4 deletions. CI: all checks passed."
+  },
+  {
+    "id": "msg-003",
+    "from": "Jordan Mills <jordan@startup.io>",
+    "subject": "Coffee next week?",
+    "date": "2026-03-29T17:45:00Z",
+    "body": "Hey! It's been ages. I'm going to be in town Tuesday through Thursday next week. Want to grab coffee? I'm pretty flexible on timing. Would love to catch up and hear what you've been working on."
+  },
+  {
+    "id": "msg-004",
+    "from": "Notion <team@notify.notion.so>",
+    "subject": "Your weekly workspace digest",
+    "date": "2026-03-30T06:00:00Z",
+    "body": "Here's what happened in your workspace this week: 14 pages edited, 3 new databases created, 2 comments awaiting your reply. Top contributors: You (8 edits), Alex (4 edits), Sam (2 edits). View your workspace activity."
+  },
+  {
+    "id": "msg-005",
+    "from": "Elena Vasquez <elena.v@company.com>",
+    "subject": "Q2 planning: need your capacity estimate by Wednesday",
+    "date": "2026-03-30T10:30:00Z",
+    "body": "Hi — I'm pulling together the Q2 resource plan and need each team lead to submit their capacity estimate by Wednesday EOD. Please include: headcount, planned PTO, and any known blockers. Use the template I shared last quarter (link in the planning doc). Let me know if you have questions."
+  }
+]

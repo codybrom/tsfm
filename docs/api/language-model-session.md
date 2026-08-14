@@ -25,17 +25,50 @@ new LanguageModelSession(options?: {
 Generate a text response.
 
 ```ts
-respond(prompt: string, options?: {
+respond(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
 }): Promise<string>
 ```
+
+### Prompt attachments <Badge type="warning" text="macOS 27" />
+
+Every method that takes a prompt accepts either a string or `PromptInput`:
+
+```ts
+interface PromptInput {
+  text: string;
+  attachments?: { path: string; label?: string }[];
+}
+
+await session.respond({
+  text: "What is in this picture?",
+  attachments: [{ path: "/tmp/chart.png", label: "quarterly chart" }],
+});
+```
+
+Attachments require **macOS 27** at runtime, and a native library built against
+the macOS 27 SDK. The bundled library is built on macOS 26, so today every
+attachment is rejected with a `PromptAttachmentError`:
+
+```ts
+try {
+  await session.respond({ text: "…", attachments: [{ path: "/tmp/a.png" }] });
+} catch (err) {
+  if (err instanceof PromptAttachmentError) {
+    err.reason; // "unsupported-sdk" | "unsupported-os" | "unknown"
+  }
+}
+```
+
+Rebuilding on an Xcode that ships the macOS 27 SDK enables them with no code
+change. Plain string prompts are unaffected.
 
 ### `respondWithSchema()`
 
 Generate structured output matching a `GenerationSchema`.
 
 ```ts
-respondWithSchema(prompt: string, schema: GenerationSchema, options?: {
+respondWithSchema(prompt: string | PromptInput, schema: GenerationSchema, options?: {
   options?: GenerationOptions
 }): Promise<GeneratedContent>
 ```
@@ -47,7 +80,7 @@ Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with typ
 Generate structured output from a JSON Schema object.
 
 ```ts
-respondWithJsonSchema(prompt: string, schema: object, options?: {
+respondWithJsonSchema(prompt: string | PromptInput, schema: object, options?: {
   options?: GenerationOptions
 }): Promise<GeneratedContent>
 ```
@@ -59,12 +92,30 @@ Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with `to
 Stream a response token-by-token.
 
 ```ts
-streamResponse(prompt: string, options?: {
+streamResponse(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
 }): AsyncIterable<string>
 ```
 
 Each yielded string contains only the new tokens since the last iteration.
+
+### `prewarm()`
+
+Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget — the prewarm runs in the background on the native side.
+
+```ts
+prewarm(promptPrefix?: string): void
+```
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `promptPrefix` | `undefined` | Text the model should expect at the start of the first prompt |
+
+```ts
+const session = new LanguageModelSession({ instructions: "You are a helpful assistant." });
+session.prewarm("Translate the following");
+// ... later, the first respond() call will be faster
+```
 
 ### `cancel()`
 
@@ -76,10 +127,23 @@ cancel(): void
 
 ### `dispose()`
 
-Release the native session. Access `transcript` before calling this.
+Release session resources. Access `transcript` before calling this. Safe to call multiple times.
 
 ```ts
 dispose(): void
+```
+
+After disposal:
+
+- `respond()`, `respondWithSchema()`, `respondWithJsonSchema()`, and `streamResponse()` throw `FoundationModelsError`
+- `prewarm()`, `cancel()`, and `isResponding` are silent no-ops
+
+Also supports `Symbol.dispose` for use with TC39 Explicit Resource Management:
+
+```ts
+using session = new LanguageModelSession();
+const reply = await session.respond("Hello");
+// session is released when the block exits
 ```
 
 ## Properties

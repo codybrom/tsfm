@@ -41,18 +41,73 @@ export interface TranscriptEntry {
   toolCallID?: string;
 }
 
+const _transcriptRegistry = new FinalizationRegistry((pointer: NativePointer) => {
+  try {
+    getFunctions().FMRelease(pointer);
+  } catch (err) {
+    console.warn("[tsfm] Transcript cleanup via FinalizationRegistry failed:", err);
+  }
+});
+
 export class Transcript {
   /** @internal raw session pointer — backs the live session's native handle */
   _nativeSession: NativePointer;
 
+  /**
+   * Whether this instance owns its C object.
+   *
+   * Instances handed a live session's pointer do not: `LanguageModelSession`
+   * releases that pointer, and releasing it here as well would be a double
+   * free. Only the standalone objects from `fromJson()` / `fromDict()` are
+   * this instance's to free.
+   */
+  private _owned: boolean;
+
+  private _disposed = false;
+
   /** @internal */
-  constructor(sessionPointer: NativePointer) {
+  constructor(sessionPointer: NativePointer, owned = false) {
     this._nativeSession = sessionPointer;
+    this._owned = owned;
+    if (owned) _transcriptRegistry.register(this, sessionPointer, this);
+  }
+
+  private _assertNotDisposed(): void {
+    if (this._disposed) {
+      throw new FoundationModelsError("Transcript has been disposed");
+    }
+  }
+
+  /** @internal Release the C object this instance owns, if any. */
+  private _releaseIfOwned(): void {
+    if (!this._owned) return;
+    _transcriptRegistry.unregister(this);
+    getFunctions().FMRelease(this._nativeSession);
+    this._owned = false;
   }
 
   /** @internal Update the native session after fromTranscript(). */
   _updateNativeSession(pointer: NativePointer): void {
+    // fromTranscript() repoints this instance at the session it just built.
+    // Release the deserialized object first, or it is orphaned with no handle
+    // left to free it. The session owns the incoming pointer, not this class.
+    this._releaseIfOwned();
     this._nativeSession = pointer;
+  }
+
+  /**
+   * Release the C object backing a standalone transcript. Safe to call more
+   * than once, and a no-op for transcripts backed by a live session, which
+   * `LanguageModelSession.dispose()` frees instead.
+   */
+  dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
+    this._releaseIfOwned();
+  }
+
+  [Symbol.dispose](): void {
+    this.dispose();
   }
 
   /**
@@ -68,11 +123,12 @@ export class Transcript {
    * safe to use after the originating session is disposed.
    */
   toJson(): string {
+    this._assertNotDisposed();
     const pointer = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(
       this._nativeSession,
       null,
       null,
-    );
+    ) as NativePointer | null;
     const json = decodeAndFreeString(pointer);
     if (!json) throw new FoundationModelsError("Failed to export transcript");
     return json;
@@ -80,25 +136,34 @@ export class Transcript {
 
   /** Export the transcript as a parsed dictionary (mirrors Python's Transcript.to_dict()). */
   toDict(): JsonObject {
-    return JSON.parse(this.toJson());
+    const json = this.toJson();
+    try {
+      return JSON.parse(json);
+    } catch {
+      throw new FoundationModelsError(`Failed to parse transcript JSON: ${json.slice(0, 200)}`);
+    }
   }
 
   /** Return the typed transcript entries from the native JSON. */
   entries(): TranscriptEntry[] {
-    const data = JSON.parse(this.toJson());
-    const entries = data?.transcript?.entries;
-    return Array.isArray(entries) ? entries : [];
+    const data = this.toDict();
+    const entries = (data as { transcript?: { entries?: unknown[] } })?.transcript?.entries;
+    return Array.isArray(entries) ? (entries as TranscriptEntry[]) : [];
   }
 
   /** Deserialize a previously exported transcript JSON string. */
   static fromJson(json: string): Transcript {
     const fn = getFunctions();
     const errorCode = [0];
-    const pointer = fn.FMTranscriptCreateFromJSONString(json, errorCode, null);
+    const pointer = fn.FMTranscriptCreateFromJSONString(
+      json,
+      errorCode,
+      null,
+    ) as NativePointer | null;
     if (!pointer) {
       throw statusToError(errorCode[0], "Failed to deserialize transcript");
     }
-    return new Transcript(pointer);
+    return new Transcript(pointer, true);
   }
 
   /** Deserialize a transcript from a dictionary (mirrors Python's Transcript.from_dict()). */

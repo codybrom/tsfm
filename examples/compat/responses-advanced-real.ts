@@ -58,7 +58,8 @@ console.log();
 console.log("=== Nested structured output ===");
 const nested = await client.responses.create({
   model: MODEL,
-  input: "Extract: The Acme Corp team has Alice (engineer, 28) and Bob (designer, 35). They are in Seattle.",
+  input:
+    "Extract: The Acme Corp team has Alice (engineer, 28) and Bob (designer, 35). They are in Seattle.",
   text: {
     format: {
       type: "json_schema",
@@ -102,6 +103,7 @@ console.log("=== Multi-tool selection ===");
 const tools = [
   {
     type: "function" as const,
+    strict: null,
     name: "get_weather",
     description: "Get current weather for a city",
     parameters: {
@@ -114,6 +116,7 @@ const tools = [
   },
   {
     type: "function" as const,
+    strict: null,
     name: "get_stock_price",
     description: "Get current stock price for a ticker symbol",
     parameters: {
@@ -126,6 +129,7 @@ const tools = [
   },
   {
     type: "function" as const,
+    strict: null,
     name: "translate",
     description: "Translate text to another language",
     parameters: {
@@ -183,7 +187,11 @@ if (translateCall && translateCall.type === "function_call") {
       {
         type: "function_call_output",
         call_id: translateCall.call_id,
-        output: JSON.stringify({ translated_text: "おはようございます", source: "en", target: "ja" }),
+        output: JSON.stringify({
+          translated_text: "おはようございます",
+          source: "en",
+          target: "ja",
+        }),
       },
     ],
     tools,

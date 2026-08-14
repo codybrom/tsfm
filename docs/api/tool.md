@@ -26,15 +26,16 @@ abstract class Tool {
 
 ### `onCall`
 
-Optional callback fired at the start of each tool invocation, before `call()` runs. Useful for showing UI indicators (e.g. "Using tool: search") while the model waits for the tool result.
+Optional callback fired at the start of each tool invocation, before `call()` runs. Receives the tool name and the parsed arguments the model supplied. Useful for logging or showing UI indicators while the model waits for the tool result.
 
 ```ts
-onCall?: (toolName: string) => void;
+onCall?: (toolName: string, args: Record<string, unknown>) => void;
 ```
 
 ```ts
 const tool = new WeatherTool();
-tool.onCall = (name) => console.log(`Tool invoked: ${name}`);
+tool.onCall = (name, args) => console.log(`Tool invoked: ${name}`, args);
+// Tool invoked: get_weather { city: "Tokyo", units: "celsius" }
 ```
 
 ## Methods

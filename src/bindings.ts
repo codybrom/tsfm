@@ -20,7 +20,11 @@ function findDylib(): string {
   for (const p of candidates) {
     if (existsSync(p)) return p;
   }
-  return candidates[0]; // let koffi produce the real error
+  throw new Error(
+    `Could not find libFoundationModels.dylib.\n` +
+      `Searched:\n${candidates.map((c) => `  - ${c}`).join("\n")}\n` +
+      `Run 'npm run build' to compile the native library. Requires macOS 26+, Xcode 26+.`,
+  );
 }
 
 let _lib: ReturnType<typeof koffi.load> | null = null;
@@ -57,6 +61,14 @@ export const ResponseCallbackProto = koffi.proto("ResponseCallback", "void", [
 export const StructuredResponseCallbackProto = koffi.proto("StructuredResponseCallback", "void", [
   "int",
   "void *",
+  "void *",
+]);
+
+// void (*)(int status, int tokenCount, const char *errorDescription, void *userInfo)
+export const TokenCountCallbackProto = koffi.proto("TokenCountCallback", "void", [
+  "int",
+  "int",
+  "str",
   "void *",
 ]);
 
@@ -100,22 +112,53 @@ function defineFunctions() {
     ),
     FMLanguageModelSessionReset: fn("void FMLanguageModelSessionReset(void * session)"),
 
+    // --- Token counting ---
+    // Each dispatches asynchronously and reports through the callback. The
+    // returned task must be released, and may be cancelled with FMTaskCancel.
+    FMSystemLanguageModelTokenCountForPrompt: fn(
+      "void * FMSystemLanguageModelTokenCountForPrompt(void * model, void * composedPrompt, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForInstructions: fn(
+      "void * FMSystemLanguageModelTokenCountForInstructions(void * model, str instructions, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForTools: fn(
+      "void * FMSystemLanguageModelTokenCountForTools(void * model, void * * tools, int toolCount, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForSchema: fn(
+      "void * FMSystemLanguageModelTokenCountForSchema(void * model, void * schema, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMSystemLanguageModelTokenCountForTranscript: fn(
+      "void * FMSystemLanguageModelTokenCountForTranscript(void * model, void * transcriptSession, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMTaskCancel: fn("void FMTaskCancel(void * task)"),
+
+    // --- Prompt construction ---
+    // FMComposedPromptInitialize returns a +1 reference; every path that builds
+    // one must FMRelease it, including error and early-exit paths.
+    FMComposedPromptInitialize: fn("void * FMComposedPromptInitialize()"),
+    FMComposedPromptAddText: fn("void FMComposedPromptAddText(void * composedPrompt, str text)"),
+    // Attachment support is compiled behind FM_HAS_MACOS_27_SDK and gated on a
+    // macOS 27 runtime, so on a 26.x build this always reports UnsupportedSDK.
+    FMComposedPromptAddAttachment: fn(
+      "bool FMComposedPromptAddAttachment(void * composedPrompt, str imagePath, str label, _Out_ int * outError)",
+    ),
+
     // --- Text generation ---
     FMLanguageModelSessionRespond: fn(
-      "void * FMLanguageModelSessionRespond(void * session, str prompt, str optionsJSON, void * userInfo, ResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespond(void * session, void * composedPrompt, str optionsJSON, void * userInfo, ResponseCallback * callback)",
     ),
 
     // --- Structured generation ---
     FMLanguageModelSessionRespondWithSchema: fn(
-      "void * FMLanguageModelSessionRespondWithSchema(void * session, str prompt, void * schema, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchema(void * session, void * composedPrompt, void * schema, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
     FMLanguageModelSessionRespondWithSchemaFromJSON: fn(
-      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, str prompt, str schemaJSON, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, void * composedPrompt, str schemaJSON, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
 
     // --- Streaming ---
     FMLanguageModelSessionStreamResponse: fn(
-      "void * FMLanguageModelSessionStreamResponse(void * session, str prompt, str optionsJSON)",
+      "void * FMLanguageModelSessionStreamResponse(void * session, void * composedPrompt, str optionsJSON)",
     ),
     FMLanguageModelSessionResponseStreamIterate: fn(
       "void FMLanguageModelSessionResponseStreamIterate(void * stream, void * userInfo, ResponseCallback * callback)",
@@ -189,7 +232,26 @@ function defineFunctions() {
     ),
 
     // --- Task ---
-    FMTaskCancel: fn("void FMTaskCancel(void * task)"),
+
+    // --- tsfm extensions (not in Apple's C bridge) ---
+    FMSystemLanguageModelGetContextSize: fn(
+      "int FMSystemLanguageModelGetContextSize(void * model)",
+    ),
+
+    // macOS 26.4+ runtime only — uncomment when targeting 26.4+
+    // FMSystemLanguageModelGetTokenCount: fn(
+    //   "int FMSystemLanguageModelGetTokenCount(void * model, str text)",
+    // ),
+
+    FMSystemLanguageModelGetSupportedLanguages: fn(
+      "void * FMSystemLanguageModelGetSupportedLanguages(void * model)",
+    ),
+    FMSystemLanguageModelSupportsLocale: fn(
+      "bool FMSystemLanguageModelSupportsLocale(void * model, str localeIdentifier)",
+    ),
+    FMLanguageModelSessionPrewarm: fn(
+      "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
+    ),
 
     // --- Memory ---
     // FMRetain: fn("void FMRetain(void * object)"),
@@ -231,15 +293,26 @@ export function unregisterCallback(callback: KoffiCallback): void {
   koffi.unregister(callback);
 }
 
-export function decodeAndFreeString(pointer: NativePointer | null): string | null {
+/**
+ * Decode a null-terminated C string from a raw pointer without freeing it.
+ * Returns null if the pointer is null.
+ *
+ * Use this for callback parameters where the C side owns the memory.
+ */
+export function decodeString(pointer: NativePointer | null): string | null {
   if (!pointer) return null;
   // 'char *' would treat pointer as char** (pointer-to-pointer) and segfault.
   // 'char' with -1 reads the null-terminated byte sequence at pointer directly.
   // koffi may return a string or an array of char codes depending on version;
   // we handle both and re-encode via TextDecoder to preserve UTF-8.
   const raw = koffi.decode(pointer, "char", -1);
-  getFunctions().FMFreeString(pointer);
   if (typeof raw === "string") return raw;
   const codes: number[] = raw;
   return new TextDecoder("utf-8").decode(new Uint8Array(codes.map((c) => c & 0xff)));
+}
+
+export function decodeAndFreeString(pointer: NativePointer | null): string | null {
+  const str = decodeString(pointer);
+  if (pointer) getFunctions().FMFreeString(pointer);
+  return str;
 }

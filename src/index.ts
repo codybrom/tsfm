@@ -7,6 +7,7 @@ export {
 } from "./core.js";
 
 export { LanguageModelSession } from "./session.js";
+export { type PromptInput, type PromptAttachment } from "./prompt.js";
 
 export {
   Transcript,
@@ -24,7 +25,12 @@ export {
   GenerationGuide,
   GuideType,
   GeneratedContent,
+  generable,
+  type Generable,
+  type PropertyDef,
+  type InferSchema,
   type PropertyType,
+  type NativeTypeName,
   type JsonSchema,
   type JsonObject,
 } from "./schema.js";
@@ -49,4 +55,6 @@ export {
   InvalidGenerationSchemaError,
   ServiceCrashedError,
   ToolCallError,
+  PromptAttachmentError,
+  type PromptAttachmentFailure,
 } from "./errors.js";

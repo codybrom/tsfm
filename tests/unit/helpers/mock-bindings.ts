@@ -9,6 +9,19 @@ export function createMockFunctions() {
       return true;
     }),
 
+    // Prompt construction
+    FMComposedPromptInitialize: vi.fn((): string => "mock-composed-prompt"),
+    FMComposedPromptAddText: vi.fn(),
+    FMComposedPromptAddAttachment: vi.fn((..._args: unknown[]): boolean => true),
+
+    // Token counting
+    FMSystemLanguageModelTokenCountForPrompt: vi.fn((): string => "mock-token-task"),
+    FMSystemLanguageModelTokenCountForInstructions: vi.fn((): string => "mock-token-task"),
+    FMSystemLanguageModelTokenCountForTools: vi.fn((): string => "mock-token-task"),
+    FMSystemLanguageModelTokenCountForSchema: vi.fn((): string => "mock-token-task"),
+    FMSystemLanguageModelTokenCountForTranscript: vi.fn((): string => "mock-token-task"),
+    FMTaskCancel: vi.fn(),
+
     // Session creation
     FMLanguageModelSessionCreateFromSystemLanguageModel: vi.fn(
       (): string | null => "mock-session-pointer",
@@ -36,7 +49,9 @@ export function createMockFunctions() {
 
     // Transcript
     FMLanguageModelSessionGetTranscriptJSONString: vi.fn(() => "mock-json-pointer"),
-    FMTranscriptCreateFromJSONString: vi.fn((_json: string): string | null => "mock-transcript-pointer"),
+    FMTranscriptCreateFromJSONString: vi.fn(
+      (_json: string): string | null => "mock-transcript-pointer",
+    ),
 
     // GenerationSchema
     FMGenerationSchemaCreate: vi.fn(() => "mock-schema-pointer"),
@@ -66,7 +81,13 @@ export function createMockFunctions() {
     FMBridgedToolFinishCall: vi.fn(),
 
     // Task
-    FMTaskCancel: vi.fn(),
+
+    // tsfm extensions
+    FMSystemLanguageModelGetContextSize: vi.fn(() => 4096),
+    FMSystemLanguageModelGetSupportedLanguages: vi.fn(() => null),
+    FMSystemLanguageModelSupportsLocale: vi.fn(() => true),
+    FMSystemLanguageModelGetTokenCount: vi.fn(() => 10),
+    FMLanguageModelSessionPrewarm: vi.fn(),
 
     // Memory
     FMRelease: vi.fn(),

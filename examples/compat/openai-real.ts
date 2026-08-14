@@ -81,8 +81,9 @@ const structured = await client.chat.completions.create({
     },
   },
 });
-console.log("Response:", structured.choices[0].message.content);
-console.log("Parsed:", JSON.parse(structured.choices[0].message.content!));
+const structuredContent = structured.choices[0].message.content;
+console.log("Response:", structuredContent);
+console.log("Parsed:", structuredContent ? JSON.parse(structuredContent) : null);
 console.log();
 
 // ---------------------------------------------------------------------------

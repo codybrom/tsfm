@@ -1,6 +1,13 @@
 import { defineConfig } from "vitest/config";
+import { resolve } from "node:path";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "tsfm-sdk/chat": resolve(__dirname, "src/compat/index.js"),
+      "tsfm-sdk": resolve(__dirname, "src/index.js"),
+    },
+  },
   test: {
     coverage: {
       include: ["src/**"],

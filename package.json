@@ -1,7 +1,7 @@
 {
   "name": "tsfm-sdk",
-  "version": "0.3.1",
-  "description": "Unofficial TypeScript bindings for Apple's Foundation Models framework (Apple Intelligence on-device LLM)",
+  "version": "0.4.0",
+  "description": "Unofficial TypeScript bindings for Apple Foundation Models framework (Apple Intelligence on-device LLM)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,13 +17,13 @@
     }
   },
   "scripts": {
-    "build": "bash scripts/build-native.sh && tsc",
+    "build": "bash scripts/build-native.sh && tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
-    "dev": "tsc --watch",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "format": "prettier --write src/",
-    "format:check": "prettier --check src/",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "lint": "eslint src/ tests/ examples/ scripts/",
+    "lint:fix": "eslint src/ tests/ examples/ scripts/ --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
@@ -40,26 +40,32 @@
     "NOTICE"
   ],
   "dependencies": {
-    "koffi": "^2.15.1"
+    "koffi": "^3.1.5"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.0.18",
-    "eslint": "^9.39.4",
-    "openai": "^6.27.0",
-    "prettier": "^3.8.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.1",
-    "vitest": "^4.0.18"
+    "@types/node": "^26.2.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^10.8.1",
+    "openai": "^7.4.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.12",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.0.0"
   },
   "os": [
     "darwin"
   ],
   "cpu": [
     "arm64"
-  ]
+  ],
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "koffi@3.1.5": true,
+    "esbuild@0.28.2": true
+  }
 }

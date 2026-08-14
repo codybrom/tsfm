@@ -1,7 +1,13 @@
 <template>
   <div class="site-footer">
-    <p>Released under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache 2.0 License</a></p>
-    <p>Built by <a href="https://github.com/codybrom" target="_blank">Cody Bromley</a> •  Not affiliated with Apple Inc.</p>
+    <p>
+      Released under the
+      <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache 2.0 License</a>
+    </p>
+    <p>
+      Built by <a href="https://github.com/codybrom" target="_blank">Cody Bromley</a> • Not
+      affiliated with Apple Inc.
+    </p>
   </div>
 </template>
 
@@ -26,7 +32,9 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   text-decoration-color: var(--vp-c-divider);
-  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+  transition:
+    color 0.2s ease,
+    text-decoration-color 0.2s ease;
 }
 
 .site-footer a:hover {

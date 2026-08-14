@@ -31,6 +31,13 @@ vi.mock("koffi", () => ({
 
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
+  decodeString: vi.fn((pointer: unknown) => {
+    if (!pointer) return null;
+    // In tests, callbacks receive plain strings as mock pointers —
+    // pass them through so existing assertions work unchanged.
+    if (typeof pointer === "string") return pointer;
+    return null;
+  }),
   decodeAndFreeString: vi.fn((pointer: unknown) => {
     if (!pointer) return null;
     return '{"key":"value"}';
@@ -91,6 +98,137 @@ describe("LanguageModelSession", () => {
       const session = new LanguageModelSession();
       session.dispose();
       expect(session.isResponding).toBe(false);
+    });
+  });
+
+  describe('streaming a literal "null" response', () => {
+    it("yields it instead of discarding it as an artifact", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("Reply with exactly: null");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "null", 4, null);
+        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(chunks.join("")).toBe("null");
+    });
+
+    it("still yields text that merely starts with null", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("x");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "null", 4, null);
+        queueMicrotask(() => {
+          lastRegisteredCallback?.(0, "null and void", 13, null);
+          queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+        });
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(chunks.join("")).toBe("null and void");
+    });
+  });
+
+  describe("prompt attachments", () => {
+    it("adds an attachment with its label", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond({
+        text: "What is this?",
+        attachments: [{ path: "/tmp/a.jpg", label: "diagram" }],
+      });
+      queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
+      await promise;
+
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "What is this?",
+      );
+      expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "/tmp/a.jpg",
+        "diagram",
+        expect.anything(),
+      );
+    });
+
+    it("passes null for an attachment with no label", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] });
+      queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
+      await promise;
+      expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "/tmp/a.jpg",
+        null,
+        expect.anything(),
+      );
+    });
+
+    it("reports why the bridge refused the attachment", async () => {
+      // 2 = FMComposedPromptAddImageErrorUnsupportedSDK, which is what a
+      // dylib built without the macOS 27 SDK always returns.
+      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
+        (_args[3] as number[])[0] = 2;
+        return false;
+      });
+      const session = new LanguageModelSession();
+      await expect(
+        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
+      ).rejects.toThrow(/macOS 27/i);
+    });
+
+    it("releases the composed prompt when an attachment is refused", async () => {
+      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
+        (_args[3] as number[])[0] = 1;
+        return false;
+      });
+      const session = new LanguageModelSession();
+      await expect(
+        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
+      ).rejects.toThrow();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+  });
+
+  describe("composed prompt lifetime", () => {
+    it("passes the prompt text through a composed prompt, not as a string", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(0, "hi", 2, null));
+      await promise;
+
+      expect(mockFns.FMComposedPromptInitialize).toHaveBeenCalled();
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+      expect(mockFns.FMLanguageModelSessionRespond.mock.calls[0][1]).toBe("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt after the response resolves", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(0, "hi", 2, null));
+      await promise;
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt when the response fails", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hello");
+      queueMicrotask(() => lastRegisteredCallback?.(7, "boom", 4, null));
+      await expect(promise).rejects.toThrow();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+
+    it("releases the composed prompt when the stream ends", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("Hello");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "chunk", 5, null);
+        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
     });
   });
 
@@ -318,9 +456,13 @@ describe("LanguageModelSession", () => {
         options: { temperature: 0.5 },
       });
 
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "Describe",
+      );
       expect(mockFns.FMLanguageModelSessionRespondWithSchema).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Describe",
+        "mock-composed-prompt",
         "mock-schema-pointer",
         JSON.stringify({ temperature: 0.5 }),
         null,
@@ -479,9 +621,13 @@ describe("LanguageModelSession", () => {
         { options: { maximumResponseTokens: 100 } },
       );
 
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "Extract",
+      );
       expect(mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Extract",
+        "mock-composed-prompt",
         expect.any(String),
         JSON.stringify({ maximum_response_tokens: 100 }),
         null,
@@ -647,9 +793,10 @@ describe("LanguageModelSession", () => {
       })) {
         // drain
       }
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hi");
       expect(mockFns.FMLanguageModelSessionStreamResponse).toHaveBeenCalledWith(
         "mock-session-pointer",
-        "Hi",
+        "mock-composed-prompt",
         JSON.stringify({ temperature: 0.8 }),
       );
     });
@@ -759,16 +906,15 @@ describe("LanguageModelSession", () => {
     it("serializes concurrent respond calls", async () => {
       const callOrder: number[] = [];
 
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(
-        (_pointer: unknown, prompt: unknown, _opts: unknown, _ui: unknown, _cbPointer: unknown) => {
-          const idx = prompt === "first" ? 1 : 2;
-          callOrder.push(idx);
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
-          }, 0);
-          return "mock-task-pointer";
-        },
-      );
+      mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
+        const text = mockFns.FMComposedPromptAddText.mock.calls.at(-1)?.[1];
+        const idx = text === "first" ? 1 : 2;
+        callOrder.push(idx);
+        setTimeout(() => {
+          lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
+        }, 0);
+        return "mock-task-pointer";
+      });
 
       const session = new LanguageModelSession();
       const [r1, r2] = await Promise.all([session.respond("first"), session.respond("second")]);
@@ -797,11 +943,248 @@ describe("LanguageModelSession", () => {
   });
 
   describe("transcript getter guard", () => {
+    it("returns transcript on initialized session", () => {
+      const session = new LanguageModelSession();
+      const transcript = session.transcript;
+      expect(transcript).toBeDefined();
+    });
+
     it("throws when transcript is accessed on uninitialized session", () => {
-      // Create session then null out internal transcript to test guard
       const session = new LanguageModelSession();
       (session as unknown as { _transcript: null })._transcript = null;
       expect(() => session.transcript).toThrow("Session not initialized");
+    });
+  });
+
+  describe("streaming early break reset", () => {
+    it("calls FMLanguageModelSessionReset on active session", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "Hello", 5, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      for await (const _chunk of session.streamResponse("Hi")) {
+        break;
+      }
+      expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
+    });
+
+    it("cancel() unblocks a waiting stream consumer", async () => {
+      // The callback never fires — the stream blocks until cancel() is called.
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
+
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+
+      // Schedule cancel() after the stream has started waiting.
+      setTimeout(() => session.cancel(), 10);
+
+      for await (const chunk of session.streamResponse("Hi")) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([]);
+    });
+
+    it("treats null pointer as end-of-stream signal", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, null, 0, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      for await (const chunk of session.streamResponse("Hi")) {
+        chunks.push(chunk);
+      }
+      expect(chunks).toEqual([]);
+    });
+
+    it("skips reset when session is already disposed", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
+        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "Hello", 5, null);
+          }, 0);
+        },
+      );
+
+      const session = new LanguageModelSession();
+      for await (const _chunk of session.streamResponse("Hi")) {
+        session.dispose();
+        break;
+      }
+      expect(mockFns.FMLanguageModelSessionReset).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("disposed session guard", () => {
+    it("respond throws on disposed session", async () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      await expect(session.respond("Hi")).rejects.toThrow("Session has been disposed");
+    });
+
+    it("respondWithSchema throws on disposed session", async () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      const mockSchema = { _nativeSchema: "mock-schema-pointer" };
+      await expect(session.respondWithSchema("Hi", mockSchema as never)).rejects.toThrow(
+        "Session has been disposed",
+      );
+    });
+
+    it("respondWithJsonSchema throws on disposed session", async () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      await expect(
+        session.respondWithJsonSchema("Hi", { type: "object", properties: {} }),
+      ).rejects.toThrow("Session has been disposed");
+    });
+
+    it("streamResponse throws on disposed session", async () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      const chunks: string[] = [];
+      try {
+        for await (const chunk of session.streamResponse("Hi")) {
+          chunks.push(chunk);
+        }
+        expect.unreachable("Should have thrown");
+      } catch (err) {
+        expect((err as Error).message).toContain("Session has been disposed");
+      }
+      expect(chunks).toEqual([]);
+    });
+
+    it("dispose is idempotent — second call is a no-op", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      // FMRelease should have been called once during the first dispose
+      const releaseCount = mockFns.FMRelease.mock.calls.length;
+      session.dispose(); // second call
+      expect(mockFns.FMRelease).toHaveBeenCalledTimes(releaseCount);
+    });
+
+    it("cancel is a no-op after dispose", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      expect(() => session.cancel()).not.toThrow();
+    });
+
+    it("prewarm is a no-op after dispose", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      expect(() => session.prewarm("test")).not.toThrow();
+      expect(mockFns.FMLanguageModelSessionPrewarm).not.toHaveBeenCalled();
+    });
+
+    it("isResponding returns false after dispose", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      expect(session.isResponding).toBe(false);
+    });
+  });
+
+  describe("queued request after dispose", () => {
+    it("respond rejects at execution time if disposed while queued", async () => {
+      // Verify the execution-time guard: even if the call-time check passes,
+      // the private _respondText check catches a mid-queue dispose.
+      // We simulate this by manually resolving the queue after dispose.
+      const session = new LanguageModelSession();
+
+      // Block the queue with a long-running first request that we control
+      let resolveBlocker!: () => void;
+      const blocker = new Promise<void>((r) => (resolveBlocker = r));
+      // Manually chain a blocker onto the queue so respond() waits
+      (session as unknown as { _queue: Promise<void> })._queue = blocker;
+
+      const second = session.respond("second");
+
+      // Dispose while second is waiting in the queue
+      session.dispose();
+
+      // Now unblock the queue — _respondText should hit the dispose guard
+      resolveBlocker();
+
+      await expect(second).rejects.toThrow("Session has been disposed");
+      // The C API should never have been called for the second request
+      expect(mockFns.FMLanguageModelSessionRespond).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("streamResponse setup failure does not stall queue", () => {
+    it("subsequent respond() succeeds after streamResponse setup throws", async () => {
+      const session = new LanguageModelSession();
+
+      // Make the native stream call throw to simulate a setup failure
+      mockFns.FMLanguageModelSessionStreamResponse.mockImplementationOnce(() => {
+        throw new Error("native stream setup failed");
+      });
+
+      // streamResponse should propagate the error
+      const chunks: string[] = [];
+      try {
+        for await (const chunk of session.streamResponse("Hi")) {
+          chunks.push(chunk);
+        }
+        expect.unreachable("Should have thrown");
+      } catch (err) {
+        expect((err as Error).message).toBe("native stream setup failed");
+      }
+
+      // The queue should NOT be stalled — a subsequent respond() must work.
+      // Set up a normal mock response.
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        (
+          _session: unknown,
+          _prompt: unknown,
+          _opts: unknown,
+          _ui: unknown,
+          _cbPointer: unknown,
+        ) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "response text", 13, null);
+          }, 0);
+          return "mock-task";
+        },
+      );
+
+      const result = await session.respond("Next prompt");
+      expect(result).toBe("response text");
+    });
+  });
+
+  describe("prewarm", () => {
+    it("calls C API with prompt prefix", () => {
+      const session = new LanguageModelSession();
+      session.prewarm("Hello");
+      expect(mockFns.FMLanguageModelSessionPrewarm).toHaveBeenCalledWith(
+        "mock-session-pointer",
+        "Hello",
+      );
+    });
+
+    it("passes null when no prompt prefix is provided", () => {
+      const session = new LanguageModelSession();
+      session.prewarm();
+      expect(mockFns.FMLanguageModelSessionPrewarm).toHaveBeenCalledWith(
+        "mock-session-pointer",
+        null,
+      );
+    });
+
+    it("is a no-op on a disposed session", () => {
+      const session = new LanguageModelSession();
+      session.dispose();
+      session.prewarm("Hello");
+      expect(mockFns.FMLanguageModelSessionPrewarm).not.toHaveBeenCalled();
     });
   });
 });

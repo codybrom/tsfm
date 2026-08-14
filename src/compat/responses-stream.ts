@@ -1,7 +1,11 @@
 import type { ResponseStreamEvent } from "./responses-types.js";
 
 const _streamRegistry = new FinalizationRegistry((cleanup: () => void) => {
-  cleanup();
+  try {
+    cleanup();
+  } catch (err) {
+    console.warn("[tsfm] ResponseStream cleanup via FinalizationRegistry failed:", err);
+  }
 });
 
 /**

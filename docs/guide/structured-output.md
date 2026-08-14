@@ -2,13 +2,82 @@
 
 When you provide a schema, the on-device model uses constrained sampling to guarantee its output matches your types and structure with no string parsing needed.
 
-::: info
-The **Swift** equivalents are the [`@Generable`](https://developer.apple.com/documentation/foundationmodels/generable) macro for compile-time schemas and [`DynamicGenerationSchema`](https://developer.apple.com/documentation/foundationmodels/dynamicgenerationschema) for runtime schemas. TSFM's `GenerationSchema` maps to the same underlying dictionary format.
-:::
-
 If you already have or prefer to use JSON Schema objects, you can use `respondWithJsonSchema` instead and the SDK will convert it at runtime.
 
 If you're unsure which schema format you should use, see [Picking a Schema Format](#picking-a-schema-format).
+
+## Declarative Schemas with `generable()`
+
+`generable()` defines a schema and gives you a typed `parse()` method in one step. No manual interface definition or per-field `value()` extraction needed.
+
+::: info
+The **Swift** equivalent is [`@Generable`](https://developer.apple.com/documentation/foundationmodels/generable), which generates a schema at compile time from a Swift struct.
+:::
+
+```ts
+import { generable, GenerationGuide, LanguageModelSession } from "tsfm-sdk";
+
+const MovieReview = generable("MovieReview", {
+  title: { type: "string", description: "Movie title" },
+  rating: { type: "integer", guides: [GenerationGuide.range(1, 5)] },
+  pros: { type: "array", items: { type: "string" }, guides: [GenerationGuide.maxItems(3)] },
+  seen: { type: "boolean" },
+});
+
+const session = new LanguageModelSession();
+const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+const review = MovieReview.parse(content);
+// review.title: string, review.rating: number, review.pros: string[], review.seen: boolean
+```
+
+### Nested Objects
+
+Use `type: "object"` with a `properties` map for nested structures:
+
+```ts
+const Team = generable("Team", {
+  name: { type: "string" },
+  lead: {
+    type: "object",
+    properties: {
+      name: { type: "string" },
+      role: { type: "string" },
+    },
+  },
+  members: {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        role: { type: "string" },
+      },
+    },
+  },
+});
+
+const content = await session.respondWithSchema("Describe a dev team", Team.schema);
+const team = Team.parse(content);
+// team.lead.name: string, team.members[0].role: string
+```
+
+### Optional Fields
+
+Mark properties as optional and the inferred type reflects it:
+
+```ts
+const Person = generable("Person", {
+  name: { type: "string" },
+  nickname: { type: "string", optional: true },
+});
+
+const person = Person.parse(content);
+// person.name: string, person.nickname: string | undefined
+```
+
+### When to Use `generable()` vs `GenerationSchema`
+
+`generable()` is syntactic sugar over `GenerationSchema`. Use it when you want type inference and a one-liner parse. Use `GenerationSchema` directly if you need to build schemas dynamically at runtime, add reference schemas manually, or need the chaining API.
 
 ## Defining a Schema (Native Format)
 
@@ -21,7 +90,7 @@ const schema = new GenerationSchema("Person", "A person profile")
     description: "Age in years",
     guides: [GenerationGuide.range(0, 120)],
   })
-  .property("tags", "array", {
+  .property("tags", "array<string>", {
     guides: [GenerationGuide.maxItems(5)],
     optional: true,
   });
@@ -29,7 +98,13 @@ const schema = new GenerationSchema("Person", "A person profile")
 
 ### Property Types
 
-`"string"` | `"integer"` | `"number"` | `"boolean"` | `"array"` | `"object"`
+Scalar types: `"string"` | `"integer"` | `"number"` | `"boolean"` | `"object"`
+
+Array types use a compound form: `"array<string>"` | `"array<integer>"` | `"array<number>"` | `"array<boolean>"` | `"array<SchemaName>"`
+
+::: warning
+Bare `"array"` is not accepted by `GenerationSchema.property()`. Use the compound form (e.g. `"array<string>"`) or use `generable()` which resolves array types automatically.
+:::
 
 ## Generation Guides
 
@@ -114,6 +189,24 @@ const person = content.toObject();
 ```
 
 The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
+
+`toObject()` returns `JsonObject` by default. Pass the shape your schema
+guarantees to get it typed, rather than asserting at the call site:
+
+```ts
+interface Person {
+  name: string;
+  age: number;
+  occupation: string;
+}
+
+const person = content.toObject<Person>();
+person.age; // number
+```
+
+The type argument is a claim about model output that guided generation
+enforces when the response is produced — it is not a runtime check, so it does
+not validate the JSON a second time.
 
 ## Picking a Schema Format
 

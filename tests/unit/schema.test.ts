@@ -16,6 +16,8 @@ import {
   GenerationSchema,
   GenerationSchemaProperty,
   afmSchemaFormat,
+  generable,
+  type JsonSchema,
 } from "../../src/schema.js";
 import type { NativePointer } from "../../src/bindings.js";
 
@@ -115,8 +117,8 @@ describe("afmSchemaFormat", () => {
   it("passes through falsy property values without recursing", () => {
     const result = afmSchemaFormat({
       type: "object",
-      properties: { empty: null as unknown as Record<string, unknown> },
-    });
+      properties: { empty: null },
+    } as JsonSchema);
     const props = result.properties as Record<string, unknown>;
     expect(props.empty).toBeNull();
   });
@@ -148,11 +150,11 @@ describe("afmSchemaFormat", () => {
           type: "object",
           properties: { name: { type: "string" } },
         },
-        Alias: "string" as unknown as Record<string, unknown>,
+        Alias: "string",
       },
       type: "object",
       properties: {},
-    });
+    } as JsonSchema);
     const defs = result.$defs as Record<string, unknown>;
     expect(defs.Alias).toBe("string");
   });
@@ -424,6 +426,24 @@ describe("GenerationSchema", () => {
     expect(schema._nativeSchema).toBe("mock-schema-pointer");
   });
 
+  it("property() accepts compound array type names", () => {
+    const schema = new GenerationSchema("Test");
+    schema.property("tags", "array<string>");
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "tags",
+      null,
+      "array<string>",
+      false,
+    );
+  });
+
+  it("property() rejects bare 'array' type", () => {
+    const schema = new GenerationSchema("Test");
+    expect(() => schema.property("items", "array")).toThrow(
+      'Bare "array" type is not supported by the C bridge',
+    );
+  });
+
   it("addReferenceSchema calls FFI", () => {
     const schema = new GenerationSchema("Main");
     const ref = new GenerationSchema("Ref");
@@ -545,5 +565,226 @@ describe("GeneratedContent", () => {
     expect(() => content.value("nonexistent")).toThrow(
       "Property 'nonexistent' not found in generated content",
     );
+  });
+
+  describe("dispose", () => {
+    it("releases native pointer", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-content");
+      expect(content._nativeContent).toBeNull();
+    });
+
+    it("is safe to call twice", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content.dispose();
+      content.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledTimes(1);
+    });
+
+    it("Symbol.dispose delegates to dispose", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content[Symbol.dispose]();
+      expect(content._nativeContent).toBeNull();
+    });
+
+    it("toJson throws after dispose", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content.dispose();
+      expect(() => content.toJson()).toThrow("GeneratedContent has been disposed");
+    });
+
+    it("isComplete throws after dispose", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content.dispose();
+      expect(() => content.isComplete).toThrow("GeneratedContent has been disposed");
+    });
+
+    it("value throws after dispose", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      content.dispose();
+      expect(() => content.value("name")).toThrow("GeneratedContent has been disposed");
+    });
+
+    it("toObject returns cached value after dispose", () => {
+      const content = new GeneratedContent(mockPointer("mock-content"));
+      const obj = content.toObject(); // caches the result
+      content.dispose();
+      // toObject uses cache, does not hit native
+      expect(content.toObject()).toBe(obj);
+    });
+  });
+});
+
+describe("generable", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates a schema with scalar properties", () => {
+    const def = generable("Person", {
+      name: { type: "string", description: "Full name" },
+      age: { type: "integer" },
+      active: { type: "boolean" },
+    });
+
+    expect(def.schema).toBeInstanceOf(GenerationSchema);
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("Person", null);
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledTimes(3);
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "name",
+      "Full name",
+      "string",
+      false,
+    );
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "age",
+      null,
+      "integer",
+      false,
+    );
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "active",
+      null,
+      "boolean",
+      false,
+    );
+  });
+
+  it("passes description to GenerationSchema", () => {
+    generable("Thing", { x: { type: "string" } }, "A thing");
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("Thing", "A thing");
+  });
+
+  it("handles optional fields", () => {
+    generable("Opt", {
+      required: { type: "string" },
+      maybe: { type: "string", optional: true },
+    });
+
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "required",
+      null,
+      "string",
+      false,
+    );
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "maybe",
+      null,
+      "string",
+      true,
+    );
+  });
+
+  it("applies guides to properties", () => {
+    generable("Guided", {
+      score: { type: "integer", guides: [GenerationGuide.range(1, 10)] },
+      tag: { type: "string", guides: [GenerationGuide.anyOf(["a", "b"])] },
+    });
+
+    expect(mockFns.FMGenerationSchemaPropertyAddRangeGuide).toHaveBeenCalledWith(
+      "mock-prop-pointer",
+      1,
+      10,
+      false,
+    );
+    expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
+      "mock-prop-pointer",
+      ["a", "b"],
+      2,
+      false,
+    );
+  });
+
+  it("creates reference schemas for nested objects", () => {
+    generable("Outer", {
+      inner: {
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
+      },
+    });
+
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledTimes(2);
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("Outer", null);
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("inner", null);
+    expect(mockFns.FMGenerationSchemaAddReferenceSchema).toHaveBeenCalled();
+  });
+
+  it("creates reference schemas for arrays of objects", () => {
+    generable("List", {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
+      },
+    });
+
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledTimes(2);
+    expect(mockFns.FMGenerationSchemaAddReferenceSchema).toHaveBeenCalled();
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "items",
+      null,
+      "array<items>",
+      false,
+    );
+  });
+
+  it("handles scalar array properties without reference schema", () => {
+    generable("Tags", {
+      tags: { type: "array", items: { type: "string" } },
+    });
+
+    expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledTimes(1);
+    expect(mockFns.FMGenerationSchemaAddReferenceSchema).not.toHaveBeenCalled();
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "tags",
+      null,
+      "array<string>",
+      false,
+    );
+  });
+
+  it("parse delegates to GeneratedContent.toObject()", () => {
+    const def = generable("Simple", {
+      name: { type: "string" },
+    });
+
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    const result = def.parse(content);
+    expect(result).toEqual({ name: "test" });
+  });
+
+  it("type inference produces correct types", () => {
+    const def = generable("Movie", {
+      title: { type: "string" },
+      year: { type: "integer" },
+      rating: { type: "number" },
+      seen: { type: "boolean" },
+      note: { type: "string", optional: true },
+    });
+
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    const movie = def.parse(content);
+
+    // These accesses must type-check (compile-time verification)
+    const _title: string = movie.title;
+    const _year: number = movie.year;
+    const _rating: number = movie.rating;
+    const _seen: boolean = movie.seen;
+    const _note: string | undefined = movie.note;
+
+    void _title;
+    void _year;
+    void _rating;
+    void _seen;
+    void _note;
+
+    expect(movie).toBeDefined();
   });
 });

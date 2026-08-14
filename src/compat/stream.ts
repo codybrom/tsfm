@@ -1,7 +1,11 @@
 import type { ChatCompletionChunk } from "./types.js";
 
 const _streamRegistry = new FinalizationRegistry((cleanup: () => void) => {
-  cleanup();
+  try {
+    cleanup();
+  } catch (err) {
+    console.warn("[tsfm] Stream cleanup via FinalizationRegistry failed:", err);
+  }
 });
 
 /**

@@ -167,6 +167,12 @@ export function parseToolResponse(parsed: ToolModelOutput): ToolParseResult {
     // returns a string or other primitive, wrap it to avoid malformed JSON.
     const normalizedArgs =
       args != null && typeof args === "object" && !Array.isArray(args) ? args : {};
+    if (normalizedArgs !== args) {
+      console.warn(
+        `[tsfm compat] Tool "${name}" arguments were not a plain object (got ${typeof args}). ` +
+          `Falling back to empty arguments.`,
+      );
+    }
 
     return {
       type: "tool_call",
@@ -181,8 +187,12 @@ export function parseToolResponse(parsed: ToolModelOutput): ToolParseResult {
     };
   }
 
-  return {
-    type: "text",
-    content: typeof parsed.content === "string" ? parsed.content : "",
-  };
+  const content = typeof parsed.content === "string" ? parsed.content : "";
+  if (typeof parsed.content !== "string" && parsed.content != null) {
+    console.warn(
+      `[tsfm compat] Expected text content to be a string but got ${typeof parsed.content}. ` +
+        `Falling back to empty string.`,
+    );
+  }
+  return { type: "text", content };
 }

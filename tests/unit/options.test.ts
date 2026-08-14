@@ -95,6 +95,21 @@ describe("serializeOptions", () => {
     expect(result.sampling).toEqual({ mode: "random", seed: 42 });
   });
 
+  it("throws when temperature is negative", () => {
+    expect(() => serializeOptions({ temperature: -0.1 })).toThrow("non-negative");
+  });
+
+  it("allows zero temperature", () => {
+    const result = JSON.parse(serializeOptions({ temperature: 0 })!);
+    expect(result.temperature).toBe(0);
+  });
+
+  it("throws when maximumResponseTokens is not a positive integer", () => {
+    expect(() => serializeOptions({ maximumResponseTokens: 0 })).toThrow("positive integer");
+    expect(() => serializeOptions({ maximumResponseTokens: -1 })).toThrow("positive integer");
+    expect(() => serializeOptions({ maximumResponseTokens: 1.5 })).toThrow("positive integer");
+  });
+
   it("serializes all options together", () => {
     const result = JSON.parse(
       serializeOptions({

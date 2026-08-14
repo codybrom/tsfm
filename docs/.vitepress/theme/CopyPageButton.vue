@@ -6,7 +6,12 @@
         <CopyIcon v-else class="copy-page-icon" />
         <span>{{ copied ? "Copied!" : "Copy page" }}</span>
       </button>
-      <button class="copy-page-toggle" @click.stop="open = !open" :aria-expanded="open" aria-label="More options">
+      <button
+        class="copy-page-toggle"
+        @click.stop="open = !open"
+        :aria-expanded="open"
+        aria-label="More options"
+      >
         <ChevronDownIcon class="copy-page-chevron" :class="{ flipped: open }" />
       </button>
       <div v-if="open" class="copy-page-menu">
@@ -17,31 +22,63 @@
             <div class="copy-page-item-desc">Copy page as Markdown for LLMs</div>
           </div>
         </button>
-        <a :href="rawUrl" target="_blank" rel="noopener" class="copy-page-item" @click="open = false">
+        <a
+          :href="rawUrl"
+          target="_blank"
+          rel="noopener"
+          class="copy-page-item"
+          @click="open = false"
+        >
           <MarkdownIcon class="copy-page-item-icon" />
           <div>
-            <div class="copy-page-item-label">View as Markdown <span class="arrow">&#8599;</span></div>
+            <div class="copy-page-item-label">
+              View as Markdown <span class="arrow">&#8599;</span>
+            </div>
             <div class="copy-page-item-desc">View this page as plain text</div>
           </div>
         </a>
-        <a :href="claudeUrl" target="_blank" rel="noopener" class="copy-page-item" @click="open = false">
+        <a
+          :href="claudeUrl"
+          target="_blank"
+          rel="noopener"
+          class="copy-page-item"
+          @click="open = false"
+        >
           <ClaudeIcon class="copy-page-item-icon" />
           <div>
-            <div class="copy-page-item-label">Open in Claude <span class="arrow">&#8599;</span></div>
+            <div class="copy-page-item-label">
+              Open in Claude <span class="arrow">&#8599;</span>
+            </div>
             <div class="copy-page-item-desc">Ask questions about this page</div>
           </div>
         </a>
-        <a :href="chatgptUrl" target="_blank" rel="noopener" class="copy-page-item" @click="open = false">
+        <a
+          :href="chatgptUrl"
+          target="_blank"
+          rel="noopener"
+          class="copy-page-item"
+          @click="open = false"
+        >
           <OpenAiIcon class="copy-page-item-icon" />
           <div>
-            <div class="copy-page-item-label">Open in ChatGPT <span class="arrow">&#8599;</span></div>
+            <div class="copy-page-item-label">
+              Open in ChatGPT <span class="arrow">&#8599;</span>
+            </div>
             <div class="copy-page-item-desc">Ask questions about this page</div>
           </div>
         </a>
-        <a :href="githubUrl" target="_blank" rel="noopener" class="copy-page-item" @click="open = false">
+        <a
+          :href="githubUrl"
+          target="_blank"
+          rel="noopener"
+          class="copy-page-item"
+          @click="open = false"
+        >
           <GitHubIcon class="copy-page-item-icon" />
           <div>
-            <div class="copy-page-item-label">View on GitHub <span class="arrow">&#8599;</span></div>
+            <div class="copy-page-item-label">
+              View on GitHub <span class="arrow">&#8599;</span>
+            </div>
             <div class="copy-page-item-desc">View source on GitHub</div>
           </div>
         </a>
@@ -72,9 +109,7 @@ const rawUrl = computed(
 );
 
 const pageUrl = computed(() => {
-  const path = page.value.relativePath
-    .replace(/\.md$/, "")
-    .replace(/\/index$/, "/");
+  const path = page.value.relativePath.replace(/\.md$/, "").replace(/\/index$/, "/");
   return `https://tsfm.dev/${path}`;
 });
 
@@ -89,8 +124,7 @@ const chatgptUrl = computed(() => {
 });
 
 const githubUrl = computed(
-  () =>
-    `https://github.com/codybrom/tsfm/blob/main/docs/${page.value.relativePath}`,
+  () => `https://github.com/codybrom/tsfm/blob/main/docs/${page.value.relativePath}`,
 );
 
 async function copyPage() {

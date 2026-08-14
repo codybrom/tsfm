@@ -15,12 +15,16 @@ new GenerationSchema(name: string, description: string)
 Add a property to the schema. Returns `this` for chaining.
 
 ```ts
-property(name: string, type: PropertyType, options?: {
+property(name: string, type: PropertyType | `array<${string}>`, options?: {
   description?: string;
   guides?: GenerationGuide[];
   optional?: boolean;
 }): this
 ```
+
+::: warning
+Bare `"array"` is not accepted — use a compound form like `"array<string>"` or `"array<integer>"`. For object arrays, use `generable()` which resolves types automatically.
+:::
 
 ### `toDict()`
 
@@ -69,7 +73,7 @@ GenerationGuide.element(guide: GenerationGuide)  // constrain elements
 
 ## GeneratedContent
 
-Returned by `respondWithSchema()` and `respondWithJsonSchema()`.
+Returned by `respondWithSchema()` and `respondWithJsonSchema()`. Call `dispose()` when done or use `using` to release resources immediately. Otherwise, cleanup happens automatically during garbage collection.
 
 ### `value()`
 
@@ -84,8 +88,91 @@ value<T>(key: string): T
 Get the full result as a plain object:
 
 ```ts
-toObject(): Record<string, unknown>
+toObject(): JsonObject
 ```
+
+### `toJson()`
+
+Get the raw JSON string of the generated content:
+
+```ts
+toJson(): string
+```
+
+### `isComplete`
+
+```ts
+readonly isComplete: boolean
+```
+
+Whether the model finished generating the full content.
+
+### `dispose()`
+
+Release resources held by this content. Safe to call multiple times. After disposal, `value()`, `toJson()`, and `isComplete` throw; `toObject()` still works if the result was previously cached.
+
+```ts
+dispose(): void
+```
+
+Also supports `Symbol.dispose` for use with TC39 Explicit Resource Management:
+
+```ts
+using content = await session.respondWithSchema(prompt, schema);
+const data = content.toObject();
+// content is released when the block exits
+```
+
+## `generable()`
+
+Declarative schema builder with full TypeScript type inference. Returns a `Generable` object with a `schema` and a typed `parse()` method.
+
+```ts
+function generable<T extends Record<string, PropertyDef>>(
+  name: string,
+  properties: T,
+  description?: string,
+): Generable<T>
+```
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Schema name |
+| `properties` | `Record<string, PropertyDef>` | Property definitions |
+| `description` | `string` | Optional schema description |
+
+### `Generable<T>`
+
+```ts
+interface Generable<T> {
+  readonly schema: GenerationSchema;
+  parse(content: GeneratedContent): InferSchema<T>;
+}
+```
+
+| Member | Description |
+| --- | --- |
+| `schema` | The `GenerationSchema` to pass to `respondWithSchema()` |
+| `parse(content)` | Extracts a fully typed object from `GeneratedContent` |
+
+### `PropertyDef`
+
+A union of scalar, array, and object property definitions:
+
+```ts
+// Scalar
+{ type: "string" | "integer" | "number" | "boolean"; description?: string; optional?: boolean; guides?: GenerationGuide[] }
+
+// Array
+{ type: "array"; items: PropertyDef; description?: string; optional?: boolean; guides?: GenerationGuide[] }
+
+// Nested object
+{ type: "object"; properties: Record<string, PropertyDef>; description?: string; optional?: boolean }
+```
+
+### `InferSchema<T>`
+
+Mapped type that converts a `Record<string, PropertyDef>` into a TypeScript object type. Fields with `optional: true` become optional properties.
 
 ## GenerationSchemaProperty
 

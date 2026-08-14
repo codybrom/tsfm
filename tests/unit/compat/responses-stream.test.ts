@@ -182,4 +182,18 @@ describe("ResponseStream", () => {
     registryCallback!(cleanup);
     expect(cleanup).toHaveBeenCalledOnce();
   });
+
+  it("FinalizationRegistry callback swallows errors from cleanup", () => {
+    const registryCallback = getRegistryCallback();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cleanup = vi.fn(() => {
+      throw new Error("native cleanup failed");
+    });
+    expect(() => registryCallback!(cleanup)).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(
+      "[tsfm] ResponseStream cleanup via FinalizationRegistry failed:",
+      expect.any(Error),
+    );
+    warnSpy.mockRestore();
+  });
 });

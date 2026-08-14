@@ -40,10 +40,10 @@ The **Swift** equivalent is Foundation Models' [`SamplingMode`](https://develope
 
 ### Greedy (Most Deterministic)
 
-Always chooses the most likely token.  The same prompt should always produce the same output.
+Always chooses the most likely token. The same prompt should always produce the same output.
 
 ```ts
-SamplingMode.greedy()
+SamplingMode.greedy();
 ```
 
 ### Random
@@ -58,8 +58,8 @@ Samples from a subset of likely tokens. You must choose **one** of `top` or `pro
 
 ```ts
 // Top-K: pick from the 50 most likely tokens
-SamplingMode.random({ top: 50, seed: 42 })
+SamplingMode.random({ top: 50, seed: 42 });
 
 // Top-P (nucleus): pick from the smallest set of tokens whose probabilities add up to 0.9
-SamplingMode.random({ probabilityThreshold: 0.9 })
+SamplingMode.random({ probabilityThreshold: 0.9 });
 ```

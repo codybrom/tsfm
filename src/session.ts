@@ -15,6 +15,7 @@ import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } 
 import { GenerationOptions, serializeOptions } from "./options.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 import { Transcript } from "./transcript.js";
+import { composePrompt, type PromptInput } from "./prompt.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
 const _FROM_POINTER = Symbol("fromPointer");
@@ -22,7 +23,9 @@ const _FROM_POINTER = Symbol("fromPointer");
 const _sessionRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
     getFunctions().FMRelease(pointer);
-  } catch {}
+  } catch (err) {
+    console.warn("[tsfm] Session cleanup via FinalizationRegistry failed:", err);
+  }
 });
 
 // Track live sessions so we can release them when the process exits.
@@ -34,7 +37,9 @@ function _cleanupAllSessions(): void {
   for (const ref of _liveSessions) {
     try {
       ref.deref()?.dispose();
-    } catch {}
+    } catch (err) {
+      console.warn("[tsfm] Session cleanup on exit failed:", err);
+    }
   }
   _liveSessions.clear();
 }
@@ -56,7 +61,7 @@ function _installExitHandler(): void {
   }
 }
 
-type ResponseCbArgs = [status: number, content: string, _length: number, userInfo: unknown];
+type ResponseCbArgs = [status: number, content: string | null, _length: number, userInfo: unknown];
 type StructuredCbArgs = [status: number, contentRef: NativePointer, userInfo: unknown];
 
 export class LanguageModelSession {
@@ -67,12 +72,20 @@ export class LanguageModelSession {
   private _weakRef: WeakRef<LanguageModelSession> | null = null;
 
   get transcript(): Transcript {
-    if (!this._transcript) throw new FoundationModelsError("Session not initialized");
+    if (!this._transcript) {
+      throw new FoundationModelsError("Session not initialized");
+    }
     return this._transcript;
   }
 
   private _activeTask: NativePointer | null = null;
   private _queue = Promise.resolve();
+
+  /** Callback set by an active stream generator; called by cancel() to unblock it. */
+  private _cancelStream: (() => void) | null = null;
+
+  /** Set synchronously by dispose(); checked by _assertNotDisposed(). */
+  private _disposed = false;
 
   /** Shared initialization for both constructor and fromTranscript. */
   private _init(pointer: NativePointer, transcript: Transcript): void {
@@ -107,7 +120,7 @@ export class LanguageModelSession {
       opts.instructions ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
     this._init(pointer, new Transcript(pointer));
@@ -135,7 +148,7 @@ export class LanguageModelSession {
       opts.model?._nativeModel ?? null,
       toolPointersArg,
       tools.length,
-    );
+    ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
@@ -147,10 +160,22 @@ export class LanguageModelSession {
     return session;
   }
 
+  /**
+   * Preload model resources and optionally cache a prompt prefix to reduce
+   * first-response latency. Fire-and-forget — the prewarm runs in the
+   * background on the native side.
+   *
+   * @param promptPrefix  Optional text the model should expect at the start of the first prompt.
+   */
+  prewarm(promptPrefix?: string): void {
+    if (this._disposed || !this._nativeSession) return;
+    getFunctions().FMLanguageModelSessionPrewarm(this._nativeSession, promptPrefix ?? null);
+  }
+
   /** Whether the session is currently processing a request (backed by C API). */
   get isResponding(): boolean {
-    if (!this._nativeSession) return false;
-    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession);
+    if (this._disposed || !this._nativeSession) return false;
+    return getFunctions().FMLanguageModelSessionIsResponding(this._nativeSession) as boolean;
   }
 
   /**
@@ -163,16 +188,29 @@ export class LanguageModelSession {
    * after calling `cancel()`.
    */
   cancel(): void {
+    if (this._disposed) return;
     if (this._activeTask) {
       getFunctions().FMTaskCancel(this._activeTask);
       this._activeTask = null;
     }
+    // Unblock any waiting stream consumer so the generator can exit.
+    this._cancelStream?.();
+    this._cancelStream = null;
     if (this._nativeSession) getFunctions().FMLanguageModelSessionReset(this._nativeSession);
   }
 
   // -------------------------------------------------------------------------
   // Text generation
   // -------------------------------------------------------------------------
+
+  /** @internal Throws if the session has been disposed. */
+  private _assertNotDisposed(): void {
+    if (this._disposed) {
+      throw new FoundationModelsError(
+        "Session has been disposed. Create a new LanguageModelSession to continue.",
+      );
+    }
+  }
 
   /**
    * Send a prompt and return the model's plain-text response.
@@ -181,7 +219,11 @@ export class LanguageModelSession {
    * rather than racing over the same session. Throws a `GenerationError`
    * subclass on failure.
    */
-  async respond(prompt: string, opts: { options?: GenerationOptions } = {}): Promise<string> {
+  async respond(
+    prompt: string | PromptInput,
+    opts: { options?: GenerationOptions } = {},
+  ): Promise<string> {
+    this._assertNotDisposed();
     return this._enqueue(() => this._respondText(prompt, opts.options));
   }
 
@@ -193,10 +235,11 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass on failure.
    */
   async respondWithSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     schema: GenerationSchema,
     opts: { options?: GenerationOptions } = {},
   ): Promise<GeneratedContent> {
+    this._assertNotDisposed();
     return this._enqueue(() => this._respondWithSchema(prompt, schema, opts.options));
   }
 
@@ -210,10 +253,11 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass on failure.
    */
   async respondWithJsonSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     opts: { options?: GenerationOptions } = {},
   ): Promise<GeneratedContent> {
+    this._assertNotDisposed();
     return this._enqueue(() => this._respondWithJsonSchema(prompt, jsonSchema, opts.options));
   }
 
@@ -239,9 +283,10 @@ export class LanguageModelSession {
    * Throws a `GenerationError` subclass if the stream ends with an error.
    */
   async *streamResponse(
-    prompt: string,
+    prompt: string | PromptInput,
     opts: { options?: GenerationOptions } = {},
   ): AsyncGenerator<string> {
+    this._assertNotDisposed();
     // streamResponse cannot use _enqueue: _enqueue expects a single Promise<T>
     // to chain on, but a generator yields multiple values over time and the
     // queue must stay locked until the entire stream is consumed. Instead we
@@ -250,58 +295,135 @@ export class LanguageModelSession {
     const lock = new Promise<void>((res) => (release = res));
     this._queue = this._queue.then(() => lock);
 
-    const fn = getFunctions();
-    const optionsJson = serializeOptions(opts.options);
+    // All setup after the queue lock MUST be inside try/finally so that
+    // release() is always called. If a native call or koffi.register throws
+    // before the consumer loop, the queue would stall permanently otherwise.
+    let fn: ReturnType<typeof getFunctions> | null = null;
+    let streamPointer: NativePointer | null = null;
+    let callback: KoffiCallback | null = null;
+    let keepAlive: ReturnType<typeof setInterval> | null = null;
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamDone = false;
+    let composedPrompt: NativePointer | null = null;
 
-    const streamPointer = fn.FMLanguageModelSessionStreamResponse(
-      this._nativeSession,
-      prompt,
-      optionsJson,
-    );
-
-    // FMLanguageModelSessionResponseStreamIterate spawns a single Swift Task
-    // that calls the callback once per chunk, then once more with null content
-    // when done. We buffer arriving chunks into a queue and drain them.
     type QueueItem = { content: string } | { done: true; error?: Error };
     const queue: QueueItem[] = [];
     let notifyConsumer: (() => void) | null = null;
-    let streamDone = false;
-    const keepAlive = setInterval(() => {}, 10000);
-
-    const callback = koffi.register((...args: ResponseCbArgs) => {
-      const [status, content] = args;
-      if (status !== 0) {
-        queue.push({ done: true, error: statusToError(status, content) });
-        streamDone = true;
-        clearInterval(keepAlive);
-        unregisterCallback(callback);
-      } else if (!content) {
-        // null content = end-of-stream signal
-        queue.push({ done: true });
-        streamDone = true;
-        clearInterval(keepAlive);
-        unregisterCallback(callback);
-      } else {
-        queue.push({ content });
-      }
-      const notify = notifyConsumer;
-      notifyConsumer = null;
-      notify?.();
-    }, koffi.pointer(ResponseCallbackProto));
-
-    fn.FMLanguageModelSessionResponseStreamIterate(streamPointer, null, callback);
-
-    // Apple's ResponseStream yields cumulative snapshots, not deltas.
-    // Track previous content and yield only the new suffix each iteration.
-    let prevLen = 0;
 
     try {
+      fn = getFunctions();
+      const optionsJson = serializeOptions(opts.options);
+
+      composedPrompt = composePrompt(fn, prompt);
+      streamPointer = fn.FMLanguageModelSessionStreamResponse(
+        this._nativeSession,
+        composedPrompt,
+        optionsJson,
+      ) as NativePointer;
+
+      // FMLanguageModelSessionResponseStreamIterate spawns a single Swift Task
+      // that calls the callback once per chunk, then once more with null content
+      // when done. We buffer arriving chunks into a queue and drain them.
+      keepAlive = setInterval(() => {}, 10000);
+
+      // Idle timeout: if no callback fires within this window after a tool-call
+      // snapshot ("null" artifact), assume the stream has stalled and terminate
+      // with an error rather than hanging forever. Only armed in the tool-call
+      // snapshot branch — normal content chunks do not reset this timer.
+      const IDLE_TIMEOUT_MS = 30_000;
+
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        if (!streamDone) {
+          idleTimer = setTimeout(() => {
+            if (!streamDone) {
+              queue.push({
+                done: true,
+                error: new Error(
+                  "Stream idle timeout: no callback received within 30s of the previous snapshot",
+                ),
+              });
+              streamDone = true;
+              if (keepAlive) clearInterval(keepAlive);
+              if (callback) {
+                unregisterCallback(callback);
+                callback = null;
+              }
+              const notify = notifyConsumer;
+              notifyConsumer = null;
+              notify?.();
+            }
+          }, IDLE_TIMEOUT_MS);
+        }
+      };
+
+      callback = koffi.register((...args: ResponseCbArgs) => {
+        const [status, text] = args;
+        // The `str` parameter of ResponseCallbackProto is marshalled by koffi
+        // before the handler runs: a non-null char* arrives as a JS string and
+        // the end-of-stream null pointer arrives as JS null. Calling
+        // koffi.decode() here would trigger N-API exceptions, so the value is
+        // used as delivered.
+        if (status !== 0) {
+          queue.push({ done: true, error: statusToError(status, text) });
+          streamDone = true;
+          if (keepAlive) clearInterval(keepAlive);
+          if (idleTimer) clearTimeout(idleTimer);
+          if (callback) {
+            unregisterCallback(callback);
+            callback = null;
+          }
+        } else if (!text) {
+          // null/empty content = end-of-stream signal
+          queue.push({ done: true });
+          streamDone = true;
+          if (keepAlive) clearInterval(keepAlive);
+          if (idleTimer) clearTimeout(idleTimer);
+          if (callback) {
+            unregisterCallback(callback);
+            callback = null;
+          }
+        } else {
+          // Every non-empty snapshot is real content, including the literal
+          // text "null" — koffi marshals the end-of-stream signal to JS null,
+          // handled above, and never to the string, so there is no artifact to
+          // filter here. Discarding by value swallowed any response that ended
+          // as exactly "null".
+          queue.push({ content: text });
+          // Arm the stall detector between snapshots: if the native side stops
+          // calling back mid-response the consumer should fail rather than
+          // wait forever. A tool that runs before the first snapshot is not
+          // covered, so slow tools do not trip it.
+          resetIdleTimer();
+        }
+        const notify = notifyConsumer;
+        notifyConsumer = null;
+        notify?.();
+      }, koffi.pointer(ResponseCallbackProto));
+
+      fn.FMLanguageModelSessionResponseStreamIterate(streamPointer, null, callback);
+
+      // Apple's ResponseStream yields cumulative snapshots, not deltas.
+      // Track previous content and yield only the new suffix each iteration.
+      let prevLen = 0;
+      let cancelled = false;
+
+      // Allow cancel() to unblock the consumer when the native callback stops firing.
+      this._cancelStream = () => {
+        cancelled = true;
+        queue.push({ done: true });
+        const notify = notifyConsumer;
+        notifyConsumer = null;
+        notify?.();
+      };
+
       while (true) {
-        if (queue.length === 0) {
+        while (queue.length === 0) {
           await new Promise<void>((resolve) => {
             notifyConsumer = resolve;
           });
         }
+        if (cancelled) break;
         const item = queue.shift()!;
         if ("done" in item) {
           if (item.error) throw item.error;
@@ -312,16 +434,29 @@ export class LanguageModelSession {
         if (delta) yield delta;
       }
     } finally {
-      clearInterval(keepAlive);
-      if (!streamDone) {
+      this._cancelStream = null;
+      if (keepAlive) clearInterval(keepAlive);
+      if (idleTimer) clearTimeout(idleTimer);
+      if (callback) {
+        // Callback wasn't unregistered by the handler or idle timer —
+        // this means the consumer broke out early (e.g. break/return).
         unregisterCallback(callback);
+        callback = null;
       }
-      fn.FMRelease(streamPointer);
+      if (fn && !streamDone) {
+        // Reset the session after an early break so subsequent calls
+        // don't stall waiting for the cancelled stream to finish.
+        if (this._nativeSession) fn.FMLanguageModelSessionReset(this._nativeSession);
+      }
+      if (fn && streamPointer) fn.FMRelease(streamPointer);
+      if (fn && composedPrompt) fn.FMRelease(composedPrompt);
       release();
     }
   }
 
   dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
     if (this._weakRef) {
       _liveSessions.delete(this._weakRef);
       this._weakRef = null;
@@ -374,6 +509,7 @@ export class LanguageModelSession {
         ResponseCallbackProto,
         (status, content) => {
           this._activeTask = null;
+          // See streaming callback comment — use value directly, not koffi.decode()
           if (status !== 0) reject(statusToError(status, content));
           else resolve(content ?? "");
         },
@@ -394,7 +530,7 @@ export class LanguageModelSession {
             // contentRef may be null on error; FMGeneratedContentGetJSONString
             // and FMRelease are no-ops on null per the C API contract.
             const msg = decodeAndFreeString(
-              getFunctions().FMGeneratedContentGetJSONString(contentRef),
+              getFunctions().FMGeneratedContentGetJSONString(contentRef) as NativePointer | null,
             );
             getFunctions().FMRelease(contentRef);
             reject(statusToError(status, msg ?? undefined));
@@ -407,50 +543,68 @@ export class LanguageModelSession {
     });
   }
 
-  private _respondText(prompt: string, options: GenerationOptions | undefined): Promise<string> {
+  private _respondText(
+    prompt: string | PromptInput,
+    options: GenerationOptions | undefined,
+  ): Promise<string> {
+    this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runResponseCallback((callback) =>
-      fn.FMLanguageModelSessionRespond(this._nativeSession, prompt, optionsJson, null, callback),
-    );
+    const composedPrompt = composePrompt(fn, prompt);
+    return this._runResponseCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespond(
+          this._nativeSession,
+          composedPrompt,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 
   private _respondWithSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     schema: GenerationSchema,
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
+    this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchema(
-        this._nativeSession,
-        prompt,
-        schema._nativeSchema,
-        optionsJson,
-        null,
-        callback,
-      ),
-    );
+    const composedPrompt = composePrompt(fn, prompt);
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchema(
+          this._nativeSession,
+          composedPrompt,
+          schema._nativeSchema,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 
   private _respondWithJsonSchema(
-    prompt: string,
+    prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
+    this._assertNotDisposed();
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
-    return this._runStructuredCallback((callback) =>
-      fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
-        this._nativeSession,
-        prompt,
-        schemaJson,
-        optionsJson,
-        null,
-        callback,
-      ),
-    );
+    const composedPrompt = composePrompt(fn, prompt);
+    return this._runStructuredCallback(
+      (callback) =>
+        fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
+          this._nativeSession,
+          composedPrompt,
+          schemaJson,
+          optionsJson,
+          null,
+          callback,
+        ) as NativePointer,
+    ).finally(() => fn.FMRelease(composedPrompt));
   }
 }
