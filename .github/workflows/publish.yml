@@ -1,0 +1,80 @@
+name: Publish
+
+# Publishes to npm using trusted publishing (OIDC) — no NPM_TOKEN secret.
+#
+# Register this workflow as a trusted publisher first, at
+# npmjs.com -> the package -> Settings -> Trusted publishers:
+#   organization/user: codybrom
+#   repository:        tsfm
+#   workflow filename: publish.yml
+#
+# Renaming this file breaks publishing until the trusted publisher is updated
+# to match, because npm matches on the filename.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Build and validate the tarball without publishing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # mints the OIDC token npm exchanges for publish rights
+
+jobs:
+  publish:
+    # Must be macOS: prepublishOnly runs scripts/build-native.sh, which compiles
+    # the Swift bridge and needs Xcode 26.4+. On a Linux runner this fails deep
+    # in the build rather than at publish time.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1, which is newer than the npm
+      # bundled with some Node 24 releases.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          echo "npm $(npm --version), node $(node --version)"
+
+      - run: npm ci
+
+      - name: Verify the release tag matches package.json
+        if: github.event_name == 'release'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG="$(node -p "require('./package.json').version")"
+          if [[ "$TAG" != "$PKG" ]]; then
+            echo "::error::Tag v$TAG does not match package.json version $PKG"
+            exit 1
+          fi
+          echo "publishing $PKG"
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npx vitest run tests/unit
+
+      # Build explicitly so the artifact can be inspected before publishing.
+      # prepublishOnly runs the same command again, but build-native.sh skips
+      # when the dylib is already present, so the second pass only re-emits TS.
+      - name: Build
+        run: npm run build
+
+      - name: Verify the native library made it into the package
+        run: |
+          test -f native/libFoundationModels.dylib || { echo "::error::dylib missing"; exit 1; }
+          file native/libFoundationModels.dylib
+          npm pack --dry-run
+
+      - name: Publish to npm
+        if: github.event_name == 'release' || inputs.dry-run == false
+        run: npm publish
