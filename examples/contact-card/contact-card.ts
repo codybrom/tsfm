@@ -17,8 +17,8 @@ import {
   SystemLanguageModel,
   generable,
   GenerationGuide,
-  type GeneratedContent,
   type InferSchema,
+  type PropertyDef,
 } from "tsfm-sdk";
 
 // ---------------------------------------------------------------------------
@@ -26,17 +26,21 @@ import {
 // ---------------------------------------------------------------------------
 
 const contactProperties = {
-  name: { type: "string" as const, description: "Full name" },
-  company: { type: "string" as const, optional: true, description: "Company or organization" },
-  title: { type: "string" as const, optional: true, description: "Job title or role" },
+  name: { type: "string", description: "Full name" },
+  company: {
+    type: "string",
+    optional: true,
+    description: "Company or organization",
+  },
+  title: { type: "string", optional: true, description: "Job title or role" },
   emails: {
-    type: "array" as const,
+    type: "array",
     items: {
-      type: "object" as const,
+      type: "object",
       properties: {
-        address: { type: "string" as const, description: "Email address" },
+        address: { type: "string", description: "Email address" },
         label: {
-          type: "string" as const,
+          type: "string",
           description: "Type of email",
           guides: [GenerationGuide.anyOf(["work", "personal", "other"])],
         },
@@ -45,16 +49,16 @@ const contactProperties = {
     description: "Email addresses found in the text",
   },
   phones: {
-    type: "array" as const,
+    type: "array",
     items: {
-      type: "object" as const,
+      type: "object",
       properties: {
         number: {
-          type: "string" as const,
+          type: "string",
           description: "Phone number in original format",
         },
         label: {
-          type: "string" as const,
+          type: "string",
           description: "Type of phone number",
           guides: [GenerationGuide.anyOf(["mobile", "work", "home", "fax", "other"])],
         },
@@ -62,19 +66,23 @@ const contactProperties = {
     },
     description: "Phone numbers found in the text",
   },
-  location: { type: "string" as const, optional: true, description: "City, state, or address" },
-  website: { type: "string" as const, optional: true, description: "Website or URL" },
+  location: {
+    type: "string",
+    optional: true,
+    description: "City, state, or address",
+  },
+  website: { type: "string", optional: true, description: "Website or URL" },
   context: {
-    type: "string" as const,
+    type: "string",
     optional: true,
     description: "How you know this person or where you met them",
   },
   confidence: {
-    type: "integer" as const,
+    type: "integer",
     description: "How confident the extraction is, from 0 to 100",
     guides: [GenerationGuide.range(0, 100)],
   },
-};
+} satisfies Record<string, PropertyDef>;
 
 export const ContactCard = generable("ContactCard", contactProperties);
 export type ContactCardData = InferSchema<typeof contactProperties>;

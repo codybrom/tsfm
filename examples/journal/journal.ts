@@ -29,6 +29,7 @@ import {
   Tool,
   generable,
   type InferSchema,
+  type PropertyDef,
 } from "tsfm-sdk";
 
 // ---------------------------------------------------------------------------
@@ -73,7 +74,7 @@ export class JournalStore {
 
 const analysisProperties = {
   mood: {
-    type: "string" as const,
+    type: "string",
     description: "Primary mood of the entry",
     guides: [
       GenerationGuide.anyOf([
@@ -89,21 +90,21 @@ const analysisProperties = {
     ],
   },
   intensity: {
-    type: "integer" as const,
+    type: "integer",
     description: "How strongly this mood is felt, from 1 (mild) to 10 (overwhelming)",
     guides: [GenerationGuide.range(1, 10)],
   },
   themes: {
-    type: "array" as const,
-    items: { type: "string" as const },
+    type: "array",
+    items: { type: "string" },
     description: "Key themes or topics in the entry",
     guides: [GenerationGuide.minItems(1), GenerationGuide.maxItems(5)],
   },
   summary: {
-    type: "string" as const,
+    type: "string",
     description: "A one-sentence summary of the entry",
   },
-};
+} satisfies Record<string, PropertyDef>;
 
 export const JournalAnalysis = generable("JournalAnalysis", analysisProperties);
 export type JournalAnalysisData = InferSchema<typeof analysisProperties>;

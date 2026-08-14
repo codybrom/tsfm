@@ -53,7 +53,7 @@ export interface TriageResult {
 // JSON Schema for triage (raw, not generable — shows the other API path)
 // ---------------------------------------------------------------------------
 
-export const triageSchema: JsonSchema = {
+export const triageSchema = {
   type: "object",
   properties: {
     results: {
@@ -80,12 +80,20 @@ export const triageSchema: JsonSchema = {
             enum: ["reply-now", "reply-later", "delegate", "archive", "unsubscribe"],
           },
         },
-        required: ["email_id", "sender", "subject", "summary", "priority", "category", "suggested_action"],
+        required: [
+          "email_id",
+          "sender",
+          "subject",
+          "summary",
+          "priority",
+          "category",
+          "suggested_action",
+        ],
       },
     },
   },
   required: ["results"],
-};
+} satisfies JsonSchema;
 
 // ---------------------------------------------------------------------------
 // Tools
@@ -93,7 +101,8 @@ export const triageSchema: JsonSchema = {
 
 export class FetchEmailsTool extends Tool {
   readonly name = "fetch_emails";
-  readonly description = "Fetch unread emails from the inbox. Call this when asked to check or triage emails.";
+  readonly description =
+    "Fetch unread emails from the inbox. Call this when asked to check or triage emails.";
   readonly argumentsSchema = new GenerationSchema("FetchEmailsArgs", "No arguments needed");
 
   private emails: Email[];
@@ -220,7 +229,7 @@ async function main() {
   const triageContent = await session.respondWithJsonSchema(triagePrompt, triageSchema, {
     options: { temperature: 0.2 },
   });
-  const triage = triageContent.toObject() as { results: TriageResult[] };
+  const triage = triageContent.toObject<{ results: TriageResult[] }>();
 
   console.log("--- Inbox Triage ---\n");
   console.log(formatTriage(triage.results));
@@ -249,7 +258,9 @@ async function main() {
     if (!auto) {
       let refining = true;
       while (refining) {
-        const feedback = await prompt('Refine? (e.g., "shorter", "more formal", or Enter to accept): ');
+        const feedback = await prompt(
+          'Refine? (e.g., "shorter", "more formal", or Enter to accept): ',
+        );
         if (!feedback.trim()) {
           refining = false;
         } else {
