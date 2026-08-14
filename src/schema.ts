@@ -413,7 +413,7 @@ export function generable<const T extends Record<string, PropertyDef>>(
     schema,
     /** Assumes model output conforms to the schema (enforced at generation time). */
     parse(content: GeneratedContent): InferSchema<T> {
-      return content.toObject() as InferSchema<T>;
+      return content.toObject<InferSchema<T>>();
     },
   };
 }
@@ -548,8 +548,16 @@ export class GeneratedContent {
     return decodeAndFreeString(pointer) ?? "{}";
   }
 
-  /** Returns the parsed JSON object. */
-  toObject(): JsonObject {
+  /**
+   * Returns the parsed JSON object.
+   *
+   * Pass a type argument to get the shape the schema guarantees — e.g.
+   * `toObject<{ results: TriageResult[] }>()` — instead of asserting at the
+   * call site. Like `value<T>()`, the type argument is a claim about model
+   * output that guided generation enforces at generation time, not a runtime
+   * check. Defaults to `JsonObject`.
+   */
+  toObject<T = JsonObject>(): T {
     if (!this._parsed) {
       const json = this.toJson();
       try {
@@ -560,7 +568,7 @@ export class GeneratedContent {
         );
       }
     }
-    return this._parsed!;
+    return this._parsed! as T;
   }
 
   /**
