@@ -103,6 +103,7 @@ console.log("=== Multi-tool selection ===");
 const tools = [
   {
     type: "function" as const,
+    strict: null,
     name: "get_weather",
     description: "Get current weather for a city",
     parameters: {
@@ -115,6 +116,7 @@ const tools = [
   },
   {
     type: "function" as const,
+    strict: null,
     name: "get_stock_price",
     description: "Get current stock price for a ticker symbol",
     parameters: {
@@ -127,6 +129,7 @@ const tools = [
   },
   {
     type: "function" as const,
+    strict: null,
     name: "translate",
     description: "Translate text to another language",
     parameters: {
