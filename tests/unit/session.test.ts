@@ -101,6 +101,35 @@ describe("LanguageModelSession", () => {
     });
   });
 
+  describe('streaming a literal "null" response', () => {
+    it("yields it instead of discarding it as an artifact", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("Reply with exactly: null");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "null", 4, null);
+        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(chunks.join("")).toBe("null");
+    });
+
+    it("still yields text that merely starts with null", async () => {
+      const session = new LanguageModelSession();
+      const chunks: string[] = [];
+      const iterator = session.streamResponse("x");
+      queueMicrotask(() => {
+        lastRegisteredCallback?.(0, "null", 4, null);
+        queueMicrotask(() => {
+          lastRegisteredCallback?.(0, "null and void", 13, null);
+          queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+        });
+      });
+      for await (const c of iterator) chunks.push(c);
+      expect(chunks.join("")).toBe("null and void");
+    });
+  });
+
   describe("prompt attachments", () => {
     it("adds an attachment with its label", async () => {
       const session = new LanguageModelSession();
@@ -958,26 +987,6 @@ describe("LanguageModelSession", () => {
         chunks.push(chunk);
       }
       expect(chunks).toEqual([]);
-    });
-
-    it("skips coerced null string chunks from koffi", async () => {
-      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-        (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
-          setTimeout(() => {
-            // Simulate koffi coercing a null C string to the JS string "null"
-            lastRegisteredCallback?.(0, "null", 4, null);
-            lastRegisteredCallback?.(0, "real content", 12, null);
-            lastRegisteredCallback?.(0, null, 0, null);
-          }, 0);
-        },
-      );
-
-      const session = new LanguageModelSession();
-      const chunks: string[] = [];
-      for await (const chunk of session.streamResponse("Hi")) {
-        chunks.push(chunk);
-      }
-      expect(chunks).toEqual(["real content"]);
     });
 
     it("treats null pointer as end-of-stream signal", async () => {

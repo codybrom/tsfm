@@ -340,7 +340,7 @@ export class LanguageModelSession {
               queue.push({
                 done: true,
                 error: new Error(
-                  "Stream idle timeout: no callback received within 30s after tool-call snapshot",
+                  "Stream idle timeout: no callback received within 30s of the previous snapshot",
                 ),
               });
               streamDone = true;
@@ -383,13 +383,17 @@ export class LanguageModelSession {
             unregisterCallback(callback);
             callback = null;
           }
-        } else if (text !== "null") {
-          // Skip "null" string artifacts from koffi coercing null C string
-          // pointers during intermediate tool-call snapshots.
-          queue.push({ content: text });
         } else {
-          // "null" artifact from tool-call snapshot — arm idle timer to detect
-          // stalls where the native side never resumes after a tool call.
+          // Every non-empty snapshot is real content, including the literal
+          // text "null" — koffi marshals the end-of-stream signal to JS null,
+          // handled above, and never to the string, so there is no artifact to
+          // filter here. Discarding by value swallowed any response that ended
+          // as exactly "null".
+          queue.push({ content: text });
+          // Arm the stall detector between snapshots: if the native side stops
+          // calling back mid-response the consumer should fail rather than
+          // wait forever. A tool that runs before the first snapshot is not
+          // covered, so slow tools do not trip it.
           resetIdleTimer();
         }
         const notify = notifyConsumer;
