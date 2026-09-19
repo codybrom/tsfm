@@ -52,21 +52,45 @@ SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
 HAS_MACOS_27_SDK=false
 [[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]] && HAS_MACOS_27_SDK=true
 
-# --- Skip if already built ---
+SOURCE_DIR="${1:-$VENDORED_DIR}"
+EXTENSIONS_DIR="$NATIVE_DIR/extensions"
+
+# --- Skip if already built from the same inputs ---
 #
-# Unless the dylib predates the macOS 27 SDK: one built against the 26 SDK has
-# no attachment support, and skipping would keep it after switching to Xcode 27.
+# The bridge source lives in the repo and changes, so "a dylib exists" isn't
+# enough: a stale one would be packaged by prepublishOnly and no longer match
+# src/bindings.ts. The build records a fingerprint of everything it was built
+# from, and later runs skip only when that fingerprint still matches. The SDK
+# version is part of it, so switching to the macOS 27 SDK (prompt attachments)
+# also triggers a rebuild.
 
 DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
+HEADER="$NATIVE_DIR/FoundationModels.h"
+STAMP="$NATIVE_DIR/.build-inputs.sha256"
+
+hash_tree() {
+  (cd "$1" && find . -path ./.build -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
+}
+
+build_fingerprint() {
+  {
+    echo "sdk=$SDK_VERSION attachments=$HAS_MACOS_27_SDK developer_dir=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}"
+    swift --version 2>/dev/null | sed -n 1p || true
+    shasum -a 256 < "$SCRIPT_DIR/build-native.sh"
+    [[ -d "$SOURCE_DIR" ]] && hash_tree "$SOURCE_DIR"
+    [[ -d "$EXTENSIONS_DIR" ]] && hash_tree "$EXTENSIONS_DIR"
+  } | shasum -a 256 | cut -d' ' -f1
+}
+
+INPUTS_FINGERPRINT="$(build_fingerprint)"
+if [[ -f "$DYLIB" && -f "$HEADER" && -f "$STAMP" && "$(cat "$STAMP")" == "$INPUTS_FINGERPRINT" ]]; then
+  log "Native dylib is up to date with its sources, skipping build."
+  exit 0
+fi
 if [[ -f "$DYLIB" ]]; then
-  if $HAS_MACOS_27_SDK && ! nm -m "$DYLIB" 2>/dev/null | grep 'Attachment.*from FoundationModels' >/dev/null; then
-    # Left in place until the copy step overwrites it, so a failed rebuild
-    # still leaves a loadable library.
-    log "Native dylib was built without prompt attachments, but the macOS $SDK_VERSION SDK is active. Rebuilding."
-  else
-    log "Native dylib already present, skipping build. Delete native/libFoundationModels.dylib to force rebuild."
-    exit 0
-  fi
+  # Left in place until the copy step overwrites it, so a failed rebuild
+  # still leaves a loadable library.
+  log "Native sources, extensions or toolchain changed since the last build. Rebuilding."
 fi
 
 # --- Check prerequisites ---
@@ -112,7 +136,6 @@ log "Xcode $XCODE_VERSION ✓"
 
 # --- Stage the bridge source ---
 
-SOURCE_DIR="${1:-$VENDORED_DIR}"
 if [[ ! -f "$SOURCE_DIR/Package.swift" ]]; then
   log "error: Could not find foundation-models-c at $SOURCE_DIR"
   exit 1
@@ -127,7 +150,6 @@ FM_C_DIR="$STAGING_DIR"
 
 # --- Add tsfm extensions to the staged source ---
 
-EXTENSIONS_DIR="$PACKAGE_DIR/native/extensions"
 BINDINGS_SRC="$FM_C_DIR/Sources/FoundationModelsCBindings"
 if [[ -d "$EXTENSIONS_DIR" ]]; then
   for f in "$EXTENSIONS_DIR"/*.swift; do
@@ -173,6 +195,10 @@ for f in "$EXTENSIONS_DIR"/*.h; do
   fi
 done
 log "Copied: FoundationModels.h"
+
+# Recorded last, so a build that fails partway leaves no matching fingerprint
+# and the next run rebuilds.
+echo "$INPUTS_FINGERPRINT" > "$STAMP"
 
 log ""
 log "Artifacts in $NATIVE_DIR:"
