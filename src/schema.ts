@@ -660,10 +660,11 @@ export class GeneratedContent {
    */
   value<T = unknown>(propertyName: string): T {
     this._assertNotDisposed();
-    const raw = getFunctions().FMGeneratedContentGetPropertyValue(
-      this._nativeContent!,
-      propertyName,
-    ).value;
+    const {
+      value: raw,
+      status,
+      description,
+    } = getFunctions().FMGeneratedContentGetPropertyValue(this._nativeContent!, propertyName);
     if (raw !== null) {
       try {
         return JSON.parse(raw);
@@ -675,6 +676,13 @@ export class GeneratedContent {
     const obj = this.toObject();
     if (propertyName in obj) {
       return obj[propertyName] as T;
+    }
+    // Neither path found it. If the native read failed, say why.
+    if (status !== 0) {
+      throw statusToError(
+        status,
+        `Property '${propertyName}' not found in generated content${description ? `: ${description}` : ""}`,
+      );
     }
     throw new Error(`Property '${propertyName}' not found in generated content`);
   }
