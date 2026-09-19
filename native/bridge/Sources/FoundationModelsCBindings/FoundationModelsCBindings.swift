@@ -8,13 +8,6 @@ import FoundationModels
 import FoundationModelsCDeclarations
 import Synchronization
 
-enum ComposedPromptError: Error {
-  // Error thrown when the SDK, at build time, does not support attachments
-  case unsupportedSDK
-  // Error thrown when the runtime OS does not support attachments
-  case unsupportedOS
-}
-
 /// Builder class for a `Prompt`.
 public class ComposedPrompt: NSObject, PromptRepresentable {
   public init(components: [PromptRepresentable] = []) {
@@ -28,23 +21,14 @@ public class ComposedPrompt: NSObject, PromptRepresentable {
     self.components.append(text)
   }
 
-  public func add(attachmentFromPath imagePath: String, label: String?) throws {
-    // `Attachment` only exists in the macOS 27+ SDK
-    #if FM_HAS_MACOS_27_SDK
-    if #available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *) {
-      let url = URL(fileURLWithPath: imagePath)
-      var attachment = Attachment(imageURL: url)
-      if let label {
-        attachment = attachment.label(label)
-      }
-      self.components.append(attachment)
-      return
-    } else {
-      throw ComposedPromptError.unsupportedOS
+  // tsfm: macOS 27 is the minimum, so attachments are always available; the
+  // SDK and OS checks upstream needed for macOS 26 are gone.
+  public func add(attachmentFromPath imagePath: String, label: String?) {
+    var attachment = Attachment(imageURL: URL(fileURLWithPath: imagePath))
+    if let label {
+      attachment = attachment.label(label)
     }
-    #else
-    throw ComposedPromptError.unsupportedSDK
-    #endif
+    self.components.append(attachment)
   }
 
   public var promptRepresentation: Prompt {
@@ -76,19 +60,9 @@ public func FMComposedPromptAddAttachment(
   let composedPrompt = Unmanaged<ComposedPrompt>.fromOpaque(composedPrompt).takeUnretainedValue()
   let imageURLToAddToPrompt = String(cString: imagePath)
   let labelString = label.map(String.init(cString:))
-  do {
-    try composedPrompt.add(attachmentFromPath: imageURLToAddToPrompt, label: labelString)
-    return true
-  } catch ComposedPromptError.unsupportedOS {
-    error?.pointee = FMComposedPromptAddImageErrorUnsupportedOS
-    return false
-  } catch ComposedPromptError.unsupportedSDK {
-    error?.pointee = FMComposedPromptAddImageErrorUnsupportedSDK
-    return false
-  } catch _ {
-    error?.pointee = FMComposedPromptAddImageErrorUnknown
-    return false
-  }
+  // tsfm: can't fail on macOS 27; `error` stays in the signature for ABI stability.
+  composedPrompt.add(attachmentFromPath: imageURLToAddToPrompt, label: labelString)
+  return true
 }
 
 final class TaskBox {
@@ -172,18 +146,6 @@ public func FMSystemLanguageModelIsAvailable(
 
 // MARK: - Token counting and context size
 
-/// Error thrown when a token-counting API is invoked on an OS older than the version that
-/// introduced it (26.4).
-private func tokenCountUnsupportedOSError() -> Error {
-  NSError(
-    domain: "TokenCount",
-    code: -1,
-    userInfo: [
-      NSLocalizedDescriptionKey: "Token counting requires macOS 26.4, iOS 26.4, or visionOS 26.4 or later."
-    ]
-  )
-}
-
 /// Returns the model's maximum context window size, measured in tokens.
 @_cdecl("FMSystemLanguageModelGetContextSize")
 public func FMSystemLanguageModelGetContextSize(model: FMSystemLanguageModelRef) -> Int32 {
@@ -240,9 +202,6 @@ public func FMSystemLanguageModelTokenCountForPrompt(
   let prompt = Unmanaged<ComposedPrompt>.fromOpaque(composedPrompt).takeUnretainedValue()
     .promptRepresentation
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
-      throw tokenCountUnsupportedOSError()
-    }
     return try await model.tokenCount(for: prompt)
   }
 }
@@ -258,9 +217,6 @@ public func FMSystemLanguageModelTokenCountForInstructions(
   let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let instructions = Instructions(String(cString: instructions))
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
-      throw tokenCountUnsupportedOSError()
-    }
     return try await model.tokenCount(for: instructions)
   }
 }
@@ -286,9 +242,6 @@ public func FMSystemLanguageModelTokenCountForTools(
   let toolArray = collectedTools
 
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
-      throw tokenCountUnsupportedOSError()
-    }
     return try await model.tokenCount(for: toolArray)
   }
 }
@@ -304,9 +257,6 @@ public func FMSystemLanguageModelTokenCountForSchema(
   let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let schemaBuilder = Unmanaged<GenerationSchemaBuilder>.fromOpaque(schema).takeUnretainedValue()
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
-      throw tokenCountUnsupportedOSError()
-    }
     let schema = try schemaBuilder.buildSchema()
     return try await model.tokenCount(for: schema)
   }
@@ -325,9 +275,6 @@ public func FMSystemLanguageModelTokenCountForTranscript(
     .takeUnretainedValue()
   let transcript = session.transcript
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
-      throw tokenCountUnsupportedOSError()
-    }
     return try await model.tokenCount(for: transcript)
   }
 }
@@ -513,12 +460,7 @@ private func frameworkStatusCode(for error: Error) -> Int32? {
   if let error = error as? LanguageModelSession.GenerationError {
     return mapGenerationErrorToStatusCode(error)
   }
-  #if FM_HAS_MACOS_27_SDK
-  if #available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *) {
-    return macOS27StatusCode(for: error)
-  }
-  #endif
-  return nil
+  return macOS27StatusCode(for: error)
 }
 
 /// frameworkStatusCode(for:), falling back to unknownError.
@@ -526,8 +468,6 @@ private func statusCode(for error: Error) -> Int32 {
   frameworkStatusCode(for: error) ?? StatusCode.unknownError.rawValue
 }
 
-#if FM_HAS_MACOS_27_SDK
-@available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *)
 private func macOS27StatusCode(for error: Error) -> Int32? {
   switch error {
   case let error as LanguageModelError:
@@ -557,14 +497,14 @@ private func macOS27StatusCode(for error: Error) -> Int32? {
     switch error {
     case .assetsUnavailable:
       return StatusCode.assetsUnavailable.rawValue
-    @unknown default:
+    default:  // Other cases aren't mapped; they become unknownError.
       return nil
     }
   case let error as LanguageModelSession.Error:
     switch error {
     case .concurrentRequests:
       return StatusCode.concurrentRequests.rawValue
-    @unknown default:
+    default:  // Other cases aren't mapped; they become unknownError.
       return nil
     }
   case is GeneratedContent.ParsingError:
@@ -573,7 +513,6 @@ private func macOS27StatusCode(for error: Error) -> Int32? {
     return nil
   }
 }
-#endif
 
 // Helper function to create detailed error descriptions from generic errors
 private func formatErrorDescription(_ error: Error, function: String = #function) -> String {

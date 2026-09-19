@@ -2,7 +2,7 @@
 # Builds the Foundation Models C dylib from tsfm's Swift-to-C bridge in
 # native/bridge (a fork of Apple's foundation-models-c, see
 # native/bridge/UPSTREAM.md), plus native/extensions.
-# Requires: macOS 26.0+, Xcode 26.4+, Swift toolchain in PATH
+# Requires: Xcode 27+ (macOS 27 SDK, Swift 6.4). The dylib runs on macOS 27+.
 #
 # Usage:
 #   bash scripts/build-native.sh [/path/to/bridge]
@@ -31,27 +31,10 @@ log "=== tsfm native build ==="
 log "Log: $LOG_FILE"
 > "$LOG_FILE"  # truncate
 
-# --- Select the toolchain ---
-#
-# A beta is preferred when present: it is how you get an SDK newer than the
-# released Xcode, which is what prompt attachments need (macOS 27 SDK). This
-# has to happen before the SDK check and the version check below, or they
-# validate the selected Xcode while swift build uses the beta.
-
-XCODE_BETA="/Applications/Xcode-beta.app"
-if [[ -d "$XCODE_BETA" ]]; then
-  export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
-  log "Preferring Xcode beta at $XCODE_BETA"
-fi
-
-# Prompt attachments compile only when FM_HAS_MACOS_27_SDK is defined, which
-# upstream's build_backend.py sets for a macOS 27+ SDK. The deployment target
-# stays at macOS 26 (Package.swift), and the bridge gates attachments behind
-# #available(macOS 27), so one dylib loads on 26 and supports attachments on 27.
+# The bridge targets macOS 27 (Package.swift) and uses macOS 27 APIs directly,
+# so it needs the macOS 27 SDK. Checked below, after the skip shortcut.
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
 SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
-HAS_MACOS_27_SDK=false
-[[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]] && HAS_MACOS_27_SDK=true
 
 SOURCE_DIR="${1:-$BRIDGE_DIR}"
 EXTENSIONS_DIR="$NATIVE_DIR/extensions"
@@ -62,8 +45,7 @@ EXTENSIONS_DIR="$NATIVE_DIR/extensions"
 # enough: a stale one would be packaged by prepublishOnly and no longer match
 # src/bindings.ts. The build records a fingerprint of everything it was built
 # from, and later runs skip only when that fingerprint still matches. The SDK
-# version is part of it, so switching to the macOS 27 SDK (prompt attachments)
-# also triggers a rebuild.
+# version and toolchain are part of it, so switching Xcode triggers a rebuild.
 
 DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
 HEADER="$NATIVE_DIR/FoundationModels.h"
@@ -75,7 +57,7 @@ hash_tree() {
 
 build_fingerprint() {
   {
-    echo "sdk=$SDK_VERSION attachments=$HAS_MACOS_27_SDK developer_dir=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}"
+    echo "sdk=$SDK_VERSION developer_dir=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}"
     swift --version 2>/dev/null | sed -n 1p || true
     shasum -a 256 < "$SCRIPT_DIR/build-native.sh"
     [[ -d "$SOURCE_DIR" ]] && hash_tree "$SOURCE_DIR"
@@ -101,39 +83,29 @@ if [[ "$(uname)" != "Darwin" ]]; then
   exit 1
 fi
 
-MACOS_VERSION="$(sw_vers -productVersion)"
-MACOS_MAJOR="$(echo "$MACOS_VERSION" | cut -d. -f1)"
-if [[ "$MACOS_MAJOR" -lt 26 ]]; then
-  log "error: macOS 26.0+ required (found $MACOS_VERSION)."
-  exit 1
-fi
-log "macOS $MACOS_VERSION ✓"
+# Building only needs the macOS 27 SDK (checked below); running needs macOS 27.
+log "Build host: macOS $(sw_vers -productVersion)"
 
 if ! command -v swift &>/dev/null; then
-  log "error: 'swift' not found. Install Xcode 26+."
+  log "error: 'swift' not found. Install Xcode 27+."
   exit 1
 fi
 
 # --- Validate the selected toolchain ---
 
-# Reads whatever DEVELOPER_DIR points at (see toolchain selection above).
 XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
 XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
-XCODE_MINOR="$(echo "$XCODE_VERSION" | cut -d. -f2)"
-# The bridge reads SystemLanguageModel.contextSize, whose declaration first
-# appears in the Xcode 26.4 SDK. Earlier Xcode 26.x passes a major-only check
-# and then fails mid-compile on a missing member.
-if [[ "$XCODE_MAJOR" -lt 26 || ( "$XCODE_MAJOR" -eq 26 && "$XCODE_MINOR" -lt 4 ) ]]; then
-  log "error: Xcode 26.4+ required (found $XCODE_VERSION)."
-  if [[ -n "${DEVELOPER_DIR:-}" ]]; then
-    log "       Selected toolchain: $DEVELOPER_DIR"
-    log "       Remove or update that beta, or unset DEVELOPER_DIR, to use the released Xcode."
-  fi
-  log "       The C bridge needs the 26.4 SDK to see SystemLanguageModel.contextSize."
+if [[ ! "$XCODE_MAJOR" =~ ^[0-9]+$ || "$XCODE_MAJOR" -lt 27 ]]; then
+  log "error: Xcode 27+ required (found ${XCODE_VERSION:-none})."
+  log "       The bridge uses macOS 27 APIs and Package.swift needs swift-tools-version 6.4."
   exit 1
 fi
-log "Xcode $XCODE_VERSION ✓"
+if [[ ! "$SDK_MAJOR" =~ ^[0-9]+$ || "$SDK_MAJOR" -lt 27 ]]; then
+  log "error: macOS 27 SDK required (found ${SDK_VERSION:-none}). Select Xcode 27 with xcode-select."
+  exit 1
+fi
+log "Xcode $XCODE_VERSION, macOS SDK $SDK_VERSION ✓"
 
 # --- Stage the bridge source ---
 
@@ -161,16 +133,8 @@ fi
 
 # --- Build (redirect verbose Swift output to log file) ---
 
-SWIFT_ARGS=()
-if $HAS_MACOS_27_SDK; then
-  SWIFT_ARGS+=(-Xswiftc -DFM_HAS_MACOS_27_SDK)
-  log "macOS SDK $SDK_VERSION: prompt attachments enabled"
-else
-  log "macOS SDK ${SDK_VERSION:-unknown}: prompt attachments disabled (needs the macOS 27 SDK)"
-fi
-
 log "Building Foundation Models C bindings (this takes ~1-2 min)..."
-swift build -c release --package-path "$FM_C_DIR" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} >> "$LOG_FILE" 2>&1
+swift build -c release --package-path "$FM_C_DIR" >> "$LOG_FILE" 2>&1
 log "Build complete."
 
 BUILD_DIR="$(swift build -c release --package-path "$FM_C_DIR" --show-bin-path 2>>"$LOG_FILE")"

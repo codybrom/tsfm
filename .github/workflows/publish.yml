@@ -28,12 +28,11 @@ permissions:
 jobs:
   publish:
     # Must be macOS: prepublishOnly runs scripts/build-native.sh, which compiles
-    # the Swift bridge and needs Xcode 26.4+. On a Linux runner this fails deep
-    # in the build rather than at publish time.
+    # the Swift bridge and needs Xcode 27 (macOS 27 SDK). On a Linux runner this
+    # fails deep in the build rather than at publish time.
     #
-    # xcode-27 builds against the macOS 27 SDK, which prompt attachments need.
-    # The deployment target stays macOS 26, and the Verify step below fails the
-    # publish if the dylib would not load there.
+    # The Verify step below fails the publish unless the dylib targets macOS 27
+    # and links the macOS 27 APIs.
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
@@ -69,13 +68,13 @@ jobs:
 
       # Build explicitly so the artifact can be inspected before publishing.
       # prepublishOnly runs the same command again, but build-native.sh skips
-      # when the dylib is already present, so the second pass only re-emits TS.
+      # when its inputs are unchanged, so the second pass only re-emits TS.
       - name: Build
         run: npm run build
 
       - name: Verify the native library made it into the package
         run: |
-          bash scripts/verify-native.sh --attachments
+          bash scripts/verify-native.sh
           npm pack --dry-run
 
       - name: Publish to npm

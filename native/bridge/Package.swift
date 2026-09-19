@@ -3,14 +3,14 @@ For licensing see accompanying LICENSE file.
 Copyright (C) 2026 Apple Inc. All Rights Reserved.
 */
 
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
   name: "foundation-models-c-bindings",
-  platforms: [.macOS(.v26), .iOS(.v26), .visionOS(.v26)],
+  platforms: [.macOS(.v27), .iOS(.v27), .visionOS(.v27)],
   products: [
     .library(name: "FoundationModels", type: .dynamic, targets: ["FoundationModelsCBindings"]),
     .library(name: "FoundationModelsStatic", type: .static, targets: ["FoundationModelsCBindings"]),
