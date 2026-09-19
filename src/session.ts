@@ -32,14 +32,8 @@ import {
 import { collectSchemaPatterns, findUnsupportedRegexConstruct } from "./regex-support.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
-import {
-  ResponseStream,
-  emptyUsage,
-  parseUsage,
-  usageBetween,
-  type Response,
-  type Usage,
-} from "./response.js";
+import { hasMacOS27, requireMacOS27 } from "./os.js";
+import { ResponseStream, parseUsage, usageBetween, type Response, type Usage } from "./response.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
 const _FROM_POINTER = Symbol("fromPointer");
@@ -94,6 +88,10 @@ function _installExitHandler(): void {
 function assertModelNotDisposed(
   model: SystemLanguageModel | PrivateCloudComputeLanguageModel | undefined,
 ): void {
+  // On macOS 26 a PCC model has no native pointer; say why instead of "disposed".
+  if (model instanceof PrivateCloudComputeLanguageModel && model._requiresNewerOS) {
+    requireMacOS27("Private Cloud Compute");
+  }
   if (model && !model._nativeModel) {
     throw new FoundationModelsError(`${model.constructor.name} has been disposed`);
   }
@@ -377,17 +375,18 @@ export class LanguageModelSession {
   }
 
   /**
-   * Token usage accumulated over every response in this session. For one
-   * response's usage, use the `usage` on the value `respond()` returns.
+   * Token usage accumulated over every response in this session, or `null` on
+   * macOS 26 (which doesn't report usage) and once the session is disposed. For
+   * one response's usage, use the `usage` on the value `respond()` returns.
    */
-  get usage(): Usage {
+  get usage(): Usage | null {
     return this._readUsage();
   }
 
   private async *_streamDeltas(
     prompt: string | PromptInput,
     opts: { options?: GenerationOptions },
-    onFinished: (usage: Usage) => void,
+    onFinished: (usage: Usage | null) => void,
   ): AsyncGenerator<string> {
     this._assertNotDisposed();
     // streamResponse cannot use _enqueue: _enqueue expects a single Promise<T>
@@ -420,6 +419,9 @@ export class LanguageModelSession {
     let notifyConsumer: (() => void) | null = null;
 
     let usageBefore: Usage | null = null;
+    // Set once usage was read before the request; a null reading (macOS 26)
+    // still finishes the stream with null usage.
+    let readUsageBefore = false;
     let budget: ToolCallBudget | null = null;
 
     try {
@@ -431,6 +433,7 @@ export class LanguageModelSession {
       this._assertNotDisposed();
       this._assertOptionsSupported(opts.options);
       usageBefore = this._readUsage();
+      readUsageBefore = true;
       budget = this._lendToolBudget(opts.options);
       fn = getFunctions();
       const optionsJson = serializeOptions(opts.options);
@@ -579,7 +582,7 @@ export class LanguageModelSession {
       if (fn && composedPrompt) fn.FMRelease(composedPrompt);
       if (budget) this._returnToolBudget(budget);
       try {
-        if (usageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
+        if (readUsageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
       } finally {
         // Always unlock the queue, even if reading usage fails, or every later
         // request on this session would wait forever.
@@ -613,8 +616,8 @@ export class LanguageModelSession {
   // -------------------------------------------------------------------------
 
   /** Cumulative usage from the native session, or zeros once disposed. */
-  private _readUsage(): Usage {
-    if (!this._nativeSession) return emptyUsage();
+  private _readUsage(): Usage | null {
+    if (!this._nativeSession) return null;
     return parseUsage(
       decodeAndFreeString(
         getFunctions().FMLanguageModelSessionGetUsageJSON(
@@ -632,6 +635,9 @@ export class LanguageModelSession {
   private _assertRegexGuidesSupported(jsonSchema: JsonSchema): void {
     // Private Cloud Compute supports the patterns the on-device model doesn't.
     if (this._usesPrivateCloudCompute) return;
+    // The support table was measured on the macOS 27 model. The macOS 26 model
+    // isn't characterized, so its patterns go through unchecked, as in 0.x.
+    if (!hasMacOS27()) return;
     for (const { path, pattern } of collectSchemaPatterns(jsonSchema)) {
       const construct = findUnsupportedRegexConstruct(pattern);
       if (construct) {
@@ -648,6 +654,10 @@ export class LanguageModelSession {
    * reasoningLevel with an error older hosts can't identify, so reject it here.
    */
   private _assertOptionsSupported(options: GenerationOptions | undefined): void {
+    // "allowed" is the default behavior, so it works on macOS 26 too.
+    if (options?.toolCallingMode !== undefined && options.toolCallingMode !== "allowed") {
+      requireMacOS27(`toolCallingMode "${options.toolCallingMode}"`);
+    }
     if (options?.reasoningLevel !== undefined && !this._usesPrivateCloudCompute) {
       throw new UnsupportedCapabilityError(
         "reasoningLevel needs PrivateCloudComputeLanguageModel; the on-device model doesn't reason.",

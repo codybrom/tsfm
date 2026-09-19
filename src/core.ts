@@ -141,19 +141,15 @@ export class SystemLanguageModel {
     return getFunctions().FMSystemLanguageModelGetContextSize(this._nativeModel) as number;
   }
 
-  /** The model variant, e.g. `"AFM 3 Core Advanced"`. */
-  get variant(): string {
-    return (
-      decodeAndFreeString(
-        getFunctions().FMSystemLanguageModelGetVariantName(
-          this._nativeModel,
-        ) as NativePointer | null,
-      ) ?? ""
+  /** The model variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26. */
+  get variant(): string | null {
+    return decodeAndFreeString(
+      getFunctions().FMSystemLanguageModelGetVariantName(this._nativeModel) as NativePointer | null,
     );
   }
 
-  /** What the model can do. The on-device model doesn't reason. */
-  get capabilities(): ModelCapability[] {
+  /** What the model can do, or `null` on macOS 26. The on-device model doesn't reason. */
+  get capabilities(): ModelCapability[] | null {
     return parseCapabilities(
       decodeAndFreeString(
         getFunctions().FMSystemLanguageModelGetCapabilitiesJSON(

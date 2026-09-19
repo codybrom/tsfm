@@ -10,8 +10,9 @@ const KNOWN = new Set<string>(["vision", "toolCalling", "guidedGeneration", "rea
  * an empty list; malformed JSON throws, like supportedLanguages, instead of
  * reading as "no capabilities". Names this version doesn't know are dropped.
  */
-export function parseCapabilities(json: string | null): ModelCapability[] {
-  if (json === null) return [];
+export function parseCapabilities(json: string | null): ModelCapability[] | null {
+  // null: capabilities aren't available (macOS 26 doesn't report them).
+  if (json === null) return null;
   let names: unknown;
   try {
     names = JSON.parse(json);

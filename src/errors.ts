@@ -39,9 +39,9 @@ export type PromptAttachmentFailure = "unsupported-os" | "unsupported-sdk" | "un
 /**
  * Raised when an attachment cannot be added to a prompt.
  *
- * tsfm 1.x requires macOS 27, where attachments are always available, so the
- * bundled library never reports `unsupported-os` or `unsupported-sdk`. Those
- * reasons remain in the type for code written against 0.x.
+ * Attachments need macOS 27; on macOS 26 the reason is `unsupported-os`. The
+ * bundled library is built with the macOS 27 SDK, so it never reports
+ * `unsupported-sdk`; that reason remains for libraries built without it.
  */
 export class PromptAttachmentError extends FoundationModelsError {
   readonly reason: PromptAttachmentFailure;
@@ -147,13 +147,19 @@ export class TimeoutError extends GenerationError {
 }
 
 /**
- * The request needs a capability the model doesn't have. Only reported by hosts
- * built with the macOS 27 SDK.
+ * The request needs a capability this model or this Mac doesn't have: for
+ * example `reasoningLevel` on the on-device model, or a macOS 27 feature such
+ * as `toolCallingMode` on macOS 26. When the Mac is too old, `requiredMacOS` is
+ * the macOS version the feature needs.
  */
 export class UnsupportedCapabilityError extends GenerationError {
-  constructor(msg = "Unsupported capability") {
+  /** The macOS version the feature needs, when an older macOS is the reason. */
+  readonly requiredMacOS?: number;
+
+  constructor(msg = "Unsupported capability", options: { requiredMacOS?: number } = {}) {
     super(msg);
     this.name = "UnsupportedCapabilityError";
+    if (options.requiredMacOS !== undefined) this.requiredMacOS = options.requiredMacOS;
   }
 }
 
@@ -268,8 +274,15 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new InvalidArgumentError(`Invalid argument${suffix}`);
     case GenerationErrorCode.TIMEOUT:
       return new TimeoutError(`Timed out${suffix}`);
-    case GenerationErrorCode.UNSUPPORTED_CAPABILITY:
-      return new UnsupportedCapabilityError(`Unsupported capability${suffix}`);
+    case GenerationErrorCode.UNSUPPORTED_CAPABILITY: {
+      // The bridge reports a macOS 27 feature used on an older macOS as
+      // "<feature> requires macOS <version> or later.".
+      const required = /requires macOS (\d+)/.exec(detail ?? "");
+      return new UnsupportedCapabilityError(
+        `Unsupported capability${suffix}`,
+        required ? { requiredMacOS: Number(required[1]) } : {},
+      );
+    }
     case GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT:
       return new UnsupportedTranscriptContentError(`Unsupported transcript content${suffix}`);
     case GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED:
