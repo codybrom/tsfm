@@ -10,6 +10,10 @@ export const enum GenerationErrorCode {
   CONCURRENT_REQUESTS = 8,
   REFUSAL = 9,
   INVALID_SCHEMA = 10,
+  INVALID_ARGUMENT = 11,
+  TIMEOUT = 12,
+  UNSUPPORTED_CAPABILITY = 13,
+  UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
   UNKNOWN_ERROR = 255,
 }
 
@@ -118,6 +122,44 @@ export class InvalidGenerationSchemaError extends GenerationError {
   }
 }
 
+/** The C bridge rejected an argument, such as a null pointer. */
+export class InvalidArgumentError extends GenerationError {
+  constructor(msg = "Invalid argument") {
+    super(msg);
+    this.name = "InvalidArgumentError";
+  }
+}
+
+/** The model didn't finish in time. Only reported by hosts built with the macOS 27 SDK. */
+export class TimeoutError extends GenerationError {
+  constructor(msg = "Timed out") {
+    super(msg);
+    this.name = "TimeoutError";
+  }
+}
+
+/**
+ * The request needs a capability the model doesn't have. Only reported by hosts
+ * built with the macOS 27 SDK.
+ */
+export class UnsupportedCapabilityError extends GenerationError {
+  constructor(msg = "Unsupported capability") {
+    super(msg);
+    this.name = "UnsupportedCapabilityError";
+  }
+}
+
+/**
+ * The transcript contains content the model can't accept. Only reported by hosts
+ * built with the macOS 27 SDK.
+ */
+export class UnsupportedTranscriptContentError extends GenerationError {
+  constructor(msg = "Unsupported transcript content") {
+    super(msg);
+    this.name = "UnsupportedTranscriptContentError";
+  }
+}
+
 /**
  * The Apple Intelligence service (`generativeexperiencesd`) has crashed.
  * Detected in `statusToError()` when UNKNOWN_ERROR details contain
@@ -166,6 +208,14 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new RefusalError(`Model refused${suffix}`);
     case GenerationErrorCode.INVALID_SCHEMA:
       return new InvalidGenerationSchemaError(`Invalid schema${suffix}`);
+    case GenerationErrorCode.INVALID_ARGUMENT:
+      return new InvalidArgumentError(`Invalid argument${suffix}`);
+    case GenerationErrorCode.TIMEOUT:
+      return new TimeoutError(`Timed out${suffix}`);
+    case GenerationErrorCode.UNSUPPORTED_CAPABILITY:
+      return new UnsupportedCapabilityError(`Unsupported capability${suffix}`);
+    case GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT:
+      return new UnsupportedTranscriptContentError(`Unsupported transcript content${suffix}`);
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
         if (
