@@ -21,10 +21,7 @@
     ".git/{index,*refs,*HEAD}",
     ".vscode",
     ".vscode-insiders",
-    "native/foundation-models-c/**"
+    "native/bridge/LICENSE.md"
   ],
-  "swift.excludePathsFromActivation": {
-    "**/native/foundation-models-c": true
-  },
   "swift.autoGenerateLaunchConfigurations": false
 }

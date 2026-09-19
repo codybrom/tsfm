@@ -1,12 +1,13 @@
 #!/bin/bash
-# Builds the Foundation Models C dylib from the bridge vendored in
-# native/foundation-models-c (see native/UPSTREAM.md), plus native/extensions.
+# Builds the Foundation Models C dylib from tsfm's Swift-to-C bridge in
+# native/bridge (a fork of Apple's foundation-models-c, see
+# native/bridge/UPSTREAM.md), plus native/extensions.
 # Requires: macOS 26.0+, Xcode 26.4+, Swift toolchain in PATH
 #
 # Usage:
-#   bash scripts/build-native.sh [/path/to/foundation-models-c]
+#   bash scripts/build-native.sh [/path/to/bridge]
 #
-# A path overrides the vendored copy, e.g. to try an upstream checkout.
+# A path overrides native/bridge, e.g. to try an upstream foundation-models-c checkout.
 
 set -euo pipefail
 # Ignore SIGPIPE (exit 141) from VS Code task runner piping
@@ -17,12 +18,12 @@ PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 NATIVE_DIR="$PACKAGE_DIR/native"
 LOG_FILE="$PACKAGE_DIR/build-native.log"
 
-# The vendored bridge. src/bindings.ts is written against exactly this source:
+# The bridge. src/bindings.ts is written against exactly this source:
 # koffi binds by symbol name and can't see a changed parameter type, so any edit
 # to a C signature here needs the matching change in src/bindings.ts.
-VENDORED_DIR="$NATIVE_DIR/foundation-models-c"
-# Built from a copy so the vendored tree never holds build output or extensions.
-STAGING_DIR="$PACKAGE_DIR/.build/foundation-models-c"
+BRIDGE_DIR="$NATIVE_DIR/bridge"
+# Built from a copy so native/bridge never holds build output or extensions.
+STAGING_DIR="$PACKAGE_DIR/.build/bridge"
 
 log() { echo "$*" | tee -a "$LOG_FILE"; }
 
@@ -52,7 +53,7 @@ SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
 HAS_MACOS_27_SDK=false
 [[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]] && HAS_MACOS_27_SDK=true
 
-SOURCE_DIR="${1:-$VENDORED_DIR}"
+SOURCE_DIR="${1:-$BRIDGE_DIR}"
 EXTENSIONS_DIR="$NATIVE_DIR/extensions"
 
 # --- Skip if already built from the same inputs ---
@@ -137,7 +138,7 @@ log "Xcode $XCODE_VERSION ✓"
 # --- Stage the bridge source ---
 
 if [[ ! -f "$SOURCE_DIR/Package.swift" ]]; then
-  log "error: Could not find foundation-models-c at $SOURCE_DIR"
+  log "error: Could not find the bridge package (Package.swift) at $SOURCE_DIR"
   exit 1
 fi
 log "Bridge source: $SOURCE_DIR"

@@ -27,7 +27,7 @@ export default tseslint.config(
     },
   },
   {
-    // native/ holds the vendored Swift bridge (see native/UPSTREAM.md) and build output.
+    // native/ holds the Swift bridge (see native/bridge/UPSTREAM.md) and build output.
     ignores: ["dist/", "node_modules/", "native/", ".build/"],
   },
 );
