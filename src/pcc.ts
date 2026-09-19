@@ -9,7 +9,7 @@ import {
 } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
 import { parseCapabilities, type ModelCapability } from "./capabilities.js";
-import { hasMacOS27, requireMacOS27 } from "./os.js";
+import { hasMacOS27, requireMacOS27, runtimeMacOSMajor } from "./os.js";
 
 const _pccRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
@@ -76,12 +76,24 @@ export class PrivateCloudComputeLanguageModel {
   private _disposed = false;
 
   constructor() {
-    // The bridge returns NULL before macOS 27 too; checking first avoids the call.
-    this._nativeModel = hasMacOS27()
-      ? (getFunctions().FMPrivateCloudComputeLanguageModelCreate() as NativePointer | null)
-      : null;
-    this._requiresNewerOS = this._nativeModel === null;
-    if (this._nativeModel) _pccRegistry.register(this, this._nativeModel, this);
+    if (!hasMacOS27()) {
+      this._nativeModel = null;
+      this._requiresNewerOS = true;
+      return;
+    }
+    this._nativeModel =
+      getFunctions().FMPrivateCloudComputeLanguageModelCreate() as NativePointer | null;
+    if (!this._nativeModel) {
+      // The bridge returns NULL before macOS 27. When the version couldn't be
+      // read, that's the explanation; on a known macOS 27 it's a real failure.
+      if (runtimeMacOSMajor() !== null) {
+        throw new FoundationModelsError("Failed to create PrivateCloudComputeLanguageModel");
+      }
+      this._requiresNewerOS = true;
+      return;
+    }
+    this._requiresNewerOS = false;
+    _pccRegistry.register(this, this._nativeModel, this);
   }
 
   private _assertNotDisposed(): NativePointer {
