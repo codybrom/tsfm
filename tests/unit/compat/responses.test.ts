@@ -756,6 +756,37 @@ describe("Responses API compat layer", () => {
     });
   });
 
+  it("labels function outputs with arguments when a function is called more than once", async () => {
+    simulateRespondSuccess("OK");
+
+    const client = new Client();
+    await client.responses.create({
+      input: [
+        { role: "user", content: "Weather in Tokyo and Paris?" },
+        {
+          type: "function_call",
+          name: "get_weather",
+          arguments: '{"city":"Tokyo"}',
+          call_id: "c1",
+        },
+        {
+          type: "function_call",
+          name: "get_weather",
+          arguments: '{"city":"Paris"}',
+          call_id: "c2",
+        },
+        { type: "function_call_output", call_id: "c2", output: "Rainy" },
+        { type: "function_call_output", call_id: "c1", output: "Sunny" },
+      ],
+      tools: sampleFunctionTools,
+    });
+
+    const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Paris"}]: Rainy');
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Tokyo"}]: Sunny');
+    client.close();
+  });
+
   describe("error mapping — non-streaming", () => {
     it("returns incomplete status with error for ExceededContextWindowSizeError", async () => {
       simulateRespondError(1, "Context window exceeded");

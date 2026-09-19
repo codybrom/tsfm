@@ -314,6 +314,39 @@ describe("messagesToTranscript", () => {
     );
   });
 
+  // With a repeated tool name, the name alone cannot pair each result with its call
+  it("labels results with call arguments when a tool is called more than once", () => {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "Weather in Tokyo and Paris?" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          {
+            id: "call_1",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Tokyo"}' },
+          },
+          {
+            id: "call_2",
+            type: "function",
+            function: { name: "get_weather", arguments: '{"city":"Paris"}' },
+          },
+          { id: "call_3", type: "function", function: { name: "get_time", arguments: "{}" } },
+        ],
+      },
+      // Returned out of call order
+      { role: "tool", tool_call_id: "call_2", content: "Rainy" },
+      { role: "tool", tool_call_id: "call_1", content: "Sunny" },
+      { role: "tool", tool_call_id: "call_3", content: "09:00" },
+    ];
+    const { prompt } = messagesToTranscript(messages);
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Paris"}]: Rainy');
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Tokyo"}]: Sunny');
+    expect(prompt).toContain("[Tool result for get_time]: 09:00");
+    expect(prompt).not.toContain("call_");
+  });
+
   it("tool-result prompt is just the results when no user message precedes them", () => {
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: "Be brief" },

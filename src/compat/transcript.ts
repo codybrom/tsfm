@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { JsonObject } from "../schema.js";
 import type { ChatCompletionMessageParam, ChatCompletionMessageToolCall } from "./types.js";
-import { describeToolCall, toolResultPrompt } from "./utils.js";
+import { describeToolCall, formatToolResult, toolResultPrompt, type ToolCallRef } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -107,6 +107,9 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
   // When the last message is a tool result (standard tool-calling flow), append
   // a synthetic user message summarizing the tool results so the standard
   // processing can handle it.
+  const calls = collectToolCalls(messages);
+  const callFor = (id: string) => calls.findLast((c) => c.id === id) ?? null;
+
   let normalized = messages;
   const last = messages[messages.length - 1];
   if (last.role === "tool") {
@@ -122,12 +125,8 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
         tool_call_id: string;
         content: string | Array<{ type: string; text?: string }>;
       };
-      const content = extractText(toolMsg.content);
-      const toolName = resolveToolName(toolMsg.tool_call_id, messages);
       parts.push(
-        toolName != null
-          ? `[Tool result for ${toolName}]: ${content}`
-          : `[Tool result]: ${content}`,
+        formatToolResult(callFor(toolMsg.tool_call_id), calls, extractText(toolMsg.content)),
       );
     }
     const request = messages.slice(0, toolStart).findLast((m) => m.role === "user");
@@ -177,12 +176,11 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
         tool_call_id: string;
         content: string | Array<{ type: string; text?: string }>;
       };
-      const content = extractText(toolMsg.content);
-      const toolName = resolveToolName(toolMsg.tool_call_id, history);
-      const text =
-        toolName != null
-          ? `[Tool result for ${toolName}]: ${content}`
-          : `[Tool result]: ${content}`;
+      const text = formatToolResult(
+        callFor(toolMsg.tool_call_id),
+        calls,
+        extractText(toolMsg.content),
+      );
       entries.push(makeEntry("user", text, true));
     }
   }
@@ -197,22 +195,20 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
 }
 
 // ---------------------------------------------------------------------------
-// Tool name resolution
+// Tool calls
 // ---------------------------------------------------------------------------
 
-/** Scan backward through messages to find the tool name for a given call ID. */
-function resolveToolName(
-  toolCallId: string,
+/** Every tool call the assistant made in the conversation, in order. */
+function collectToolCalls(
   messages: ChatCompletionMessageParam[],
-): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role === "assistant" && msg.tool_calls) {
-      const match = (msg.tool_calls as ChatCompletionMessageToolCall[]).find(
-        (tc) => tc.id === toolCallId,
-      );
-      if (match) return match.function.name;
-    }
-  }
-  return null;
+): Array<ToolCallRef & { id: string }> {
+  return messages.flatMap((msg) =>
+    msg.role === "assistant" && msg.tool_calls
+      ? (msg.tool_calls as ChatCompletionMessageToolCall[]).map((tc) => ({
+          id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        }))
+      : [],
+  );
 }

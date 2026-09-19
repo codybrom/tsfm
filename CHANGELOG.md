@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Chat and Responses APIs: after a tool result was sent back, the model often ignored it and answered something unrelated, such as "I am a foundation model created by Apple." Past tool calls went into the transcript as raw OpenAI JSON, which the model sometimes echoed back, and the tool result reached the model as a bare user turn with no question. Tool calls are now described in plain text, and the prompt restates the request that led to the call. In 15 runs of the tool-calling integration test, the first attempt succeeded 15/15 times, up from 6/15.
+- Chat and Responses APIs: when one tool was called more than once, the model could not tell which result belonged to which call. Asked for the weather in Tokyo and Paris, it swapped the cities every time. Results from a repeated tool are now labeled with the call's arguments, for example `[Tool result for get_weather {"city":"Paris"}]`.
 
 ### Changed
 
