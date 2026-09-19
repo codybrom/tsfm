@@ -2,12 +2,10 @@ node_modules
 .DS_Store
 dist
 build-native.log
-foundation-models-c
 .build
 native/*
 !native/extensions/
-!native/foundation-models-c/
-!native/UPSTREAM.md
+!native/bridge/
 coverage
 docs/.vitepress/dist
 docs/.vitepress/cache

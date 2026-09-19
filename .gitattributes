@@ -1,3 +1,0 @@
-# Apple's Swift-to-C bridge, vendored from apple/python-apple-fm-sdk (see native/UPSTREAM.md).
-# Excluded from GitHub's language stats and code search; diffs stay visible for review.
-native/foundation-models-c/** linguist-vendored
