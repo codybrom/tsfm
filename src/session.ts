@@ -10,11 +10,17 @@ import {
   type NativePointer,
 } from "./bindings.js";
 import { SystemLanguageModel } from "./core.js";
+import { PrivateCloudComputeLanguageModel } from "./pcc.js";
 import { Tool } from "./tool.js";
 import { ToolCallBudget } from "./tool-budget.js";
 import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
 import { GenerationOptions, serializeOptions, resolveMaximumToolCalls } from "./options.js";
-import { statusToError, FoundationModelsError, UnsupportedGuideError } from "./errors.js";
+import {
+  statusToError,
+  FoundationModelsError,
+  UnsupportedGuideError,
+  UnsupportedCapabilityError,
+} from "./errors.js";
 import { collectSchemaPatterns, findUnsupportedRegexConstruct } from "./regex-support.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
@@ -98,6 +104,8 @@ export class LanguageModelSession {
   private _disposed = false;
   /** Tools the session was created with; each request lends them a call budget. */
   private _tools: Tool[] = [];
+  /** Whether requests run on Private Cloud Compute rather than on-device. */
+  private _usesPrivateCloudCompute = false;
 
   /** Shared initialization for both constructor and fromTranscript. */
   private _init(pointer: NativePointer, transcript: Transcript, tools: Tool[]): void {
@@ -114,7 +122,8 @@ export class LanguageModelSession {
     opts:
       | {
           instructions?: string;
-          model?: SystemLanguageModel;
+          /** The on-device model (default) or `PrivateCloudComputeLanguageModel`. */
+          model?: SystemLanguageModel | PrivateCloudComputeLanguageModel;
           tools?: Tool[];
         }
       | typeof _FROM_POINTER = {},
@@ -128,15 +137,27 @@ export class LanguageModelSession {
     const toolPointers = tools.map((t) => t._nativeTool);
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
-    const pointer = fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
-      opts.model?._nativeModel ?? null,
-      opts.instructions ?? null,
-      toolPointersArg,
-      tools.length,
+    const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+    // Each model type has its own native constructor; the pointers aren't interchangeable.
+    const pointer = (
+      pcc
+        ? fn.FMLanguageModelSessionCreateFromPrivateCloudComputeModel(
+            pcc._nativeModel,
+            opts.instructions ?? null,
+            toolPointersArg,
+            tools.length,
+          )
+        : fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
+            (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
+            opts.instructions ?? null,
+            toolPointersArg,
+            tools.length,
+          )
     ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
     this._init(pointer, new Transcript(pointer), tools);
+    this._usesPrivateCloudCompute = pcc !== null;
   }
 
   /**
@@ -148,7 +169,7 @@ export class LanguageModelSession {
    */
   static fromTranscript(
     transcript: Transcript,
-    opts: { model?: SystemLanguageModel; tools?: Tool[] } = {},
+    opts: { model?: SystemLanguageModel | PrivateCloudComputeLanguageModel; tools?: Tool[] } = {},
   ): LanguageModelSession {
     const fn = getFunctions();
     const tools = opts.tools ?? [];
@@ -156,17 +177,28 @@ export class LanguageModelSession {
     const toolPointers = tools.map((t) => t._nativeTool);
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
-    const pointer = fn.FMLanguageModelSessionCreateFromTranscript(
-      transcript._nativeSession,
-      opts.model?._nativeModel ?? null,
-      toolPointersArg,
-      tools.length,
+    const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+    const pointer = (
+      pcc
+        ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
+            transcript._nativeSession,
+            pcc._nativeModel,
+            toolPointersArg,
+            tools.length,
+          )
+        : fn.FMLanguageModelSessionCreateFromTranscript(
+            transcript._nativeSession,
+            (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
+            toolPointersArg,
+            tools.length,
+          )
     ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
     const session = new LanguageModelSession(_FROM_POINTER);
     session._init(pointer, transcript, tools);
+    session._usesPrivateCloudCompute = pcc !== null;
     // Update the transcript's native session so future toJson() calls read
     // from the new session rather than the original deserialized transcript.
     transcript._updateNativeSession(pointer);
@@ -365,6 +397,7 @@ export class LanguageModelSession {
       // Wait for requests queued before this stream. Starting early would
       // overlap them on the native session and mix their token usage.
       await previous;
+      this._assertOptionsSupported(opts.options);
       usageBefore = this._readUsage();
       budget = this._lendToolBudget(opts.options);
       fn = getFunctions();
@@ -557,6 +590,8 @@ export class LanguageModelSession {
    * send the model into a response that fills the context window.
    */
   private _assertRegexGuidesSupported(jsonSchema: JsonSchema): void {
+    // Private Cloud Compute supports the patterns the on-device model doesn't.
+    if (this._usesPrivateCloudCompute) return;
     for (const { path, pattern } of collectSchemaPatterns(jsonSchema)) {
       const construct = findUnsupportedRegexConstruct(pattern);
       if (construct) {
@@ -565,6 +600,18 @@ export class LanguageModelSession {
             `${JSON.stringify(pattern)} at ${path}.`,
         );
       }
+    }
+  }
+
+  /**
+   * Only Private Cloud Compute reasons. On-device, the framework fails a
+   * reasoningLevel with an error older hosts can't identify, so reject it here.
+   */
+  private _assertOptionsSupported(options: GenerationOptions | undefined): void {
+    if (options?.reasoningLevel !== undefined && !this._usesPrivateCloudCompute) {
+      throw new UnsupportedCapabilityError(
+        "reasoningLevel needs PrivateCloudComputeLanguageModel; the on-device model doesn't reason.",
+      );
     }
   }
 
@@ -675,6 +722,7 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<string> {
     this._assertNotDisposed();
+    this._assertOptionsSupported(options);
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const composedPrompt = composePrompt(fn, prompt);
@@ -696,6 +744,7 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
+    this._assertOptionsSupported(options);
     let dict: JsonSchema | null = null;
     try {
       dict = schema.toDict();
@@ -725,6 +774,7 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
+    this._assertOptionsSupported(options);
     this._assertRegexGuidesSupported(jsonSchema);
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);

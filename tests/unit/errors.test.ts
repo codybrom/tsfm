@@ -17,6 +17,10 @@ import {
   UnsupportedCapabilityError,
   UnsupportedTranscriptContentError,
   ToolCallLimitExceededError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeEntitlementError,
   ServiceCrashedError,
   GenerationError,
   FoundationModelsError,
@@ -109,11 +113,33 @@ describe("statusToError", () => {
       ToolCallLimitExceededError,
       "Tool call limit exceeded",
     ],
+    [
+      GenerationErrorCode.PCC_NETWORK_FAILURE,
+      PrivateCloudComputeNetworkError,
+      "Private Cloud Compute network failure",
+    ],
+    [
+      GenerationErrorCode.PCC_QUOTA_LIMIT_REACHED,
+      PrivateCloudComputeQuotaExceededError,
+      "Private Cloud Compute quota reached",
+    ],
+    [
+      GenerationErrorCode.PCC_SERVICE_UNAVAILABLE,
+      PrivateCloudComputeUnavailableError,
+      "Private Cloud Compute is unavailable",
+    ],
   ])("maps code %i to its GenerationError subclass", (code, type, message) => {
     const err = statusToError(code);
     expect(err).toBeInstanceOf(type);
     expect(err).toBeInstanceOf(GenerationError);
     expect(err.message).toBe(message);
+  });
+
+  it("maps PCC_ENTITLEMENT_MISSING to an error naming the entitlement", () => {
+    const err = statusToError(GenerationErrorCode.PCC_ENTITLEMENT_MISSING);
+    expect(err).toBeInstanceOf(PrivateCloudComputeEntitlementError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toMatch(/com\.apple\.developer\.private-cloud-compute/);
   });
 
   it("maps unknown code to GenerationError", () => {

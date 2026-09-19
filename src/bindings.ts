@@ -282,6 +282,26 @@ function defineFunctions() {
     FMLanguageModelSessionPrewarm: fn(
       "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
     ),
+    // --- Private Cloud Compute (tsfm) ---
+    FMPrivateCloudComputeLanguageModelCreate: fn(
+      "void * FMPrivateCloudComputeLanguageModelCreate()",
+    ),
+    FMPrivateCloudComputeLanguageModelIsAvailable: fn(
+      "bool FMPrivateCloudComputeLanguageModelIsAvailable(void * model, _Out_ int * unavailableReason)",
+    ),
+    FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON: fn(
+      "void * FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(void * model)",
+    ),
+    FMPrivateCloudComputeLanguageModelGetContextSize: fn(
+      "void * FMPrivateCloudComputeLanguageModelGetContextSize(void * model, void * userInfo, TokenCountCallback * callback)",
+    ),
+    FMLanguageModelSessionCreateFromPrivateCloudComputeModel: fn(
+      "void * FMLanguageModelSessionCreateFromPrivateCloudComputeModel(void * model, str instructions, void * * tools, int toolCount)",
+    ),
+    FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel: fn(
+      "void * FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(void * transcriptSession, void * model, void * * tools, int toolCount)",
+    ),
+
     // Cumulative token usage as JSON; free with FMFreeString (decodeAndFreeString).
     FMLanguageModelSessionGetUsageJSON: fn(
       "void * FMLanguageModelSessionGetUsageJSON(void * session)",

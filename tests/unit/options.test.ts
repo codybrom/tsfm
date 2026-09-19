@@ -157,3 +157,17 @@ describe("tool-calling options", () => {
     expect(() => serializeOptions({ maximumToolCalls: -1 })).toThrow(/maximumToolCalls/);
   });
 });
+
+describe("reasoningLevel", () => {
+  it("serializes as reasoning_level", () => {
+    for (const level of ["light", "moderate", "deep"] as const) {
+      expect(JSON.parse(serializeOptions({ reasoningLevel: level })!)).toEqual({
+        reasoning_level: level,
+      });
+    }
+  });
+
+  it("rejects an unknown level", () => {
+    expect(() => serializeOptions({ reasoningLevel: "max" as never })).toThrow(/reasoningLevel/);
+  });
+});

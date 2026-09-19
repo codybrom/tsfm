@@ -19,6 +19,10 @@ export enum GenerationErrorCode {
   UNSUPPORTED_CAPABILITY = 13,
   UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
   TOOL_CALL_LIMIT_EXCEEDED = 15,
+  PCC_NETWORK_FAILURE = 16,
+  PCC_QUOTA_LIMIT_REACHED = 17,
+  PCC_SERVICE_UNAVAILABLE = 18,
+  PCC_ENTITLEMENT_MISSING = 19,
   UNKNOWN_ERROR = 255,
 }
 
@@ -176,6 +180,42 @@ export class ToolCallLimitExceededError extends GenerationError {
   }
 }
 
+/** Private Cloud Compute couldn't be reached. Retrying with the on-device model is reasonable. */
+export class PrivateCloudComputeNetworkError extends GenerationError {
+  constructor(msg = "Private Cloud Compute network failure") {
+    super(msg);
+    this.name = "PrivateCloudComputeNetworkError";
+  }
+}
+
+/** The user used up their daily Private Cloud Compute quota. See `quotaUsage.resetDate`. */
+export class PrivateCloudComputeQuotaExceededError extends GenerationError {
+  constructor(msg = "Private Cloud Compute quota reached") {
+    super(msg);
+    this.name = "PrivateCloudComputeQuotaExceededError";
+  }
+}
+
+/** Private Cloud Compute is temporarily unavailable. */
+export class PrivateCloudComputeUnavailableError extends GenerationError {
+  constructor(msg = "Private Cloud Compute is unavailable") {
+    super(msg);
+    this.name = "PrivateCloudComputeUnavailableError";
+  }
+}
+
+/**
+ * The host process isn't signed with `com.apple.developer.private-cloud-compute`.
+ * `PrivateCloudComputeLanguageModel.isAvailable()` reports this up front as
+ * `ENTITLEMENT_MISSING`.
+ */
+export class PrivateCloudComputeEntitlementError extends GenerationError {
+  constructor(msg = "Missing the Private Cloud Compute entitlement") {
+    super(msg);
+    this.name = "PrivateCloudComputeEntitlementError";
+  }
+}
+
 /**
  * The Apple Intelligence service (`generativeexperiencesd`) has crashed.
  * Detected in `statusToError()` when UNKNOWN_ERROR details contain
@@ -234,6 +274,21 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new UnsupportedTranscriptContentError(`Unsupported transcript content${suffix}`);
     case GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED:
       return new ToolCallLimitExceededError(`Tool call limit exceeded${suffix}`);
+    case GenerationErrorCode.PCC_NETWORK_FAILURE:
+      return new PrivateCloudComputeNetworkError(`Private Cloud Compute network failure${suffix}`);
+    case GenerationErrorCode.PCC_QUOTA_LIMIT_REACHED:
+      return new PrivateCloudComputeQuotaExceededError(
+        `Private Cloud Compute quota reached${suffix}`,
+      );
+    case GenerationErrorCode.PCC_SERVICE_UNAVAILABLE:
+      return new PrivateCloudComputeUnavailableError(
+        `Private Cloud Compute is unavailable${suffix}`,
+      );
+    case GenerationErrorCode.PCC_ENTITLEMENT_MISSING:
+      return new PrivateCloudComputeEntitlementError(
+        "This process isn't signed with the com.apple.developer.private-cloud-compute " +
+          `entitlement, which Private Cloud Compute requires${suffix}`,
+      );
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
         if (
