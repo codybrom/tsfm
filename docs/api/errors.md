@@ -16,7 +16,12 @@ FoundationModelsError
 │   ├── RateLimitedError
 │   ├── ConcurrentRequestsError
 │   ├── RefusalError
-│   └── InvalidGenerationSchemaError
+│   ├── InvalidGenerationSchemaError
+│   ├── InvalidArgumentError
+│   ├── TimeoutError
+│   ├── UnsupportedCapabilityError
+│   ├── UnsupportedTranscriptContentError
+│   └── ServiceCrashedError
 ├── PromptAttachmentError
 └── ToolCallError
 ```
@@ -35,8 +40,16 @@ FoundationModelsError
 | `ConcurrentRequestsError` | 8 | Session already responding |
 | `RefusalError` | 9 | Model declined to answer |
 | `InvalidGenerationSchemaError` | 10 | Malformed schema |
+| `InvalidArgumentError` | 11 | The native bridge rejected an argument, such as a null pointer |
+| `TimeoutError` | 12 | The model didn't finish in time¹ |
+| `UnsupportedCapabilityError` | 13 | The request needs a capability the model doesn't have¹ |
+| `UnsupportedTranscriptContentError` | 14 | The transcript has content the model can't accept¹ |
+| `ServiceCrashedError` | 255 | The Apple Intelligence service crashed; the message says how to restart it |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw |
+
+¹ Only reported when the host process (Node, Electron, your app) was built with the macOS 27 SDK.
+Older hosts receive the framework's legacy error type, which has no equivalent for these codes.
 
 ## GenerationErrorCode
 
@@ -55,6 +68,10 @@ enum GenerationErrorCode {
   CONCURRENT_REQUESTS = 8,
   REFUSAL = 9,
   INVALID_SCHEMA = 10,
+  INVALID_ARGUMENT = 11,
+  TIMEOUT = 12,
+  UNSUPPORTED_CAPABILITY = 13,
+  UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
   UNKNOWN_ERROR = 255,
 }
 ```
