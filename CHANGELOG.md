@@ -5,7 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - Unreleased
+## [1.0.0-beta.1] - 2026-09-19
+
+The first 1.0 beta. It publishes under npm's `beta` tag (`npm install tsfm-sdk@beta`); `latest` stays on 0.x until 1.0.0.
+
 
 tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework, and still runs on macOS 26. On macOS 26, features that need macOS 27 report a clear reason instead of working. It replaces koffi with tsfm's own Node-API addon, so tsfm has no runtime dependencies, and makes the native layer much harder to crash. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
 
@@ -273,7 +276,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
-[1.0.0]: https://github.com/codybrom/tsfm/compare/v0.5.1...feat/v1
+[1.0.0-beta.1]: https://github.com/codybrom/tsfm/compare/v0.5.1...v1.0.0-beta.1
 [0.5.1]: https://github.com/codybrom/tsfm/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/codybrom/tsfm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/codybrom/tsfm/compare/v0.3.1...v0.4.0
