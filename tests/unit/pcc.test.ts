@@ -10,7 +10,7 @@ import {
   PrivateCloudComputeLanguageModel,
   PrivateCloudComputeUnavailableReason,
 } from "../../src/pcc.js";
-import { PrivateCloudComputeNetworkError } from "../../src/errors.js";
+import { FoundationModelsError, PrivateCloudComputeNetworkError } from "../../src/errors.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,6 +63,16 @@ describe("PrivateCloudComputeLanguageModel", () => {
       resetDate: new Date("2026-09-20T00:00:00Z"),
     });
   });
+
+  it.each(["not json", "[]", "null", '"text"'])(
+    "throws a typed error for quota JSON %s",
+    (json) => {
+      mockFns.FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON.mockReturnValueOnce(json);
+      expect(() => new PrivateCloudComputeLanguageModel().quotaUsage).toThrow(
+        FoundationModelsError,
+      );
+    },
+  );
 
   it("resolves the context size", async () => {
     mockFns.FMPrivateCloudComputeLanguageModelGetContextSize.mockReturnValueOnce(

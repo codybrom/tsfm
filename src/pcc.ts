@@ -52,6 +52,22 @@ export interface PrivateCloudComputeQuotaUsage {
  * }
  * ```
  */
+/** The bridge's quota JSON, or a typed error like the other parsers. */
+function parseQuotaUsage(json: string): Record<string, unknown> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    raw = undefined;
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new FoundationModelsError(
+      `Failed to parse Private Cloud Compute quota JSON: ${json.slice(0, 200)}`,
+    );
+  }
+  return raw as Record<string, unknown>;
+}
+
 export class PrivateCloudComputeLanguageModel {
   /** @internal */
   _nativeModel: NativePointer | null;
@@ -133,7 +149,7 @@ export class PrivateCloudComputeLanguageModel {
     const json = getFunctions().FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
       this._assertNotDisposed(),
     );
-    const raw = json ? (JSON.parse(json) as Record<string, unknown>) : {};
+    const raw = json ? parseQuotaUsage(json) : {};
     return {
       limitReached: raw.limitReached === true,
       approachingLimit: raw.approachingLimit === true,

@@ -73,6 +73,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - Passing a disposed transcript, or one whose session was disposed, to `fromTranscript()` or `tokenCount()` throws `FoundationModelsError` instead of a bare `Error` from the addon.
 - A tool whose `call()` resolved with something other than a string reported the addon's `Expected a string for "output"`. The message now names the tool and the type, and the call is still answered.
 - Chat and Responses APIs: `reasoning_effort: "constructor"` (or another `Object.prototype` name) threw instead of being warned about and ignored.
+- `quotaUsage` throws `FoundationModelsError` if the bridge returns quota JSON it can't parse, instead of a raw `SyntaxError`.
 - Chat and Responses APIs release the transcript they built when the session can't be created, instead of leaving it to the garbage collector.
 - Publishing a release older than the current `latest` in the same major (1.0.1 after 1.2.0) would have moved `latest` backwards; versions are now compared in full.
 
