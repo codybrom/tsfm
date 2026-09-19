@@ -5,7 +5,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
-import { emptyUsage, type ResponseStream, type Usage } from "../response.js";
+import { emptyUsage, usageBetween, type ResponseStream, type Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -261,6 +261,9 @@ class Completions {
 
     async function* generateChoices(): AsyncGenerator<ChatCompletionChunk> {
       let stream: ResponseStream | undefined;
+      // A buffered (tool) request that throws returns no Response, so its usage
+      // is the change in the session's cumulative usage around it.
+      let bufferedUsageBefore: Usage | undefined;
       try {
         // First chunk: role announcement
         yield chunk({ role: "assistant", content: "" }, null);
@@ -268,6 +271,7 @@ class Completions {
         // Tools or structured output with streaming: buffer the full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
+          bufferedUsageBefore = session.usage;
           const response = await session.respondWithJsonSchema(prompt, schema, { options });
           usage = response.usage;
           const parsed = JSON.parse(response.content.toJson()) as ToolModelOutput;
@@ -308,7 +312,9 @@ class Completions {
         // Final chunk
         yield chunk({}, "stop");
       } catch (err) {
-        usage = stream?.usage;
+        usage =
+          stream?.usage ??
+          (bufferedUsageBefore ? usageBetween(bufferedUsageBefore, session.usage) : undefined);
         // Map errors to finish_reason chunks
         if (err instanceof ExceededContextWindowSizeError) {
           yield chunk({}, "length");

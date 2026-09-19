@@ -59,14 +59,13 @@ describeWithoutEntitlement("Private Cloud Compute without the entitlement (integ
   }, 30_000);
 
   it("fails compat requests for the PCC model the same way", async () => {
-    const client = new Client();
+    using client = new Client();
     await expect(
       client.chat.completions.create({
         model: "PrivateCloudComputeLanguageModel",
         messages: [{ role: "user", content: "Say hi." }],
       }),
     ).rejects.toBeInstanceOf(PrivateCloudComputeEntitlementError);
-    client.close();
   }, 30_000);
 
   it("still reads the context size", async () => {
@@ -123,7 +122,7 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
   }, 60_000);
 
   it("serves compat requests, mapping reasoning_effort", async () => {
-    const client = new Client();
+    using client = new Client();
     const completion = await client.chat.completions.create({
       model: "PrivateCloudComputeLanguageModel",
       reasoning_effort: "low",
@@ -132,7 +131,6 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
     expect(completion.model).toBe("PrivateCloudComputeLanguageModel");
     expect(completion.choices[0].message.content).toContain("42");
     expect(completion.usage?.completion_tokens).toBeGreaterThan(0);
-    client.close();
   }, 60_000);
 
   it("reports the quota", () => {
