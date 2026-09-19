@@ -51,6 +51,7 @@ function guideSidebar() {
         { text: "Tools", link: "/guide/tools" },
         { text: "Transcripts", link: "/guide/transcripts" },
         { text: "Generation Options", link: "/guide/generation-options" },
+        { text: "Private Cloud Compute", link: "/guide/private-cloud-compute" },
         { text: "Error Handling", link: "/guide/error-handling" },
       ],
     },

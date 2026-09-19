@@ -85,6 +85,13 @@ character classes like `[a-z]`. Unsupported patterns now throw
 [supported syntax](/api/generation-schema#regex-patterns); most classes have a
 replacement, such as `[0-9]` → `\d`.
 
+## New: Private Cloud Compute
+
+`PrivateCloudComputeLanguageModel` runs Apple's server model, with a 32K context
+and `reasoningLevel`. It's opt-in and needs a host signed with Apple's PCC
+entitlement; plain `node` can't use it. See
+[Private Cloud Compute](/guide/private-cloud-compute).
+
 ## Errors
 
 - `GenerationErrorCode` is a regular `enum` now, not a `const enum`. Comparisons

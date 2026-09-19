@@ -11,6 +11,7 @@ interface GenerationOptions {
   sampling?: SamplingMode;
   toolCallingMode?: "allowed" | "required" | "disallowed";
   maximumToolCalls?: number;
+  reasoningLevel?: "light" | "moderate" | "deep";
 }
 ```
 
@@ -20,6 +21,7 @@ interface GenerationOptions {
 | `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
 | `toolCallingMode` | `string` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). |
+| `reasoningLevel` | `string` | How much the model reasons first. [Private Cloud Compute](/guide/private-cloud-compute#reasoning) only; the on-device model throws `UnsupportedCapabilityError`. |
 | `maximumToolCalls` | `number` | Most tool calls one request may make. Default `32`. The request fails with `ToolCallLimitExceededError` instead of making another. Must be a non-negative integer. |
 
 Invalid values throw immediately when the options are serialized (before the native call).
