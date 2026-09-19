@@ -78,8 +78,7 @@ session.cancel();
 promise settles later. What to expect:
 
 - The response can still complete if the model finishes before the cancel is
-  processed. A request that was stopped rejects with `GenerationError` (code
-  255) whose message says the operation was cancelled.
+  processed. A request that was stopped rejects with `CancelledError`.
 - A request waiting on a `Tool.call()` isn't interrupted: the native task can
   only stop once the tool answers. If a tool never settles, only
   `tool.dispose()` ends the request, by failing its pending calls.

@@ -26,6 +26,7 @@ FoundationModelsError
 │   ├── PrivateCloudComputeQuotaExceededError
 │   ├── PrivateCloudComputeUnavailableError
 │   ├── PrivateCloudComputeEntitlementError
+│   ├── CancelledError
 │   └── ServiceCrashedError
 ├── PromptAttachmentError
 └── ToolCallError
@@ -54,6 +55,7 @@ FoundationModelsError
 | `PrivateCloudComputeQuotaExceededError` | 17 | The user's daily PCC quota is used up |
 | `PrivateCloudComputeUnavailableError` | 18 | PCC is temporarily unavailable |
 | `PrivateCloudComputeEntitlementError` | 19 | The host isn't signed with the PCC entitlement |
+| `CancelledError` | 20 | The request was stopped by `session.cancel()`, or its stream was dropped, before it finished |
 | `ServiceCrashedError` | 255 | An Apple Intelligence system service crashed; wait for macOS to restart it, then retry with a new session |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
@@ -100,6 +102,7 @@ enum GenerationErrorCode {
   PCC_QUOTA_LIMIT_REACHED = 17,
   PCC_SERVICE_UNAVAILABLE = 18,
   PCC_ENTITLEMENT_MISSING = 19,
+  CANCELLED = 20,
   UNKNOWN_ERROR = 255,
 }
 ```

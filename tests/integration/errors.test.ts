@@ -7,6 +7,7 @@ import {
   GenerationError,
   ExceededContextWindowSizeError,
   UnsupportedGuideError,
+  CancelledError,
 } from "../../src/index.js";
 
 /*
@@ -90,6 +91,21 @@ describeIfAvailable("error mapping (integration)", () => {
     await expectTypedError(session.respond(OVERSIZED_PROMPT), ExceededContextWindowSizeError);
     const { content: reply } = await session.respond("Say hello in one word.");
     expect(reply.length).toBeGreaterThan(0);
+    session.dispose();
+  }, 60_000);
+
+  it("rejects a cancelled request with CancelledError", async () => {
+    const session = new LanguageModelSession();
+    const pending = session.respond("Write a 600-word story about a lighthouse keeper.");
+    setTimeout(() => session.cancel(), 400);
+    // The model can beat the cancel; only the rejection shape is under test.
+    await pending.then(
+      () => undefined,
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(CancelledError);
+        expect((err as Error).message).toContain("cancelled");
+      },
+    );
     session.dispose();
   }, 60_000);
 });

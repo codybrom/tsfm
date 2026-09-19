@@ -93,8 +93,8 @@ public func FMSystemLanguageModelGetDefault() -> FMSystemLanguageModelRef {
   return FMSystemLanguageModelRef(Unmanaged.passRetained(model).toOpaque())
 }
 
-private extension SystemLanguageModel.UseCase {
-  init(c: FMSystemLanguageModelUseCase) {
+extension SystemLanguageModel.UseCase {
+  fileprivate init(c: FMSystemLanguageModelUseCase) {
     // tsfm: no force-unwrap, and no print(): a library must not write to the
     // host's stdout. TypeScript only passes known use cases.
     switch c {
@@ -179,7 +179,7 @@ private func performTokenCount(
     } catch is CancellationError {
       let message = "Operation cancelled"
       message.withCString { cString in
-        callback(StatusCode.unknownError.rawValue, 0, cString, unsafeSendableUserInfo.pointer)
+        callback(StatusCode.cancelled.rawValue, 0, cString, unsafeSendableUserInfo.pointer)
       }
     } catch let error where frameworkStatusCode(for: error) != nil {
       let statusCode = statusCode(for: error)
@@ -588,6 +588,9 @@ private enum StatusCode: Int32 {
   case pccQuotaLimitReached = 17
   case pccServiceUnavailable = 18
   case pccEntitlementMissing = 19
+  // tsfm: the task was cancelled (FMTaskCancel, or a released stream), so a
+  // caller can tell its own cancel() apart from a failure.
+  case cancelled = 20
   case unknownError = 255
 }
 
@@ -751,7 +754,7 @@ private func formatErrorDescription(_ error: Error, function: String = #function
   }
 
   #if DEBUG
-  print("Unexpected error in \(function): \(debugDescription)")
+    print("Unexpected error in \(function): \(debugDescription)")
   #endif
 
   return debugDescription
@@ -907,7 +910,7 @@ public func FMLanguageModelSessionRespond(
       // Handle cancellation explicitly
       let message = "Operation cancelled"
       callback(
-        StatusCode.unknownError.rawValue,
+        StatusCode.cancelled.rawValue,
         message,
         message.utf8.count,
         unsafeSendableUserInfo.pointer
@@ -1031,7 +1034,7 @@ public func FMLanguageModelSessionResponseStreamIterate(
       // Handle cancellation explicitly
       let message = "Stream cancelled"
       callback(
-        StatusCode.unknownError.rawValue,
+        StatusCode.cancelled.rawValue,
         message,
         message.utf8.count,
         unsafeSendableUserInfo.pointer
@@ -1124,7 +1127,7 @@ public func FMLanguageModelSessionRespondWithSchema(
       let contentWrapper = GeneratedContentWrapper(content: message)
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(
-        StatusCode.unknownError.rawValue,
+        StatusCode.cancelled.rawValue,
         contentRef,
         unsafeSendableUserInfo.pointer
       )
@@ -1208,7 +1211,7 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
       let contentWrapper = GeneratedContentWrapper(content: message)
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(
-        StatusCode.unknownError.rawValue,
+        StatusCode.cancelled.rawValue,
         contentRef,
         unsafeSendableUserInfo.pointer
       )

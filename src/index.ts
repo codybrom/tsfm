@@ -77,6 +77,7 @@ export {
   PrivateCloudComputeQuotaExceededError,
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeEntitlementError,
+  CancelledError,
   ServiceCrashedError,
   ToolCallError,
   PromptAttachmentError,

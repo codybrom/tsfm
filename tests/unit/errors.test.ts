@@ -22,6 +22,7 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeEntitlementError,
   ServiceCrashedError,
+  CancelledError,
   GenerationError,
   FoundationModelsError,
   ToolCallError,
@@ -133,6 +134,20 @@ describe("statusToError", () => {
     expect(err).toBeInstanceOf(type);
     expect(err).toBeInstanceOf(GenerationError);
     expect(err.message).toBe(message);
+  });
+
+  it("maps CANCELLED to CancelledError, a GenerationError", () => {
+    const err = statusToError(GenerationErrorCode.CANCELLED, "Operation cancelled");
+    expect(err).toBeInstanceOf(CancelledError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.name).toBe("CancelledError");
+    expect(err.message).toBe("The request was cancelled");
+    expect(GenerationErrorCode.CANCELLED).toBe(20);
+  });
+
+  it("keeps a cancellation detail that says more than the bridge's own wording", () => {
+    const err = statusToError(GenerationErrorCode.CANCELLED, "the host went away");
+    expect(err.message).toBe("The request was cancelled: the host went away");
   });
 
   it("keeps the point release in minimumRequiredMacOS, as token counting needs 26.4", () => {

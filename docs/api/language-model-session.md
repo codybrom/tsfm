@@ -126,7 +126,7 @@ session.prewarm("Translate the following");
 
 Ask the in-progress request to stop. Advisory: the response may complete before
 the cancellation takes effect, and a stopped request rejects with
-`GenerationError` (code 255) saying it was cancelled. A request waiting on a
+`CancelledError`. A request waiting on a
 `Tool.call()` can't be interrupted until the tool answers; if the tool never
 settles, `tool.dispose()` ends it. Queued requests wait for the cancelled one to
 settle. See [Cancellation](/guide/sessions#cancellation).

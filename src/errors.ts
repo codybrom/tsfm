@@ -23,6 +23,7 @@ export enum GenerationErrorCode {
   PCC_QUOTA_LIMIT_REACHED = 17,
   PCC_SERVICE_UNAVAILABLE = 18,
   PCC_ENTITLEMENT_MISSING = 19,
+  CANCELLED = 20,
   UNKNOWN_ERROR = 255,
 }
 
@@ -33,15 +34,22 @@ export class FoundationModelsError extends Error {
   }
 }
 
-/** Why the C bridge refused a prompt attachment. */
-export type PromptAttachmentFailure = "unsupported-os" | "unsupported-sdk" | "unknown";
+/**
+ * Why a prompt attachment was refused: `not-found` (tsfm checked the path
+ * before any native call), `unsupported-os` (macOS 26), `unknown`, or
+ * `unsupported-sdk`, which a library built by tsfm never reports (see below).
+ */
+export type PromptAttachmentFailure =
+  "not-found" | "unsupported-os" | "unsupported-sdk" | "unknown";
 
 /**
  * Raised when an attachment cannot be added to a prompt.
  *
- * Attachments need macOS 27; on macOS 26 the reason is `unsupported-os`. The
- * bundled library is built with the macOS 27 SDK, so it never reports
- * `unsupported-sdk`; that reason remains for libraries built without it.
+ * Attachments need macOS 27; on macOS 26 the reason is `unsupported-os`. A path
+ * that isn't an existing file is `not-found`, thrown before native code runs.
+ * tsfm's bridge always builds with the macOS 27 SDK, so `unsupported-sdk` is
+ * never reported by it; the member stays for compatibility with 0.5, and for a
+ * library built from upstream's bridge without that SDK.
  */
 export class PromptAttachmentError extends FoundationModelsError {
   readonly reason: PromptAttachmentFailure;
@@ -228,6 +236,17 @@ export class PrivateCloudComputeEntitlementError extends GenerationError {
 }
 
 /**
+ * The request was cancelled with `session.cancel()` (or its stream was
+ * dropped) before it finished. Nothing went wrong on the model's side.
+ */
+export class CancelledError extends GenerationError {
+  constructor(msg = "The request was cancelled") {
+    super(msg);
+    this.name = "CancelledError";
+  }
+}
+
+/**
  * An Apple Intelligence system service (the model manager or its safety
  * classifier) failed.
  * Detected in `statusToError()` when UNKNOWN_ERROR details contain
@@ -311,6 +330,14 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new PrivateCloudComputeEntitlementError(
         "This process isn't signed with the com.apple.developer.private-cloud-compute " +
           `entitlement, which Private Cloud Compute requires${suffix}`,
+      );
+    case GenerationErrorCode.CANCELLED:
+      // The bridge's detail is just "Operation cancelled" / "Stream cancelled",
+      // which would read twice in one sentence.
+      return new CancelledError(
+        /^(Operation|Stream) cancelled\.?$/.test(detail?.trim() ?? "")
+          ? "The request was cancelled"
+          : `The request was cancelled${suffix}`,
       );
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
