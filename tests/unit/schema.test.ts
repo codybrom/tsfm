@@ -730,6 +730,36 @@ describe("generable", () => {
     );
   });
 
+  it("names nested reference schemas by path, so repeated keys don't collide", () => {
+    generable("Order", {
+      address: { type: "object", properties: {} },
+      shipping: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      billing: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      shipping_address: { type: "object", properties: {} },
+    });
+    const names = mockFns.FMGenerationSchemaCreate.mock.calls.map((c) => c[0]);
+    expect(names).toEqual([
+      "Order",
+      "address",
+      "shipping",
+      "shipping_address",
+      "billing",
+      "billing_address",
+      "shipping_address_2",
+    ]);
+    // Each property is typed by its own reference schema.
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [c[0], c[2]]);
+    expect(types).toContainEqual(["address", "shipping_address"]);
+    expect(types).toContainEqual(["address", "billing_address"]);
+    expect(types).toContainEqual(["shipping_address", "shipping_address_2"]);
+  });
+
   it("registers every nested reference schema on the root", () => {
     const original = mockFns.FMGenerationSchemaCreate.getMockImplementation();
     mockFns.FMGenerationSchemaCreate.mockImplementation(

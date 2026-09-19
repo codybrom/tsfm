@@ -344,28 +344,61 @@ function arrayElementTypeName(def: PropertyDef): string {
   return def.type; // "string" | "integer" | "number" | "boolean"
 }
 
+/** Where a property sits while `generable()` builds a schema. */
+interface SchemaBuildContext {
+  /** The schema passed to the request; every reference schema is registered on it. */
+  root: GenerationSchema;
+  /** Reference schema names already used under `root`. */
+  usedNames: Set<string>;
+  /** Property names from the root to the property's parent. */
+  path: string[];
+}
+
 /**
- * Recursively adds a property definition to a GenerationSchema. Every nested
- * object becomes a reference schema on `root`: the framework resolves
- * references only from the schema passed to the request, not from the
- * reference schemas themselves.
+ * The name for a nested object's reference schema: its property path joined
+ * with "_" (`shipping_address`), so objects under the same key in different
+ * places don't collide. The framework resolves references by name. A name that
+ * is still taken gets a numeric suffix.
  */
+function referenceName(ctx: SchemaBuildContext, key: string): string {
+  const base = [...ctx.path, key].join("_");
+  let name = base;
+  for (let n = 2; ctx.usedNames.has(name); n++) name = `${base}_${n}`;
+  ctx.usedNames.add(name);
+  return name;
+}
+
+/** Builds a nested object's reference schema and registers it on the root. */
+function addReferenceSchema(
+  ctx: SchemaBuildContext,
+  key: string,
+  def: ObjectPropertyDef,
+): string {
+  const name = referenceName(ctx, key);
+  const nested = new GenerationSchema(name, def.description);
+  const inner = { ...ctx, path: [...ctx.path, key] };
+  for (const [childKey, childDef] of Object.entries(def.properties)) {
+    addPropertyDef(nested, childKey, childDef, inner);
+  }
+  // The framework resolves references only from the schema passed to the
+  // request, not from the reference schemas themselves.
+  ctx.root.addReferenceSchema(nested);
+  return name;
+}
+
+/** Recursively adds a property definition to a GenerationSchema. */
 function addPropertyDef(
   schema: GenerationSchema,
   name: string,
   def: PropertyDef,
-  root: GenerationSchema = schema,
+  ctx: SchemaBuildContext,
 ): void {
   if (def.type === "object") {
-    const nested = new GenerationSchema(name, def.description);
-    for (const [key, nestedDef] of Object.entries(def.properties)) {
-      addPropertyDef(nested, key, nestedDef, root);
-    }
-    root.addReferenceSchema(nested);
     // The property's type is the reference schema's name, as for arrays of
     // objects below. Typing it "object" leaves an undefined reference.
+    const typeName = addReferenceSchema(ctx, name, def);
     schema.addProperty(
-      new GenerationSchemaProperty(name, name, {
+      new GenerationSchemaProperty(name, typeName, {
         description: def.description,
         optional: def.optional,
       }),
@@ -373,17 +406,12 @@ function addPropertyDef(
   } else if (def.type === "array") {
     // Build compound type name like "array<string>" or "array<Name>" to match
     // the convention expected by Apple's C bridge (see python-apple-fm-sdk).
-    const elementType = arrayElementTypeName(def.items);
-    const typeName: NativeTypeName = `array<${elementType === "object" ? name : elementType}>`;
-    if (def.items.type === "object") {
-      const itemSchema = new GenerationSchema(name, def.items.description);
-      for (const [key, nestedDef] of Object.entries(def.items.properties)) {
-        addPropertyDef(itemSchema, key, nestedDef, root);
-      }
-      root.addReferenceSchema(itemSchema);
-    }
+    const elementType =
+      def.items.type === "object"
+        ? addReferenceSchema(ctx, name, def.items)
+        : arrayElementTypeName(def.items);
     schema.addProperty(
-      new GenerationSchemaProperty(name, typeName, {
+      new GenerationSchemaProperty(name, `array<${elementType}>`, {
         description: def.description,
         optional: def.optional,
         guides: def.guides,
@@ -424,8 +452,9 @@ export function generable<const T extends Record<string, PropertyDef>>(
   description?: string,
 ): Generable<T> {
   const schema = new GenerationSchema(name, description);
+  const ctx: SchemaBuildContext = { root: schema, usedNames: new Set([name]), path: [] };
   for (const [key, def] of Object.entries(properties)) {
-    addPropertyDef(schema, key, def);
+    addPropertyDef(schema, key, def, ctx);
   }
   return {
     schema,
