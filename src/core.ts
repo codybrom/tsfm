@@ -198,7 +198,7 @@ export class SystemLanguageModel {
       } else {
         started = fn.FMSystemLanguageModelTokenCountForTranscript(
           model,
-          input.transcript._nativeSession,
+          input.transcript._pointer(),
         );
       }
       try {

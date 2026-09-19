@@ -11,6 +11,7 @@ const EMPTY = '{"type":"FoundationModels.Transcript","version":1,"transcript":{"
 const transcriptJson = vi.fn((): string | null => EMPTY);
 
 import { Transcript } from "../../src/transcript.js";
+import { FoundationModelsError } from "../../src/errors.js";
 import type { NativePointer } from "../../src/bindings.js";
 
 const mockPointer = (label: string) => label as unknown as NativePointer;
@@ -264,6 +265,26 @@ describe("Transcript", () => {
       mockFns.FMRelease.mockClear();
       transcript.dispose();
       expect(mockFns.FMRelease).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("_pointer", () => {
+    it("returns the native pointer of a usable transcript", () => {
+      expect(Transcript.fromJson("{}")._pointer()).toBe("mock-transcript-pointer");
+    });
+
+    it("throws FoundationModelsError once disposed", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript.dispose();
+      expect(() => transcript._pointer()).toThrow(FoundationModelsError);
+      expect(() => transcript._pointer()).toThrow(/disposed/);
+    });
+
+    it("throws FoundationModelsError once its session is disposed", () => {
+      const transcript = new Transcript(mockPointer("mock-session"));
+      transcript._detach();
+      expect(() => transcript._pointer()).toThrow(FoundationModelsError);
+      expect(() => transcript._pointer()).toThrow(/session .* disposed/);
     });
   });
 

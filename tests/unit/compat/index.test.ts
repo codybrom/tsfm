@@ -238,6 +238,18 @@ describe("Chat API compat layer", () => {
     });
   });
 
+  describe("session creation failure", () => {
+    it("releases the transcript it built when the session can't be created", async () => {
+      mockFns.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null);
+      const client = new Client();
+      await expect(
+        client.chat.completions.create({ messages: [{ role: "user", content: "Hello" }] }),
+      ).rejects.toThrow(/Failed to create session from transcript/);
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+      client.close();
+    });
+  });
+
   describe("close", () => {
     it("disposes the model", () => {
       const client = new Client();

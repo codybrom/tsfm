@@ -77,6 +77,8 @@ vi.mock("../../src/tool.js", () => ({
 import { LanguageModelSession } from "../../src/session.js";
 import { PrivateCloudComputeLanguageModel } from "../../src/pcc.js";
 import {
+  FoundationModelsError,
+  GenerationError,
   InvalidGenerationSchemaError,
   UnsupportedCapabilityError,
   UnsupportedGuideError,
@@ -415,21 +417,14 @@ describe("LanguageModelSession", () => {
   });
 
   describe("signal handlers", () => {
-    it("cleans up sessions and re-raises on SIGINT", () => {
-      process.emit("exit", 0); // clear leftovers
-
-      const session = new LanguageModelSession();
-      expect(session._nativeSession).not.toBeNull();
-
-      // Capture the SIGINT listener that _installExitHandler registered
-      const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
-
-      // Emit SIGINT to trigger the handler
-      process.emit("SIGINT", "SIGINT");
-
-      expect(session._nativeSession).toBeNull();
-      expect(killSpy).toHaveBeenCalledWith(process.pid, "SIGINT");
-      killSpy.mockRestore();
+    it("doesn't install any: a library must not change the host's signal handling", () => {
+      const before = {
+        SIGINT: process.listenerCount("SIGINT"),
+        SIGTERM: process.listenerCount("SIGTERM"),
+      };
+      new LanguageModelSession();
+      expect(process.listenerCount("SIGINT")).toBe(before.SIGINT);
+      expect(process.listenerCount("SIGTERM")).toBe(before.SIGTERM);
     });
   });
 
@@ -909,6 +904,31 @@ describe("LanguageModelSession", () => {
       expect(chunks).toEqual(["Hello"]);
     });
 
+    it("ends with a GenerationError when no snapshot follows the first within 30s", async () => {
+      vi.useFakeTimers();
+      try {
+        mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
+        const session = new LanguageModelSession();
+        const iterator = session.streamResponse("Hi")[Symbol.asyncIterator]();
+        const first = iterator.next();
+        await vi.advanceTimersByTimeAsync(0);
+        // The timer isn't armed before the first snapshot, however long it takes.
+        await vi.advanceTimersByTimeAsync(60_000);
+        lastRegisteredCallback?.(0, "Hello", 5, null);
+        await expect(first).resolves.toEqual({ value: "Hello", done: false });
+
+        // Attach the expectation before the timer fires, so the rejection is handled.
+        const second = expect(iterator.next()).rejects.toSatisfy(
+          (err) => err instanceof GenerationError && /idle timeout/.test((err as Error).message),
+        );
+        await vi.advanceTimersByTimeAsync(30_001);
+        await second;
+        expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-stream-pointer");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it("rejects a stream that was queued when the session was disposed", async () => {
       let finishFirst!: () => void;
       mockFns.FMLanguageModelSessionRespond.mockImplementation(
@@ -953,9 +973,20 @@ describe("LanguageModelSession", () => {
   });
 
   describe("fromTranscript", () => {
+    it("refuses a transcript whose session was disposed, before reaching native code", () => {
+      const session = new LanguageModelSession();
+      const transcript = session.transcript;
+      session.dispose();
+      vi.clearAllMocks();
+      expect(() => LanguageModelSession.fromTranscript(transcript)).toThrow(FoundationModelsError);
+      expect(() => LanguageModelSession.fromTranscript(transcript)).toThrow(/disposed/);
+      expect(mockFns.FMLanguageModelSessionCreateFromTranscript).not.toHaveBeenCalled();
+    });
+
     it("creates a session from a transcript", () => {
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
+        _pointer: () => "mock-transcript-session-pointer",
         _updateNativeSession: vi.fn(),
       };
 
@@ -973,6 +1004,7 @@ describe("LanguageModelSession", () => {
       mockFns.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null);
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
+        _pointer: () => "mock-transcript-session-pointer",
         _updateNativeSession: vi.fn(),
       };
 
@@ -984,6 +1016,7 @@ describe("LanguageModelSession", () => {
     it("passes tools when provided", () => {
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
+        _pointer: () => "mock-transcript-session-pointer",
         _updateNativeSession: vi.fn(),
       };
       const mockTool = {
@@ -1008,6 +1041,43 @@ describe("LanguageModelSession", () => {
 
       new LanguageModelSession({ tools: [mockTool as never] });
       expect(mockTool._register).toHaveBeenCalled();
+    });
+
+    const namedTool = (name: string) => ({ name, _nativeTool: "ptr-" + name, _register() {} });
+
+    it("rejects the same tool listed twice", () => {
+      const tool = namedTool("lookup");
+      expect(() => new LanguageModelSession({ tools: [tool, tool] as never })).toThrow(
+        FoundationModelsError,
+      );
+      expect(() => new LanguageModelSession({ tools: [tool, tool] as never })).toThrow(
+        /'lookup' is listed more than once/,
+      );
+      expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
+    });
+
+    it("rejects two tools with one name, in the constructor and fromTranscript", () => {
+      const tools = [namedTool("lookup"), namedTool("lookup")] as never;
+      expect(() => new LanguageModelSession({ tools })).toThrow(/Two tools are named 'lookup'/);
+      const transcript = {
+        _nativeSession: "t",
+        _pointer: () => "t",
+        _updateNativeSession: vi.fn(),
+      } as never;
+      expect(() => LanguageModelSession.fromTranscript(transcript, { tools })).toThrow(
+        /Two tools are named 'lookup'/,
+      );
+      expect(mockFns.FMLanguageModelSessionCreateFromTranscript).not.toHaveBeenCalled();
+    });
+
+    it("allows different tools with different names", () => {
+      const tools = [namedTool("lookup"), namedTool("save")] as never;
+      new LanguageModelSession({ tools });
+      expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).toHaveBeenCalledWith(
+        null,
+        null,
+        ["ptr-lookup", "ptr-save"],
+      );
     });
   });
 

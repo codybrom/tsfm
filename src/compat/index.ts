@@ -144,7 +144,15 @@ class Completions {
     const transcript = Transcript.fromJson(transcriptStr);
     const modelName = compatModelName(params.model);
     const model = this._getModel(modelName);
-    const session = LanguageModelSession.fromTranscript(transcript, { model });
+    let session: LanguageModelSession;
+    try {
+      session = LanguageModelSession.fromTranscript(transcript, { model });
+    } catch (err) {
+      // The transcript owns a native object until a session takes it over;
+      // don't leave that to the garbage collector.
+      transcript.dispose();
+      throw err;
+    }
 
     if (params.stream) {
       const includeUsage = params.stream_options?.include_usage === true;

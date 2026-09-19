@@ -325,7 +325,7 @@ function inputToTranscript(
 function buildResponse(
   params: ResponseCreateParams,
   output: ResponseOutputItem[],
-  status: "completed" | "failed" | "incomplete",
+  status: Response["status"],
   error: { code: string; message: string } | null = null,
   incompleteReason?: "max_output_tokens" | "content_filter",
   usage?: Usage | null,
@@ -460,7 +460,15 @@ export class Responses {
 
     const transcript = Transcript.fromJson(transcriptStr);
     const model = this._getModel(compatModelName(params.model));
-    const session = LanguageModelSession.fromTranscript(transcript, { model });
+    let session: LanguageModelSession;
+    try {
+      session = LanguageModelSession.fromTranscript(transcript, { model });
+    } catch (err) {
+      // The transcript owns a native object until a session takes it over;
+      // don't leave that to the garbage collector.
+      transcript.dispose();
+      throw err;
+    }
 
     if (params.stream) {
       return this._createStream(session, prompt, options, params, completionTools);
@@ -574,7 +582,8 @@ export class Responses {
     async function* generate(): AsyncGenerator<ResponseStreamEvent> {
       try {
         // response.created
-        const initialResponse = buildResponse(params, [], "completed");
+        // OpenAI reports the response as in progress until it completes.
+        const initialResponse = buildResponse(params, [], "in_progress");
         yield { type: "response.created", response: initialResponse, sequence_number: seq++ };
         yield { type: "response.in_progress", response: initialResponse, sequence_number: seq++ };
 

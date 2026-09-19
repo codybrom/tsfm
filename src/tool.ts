@@ -127,6 +127,14 @@ export abstract class Tool {
         owner
           .call(args)
           .then((result) => {
+            // Name the tool and the type here; the addon would only say it
+            // expected a string for "output". Thrown, so the catch below still
+            // answers the call.
+            if (typeof result !== "string") {
+              throw new TypeError(
+                `call() must resolve with a string, got ${result === null ? "null" : typeof result}`,
+              );
+            }
             // A disposed tool's pending calls were already failed.
             const answering = current();
             if (answering) fn.FMBridgedToolFinishCall(answering, callId, result);

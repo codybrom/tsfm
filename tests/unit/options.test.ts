@@ -41,6 +41,21 @@ describe("SamplingMode", () => {
       );
     });
 
+    it("throws when top isn't an integer", () => {
+      expect(() => SamplingMode.random({ top: 1.5 })).toThrow("positive integer");
+    });
+
+    it("throws when seed isn't a non-negative safe integer", () => {
+      expect(() => SamplingMode.random({ seed: -1 })).toThrow("'seed'");
+      expect(() => SamplingMode.random({ seed: 1.5 })).toThrow("'seed'");
+      expect(() => SamplingMode.random({ seed: 2 ** 53 })).toThrow("'seed'");
+      expect(() => SamplingMode.random({ seed: Number.NaN })).toThrow("'seed'");
+      expect(SamplingMode.random({ seed: 0 }).seed).toBe(0);
+      expect(SamplingMode.random({ seed: Number.MAX_SAFE_INTEGER }).seed).toBe(
+        Number.MAX_SAFE_INTEGER,
+      );
+    });
+
     it("throws when top is not positive", () => {
       expect(() => SamplingMode.random({ top: 0 })).toThrow("positive integer");
       expect(() => SamplingMode.random({ top: -1 })).toThrow("positive integer");
@@ -98,6 +113,31 @@ describe("serializeOptions", () => {
   it("serializes random sampling with seed", () => {
     const result = JSON.parse(serializeOptions({ sampling: SamplingMode.random({ seed: 42 }) })!);
     expect(result.sampling).toEqual({ mode: "random", seed: 42 });
+  });
+
+  // SamplingMode is a plain object, so it can be built without SamplingMode.random().
+  // The bridge would silently drop values it can't read, so they're checked here too.
+  describe("hand-built sampling objects", () => {
+    it("serializes a valid one", () => {
+      const result = JSON.parse(serializeOptions({ sampling: { type: "random", top: 3 } })!);
+      expect(result.sampling).toEqual({ mode: "random", top_k: 3 });
+    });
+
+    it.each([
+      [{ type: "random", top: 0 }, "'top' must be a positive integer"],
+      [{ type: "random", top: -3 }, "'top' must be a positive integer"],
+      [{ type: "random", top: 1.5 }, "'top' must be a positive integer"],
+      [{ type: "random", top: Number.NaN }, "'top' must be a positive integer"],
+      [{ type: "random", probabilityThreshold: 1.5 }, "between 0.0 and 1.0"],
+      [{ type: "random", probabilityThreshold: Number.NaN }, "between 0.0 and 1.0"],
+      [{ type: "random", top: 2, probabilityThreshold: 0.5 }, "Cannot specify both"],
+      [{ type: "random", seed: -1 }, "'seed'"],
+      [{ type: "random", seed: 1.5 }, "'seed'"],
+      [{ type: "random", seed: 2 ** 60 }, "'seed'"],
+      [{ type: "bogus" }, "'sampling.type'"],
+    ])("rejects %j", (sampling, message) => {
+      expect(() => serializeOptions({ sampling: sampling as never })).toThrow(message);
+    });
   });
 
   it("throws when temperature is negative", () => {

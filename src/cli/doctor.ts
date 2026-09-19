@@ -60,7 +60,7 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
             ? `macOS ${macOS}`
             : macOS === 26
               ? "macOS 26 — supported; token usage, toolCallingMode, Private Cloud Compute, " +
-                "attachments and model info need macOS 27"
+                "attachments and model info need macOS 27, and token counting needs 26.4"
               : `macOS ${macOS} — tsfm needs macOS 26 or later`,
   });
   if (process.platform === "darwin") {

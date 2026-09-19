@@ -153,7 +153,11 @@ export class TimeoutError extends GenerationError {
  * the macOS version the feature needs.
  */
 export class UnsupportedCapabilityError extends GenerationError {
-  /** The macOS version the feature needs, when an older macOS is the reason. */
+  /**
+   * The macOS version the feature needs, when an older macOS is the reason:
+   * `27` for macOS 27 features, or a point release such as `26.4` for token
+   * counting.
+   */
   readonly requiredMacOS?: number;
 
   constructor(msg = "Unsupported capability", options: { requiredMacOS?: number } = {}) {
@@ -279,9 +283,10 @@ export function statusToError(status: number, detail?: string | null): Generatio
     case GenerationErrorCode.TIMEOUT:
       return new TimeoutError(`Timed out${suffix}`);
     case GenerationErrorCode.UNSUPPORTED_CAPABILITY: {
-      // The bridge reports a macOS 27 feature used on an older macOS as
-      // "<feature> requires macOS <version> or later.".
-      const required = /requires macOS (\d+)/.exec(detail ?? "");
+      // The bridge reports a feature used on an older macOS as
+      // "<feature> requires macOS <version> or later.". The version can be a
+      // point release (token counting needs 26.4), so keep the minor part.
+      const required = /requires macOS (\d+(?:\.\d+)?)/.exec(detail ?? "");
       return new UnsupportedCapabilityError(
         `Unsupported capability${suffix}`,
         required ? { requiredMacOS: Number(required[1]) } : {},

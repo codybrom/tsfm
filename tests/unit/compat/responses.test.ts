@@ -916,6 +916,10 @@ describe("Responses API compat layer", () => {
 
       expect(events[0].type).toBe("response.created");
       expect(events[1].type).toBe("response.in_progress");
+      // OpenAI reports the response as in progress until it completes.
+      for (const event of events.slice(0, 2)) {
+        expect((event as { response: Response }).response.status).toBe("in_progress");
+      }
       client.close();
     });
 
@@ -1208,6 +1212,18 @@ describe("Responses API compat layer", () => {
           // consume
         }
       }).rejects.toThrow("Assets unavailable");
+      client.close();
+    });
+  });
+
+  describe("session creation failure", () => {
+    it("releases the transcript it built when the session can't be created", async () => {
+      mockFns.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null);
+      const client = new Client();
+      await expect(client.responses.create({ input: "Hello" })).rejects.toThrow(
+        /Failed to create session from transcript/,
+      );
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
       client.close();
     });
   });

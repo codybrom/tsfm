@@ -22,6 +22,7 @@ import { GenerationOptions, serializeOptions, resolveMaximumToolCalls } from "./
 import {
   statusToError,
   FoundationModelsError,
+  GenerationError,
   UnsupportedGuideError,
   UnsupportedCapabilityError,
   InvalidGenerationSchemaError,
@@ -55,17 +56,11 @@ let _exitHandlerInstalled = false;
 function _installExitHandler(): void {
   if (_exitHandlerInstalled) return;
   _exitHandlerInstalled = true;
+  // Only "exit". A library must not take over SIGINT or SIGTERM: a host that
+  // handles them itself (to drain a server, say) would be killed or run its
+  // handler twice. A process that dies from a signal skips this cleanup, which
+  // is safe: the addon never lets a native callback reach JavaScript that's gone.
   process.on("exit", _cleanupAllSessions);
-  // SIGINT (Ctrl+C) and SIGTERM (kill) don't trigger "exit" by default.
-  // Clean up native sessions, then re-raise the signal so the process
-  // terminates with the correct exit code / signal disposition.
-  // Use `once` so the handler removes itself before re-raising, avoiding a loop.
-  for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.once(signal, () => {
-      _cleanupAllSessions();
-      process.kill(process.pid, signal);
-    });
-  }
 }
 
 /**
@@ -86,9 +81,20 @@ function assertModelNotDisposed(
   }
 }
 
-/** The registered tools' native handles. */
+/**
+ * The registered tools' native handles. Rejects a tool listed twice and two
+ * tools with one name: the model addresses tools by name, so the framework
+ * couldn't route such a call, and whether it fails or traps on the duplicate
+ * isn't documented.
+ */
 function nativeTools(tools: Tool[]): NativePointer[] {
+  const seen = new Map<string, Tool>();
   return tools.map((t) => {
+    const other = seen.get(t.name);
+    if (other === t) throw new FoundationModelsError(`Tool '${t.name}' is listed more than once`);
+    if (other)
+      throw new FoundationModelsError(`Two tools are named '${t.name}'; names must be unique`);
+    seen.set(t.name, t);
     if (!t._nativeTool) throw new FoundationModelsError(`Tool '${t.name}' has been disposed`);
     return t._nativeTool;
   });
@@ -175,7 +181,9 @@ export class LanguageModelSession {
    *
    * The supplied `transcript` object is updated in-place to reflect the new
    * session's pointer; any subsequent `transcript.toJson()` calls will read
-   * from the new session.
+   * from the new session, and once that session is disposed the transcript is
+   * detached and throws. A transcript that is already disposed or detached is
+   * refused with FoundationModelsError.
    */
   static fromTranscript(
     transcript: Transcript,
@@ -187,15 +195,16 @@ export class LanguageModelSession {
     const toolHandles = nativeTools(tools);
 
     assertModelNotDisposed(opts.model);
+    const source = transcript._pointer();
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
     const pointer = pcc
       ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
-          transcript._nativeSession,
+          source,
           pcc._nativeModel!,
           toolHandles,
         )
       : fn.FMLanguageModelSessionCreateFromTranscript(
-          transcript._nativeSession,
+          source,
           (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
           toolHandles,
         );
@@ -435,7 +444,7 @@ export class LanguageModelSession {
           if (streamDone) return;
           queue.push({
             done: true,
-            error: new Error(
+            error: new GenerationError(
               "Stream idle timeout: no callback received within 30s of the previous snapshot",
             ),
           });

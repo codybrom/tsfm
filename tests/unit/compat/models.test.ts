@@ -65,6 +65,11 @@ describe("mapReasoningEffort", () => {
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(PCC_MODEL));
   });
 
+  it("doesn't read Object.prototype members as efforts", () => {
+    expect(mapReasoningEffort("constructor", PCC_MODEL, "reasoning.effort")).toBeUndefined();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"constructor"'));
+  });
+
   it("warns and ignores an unknown effort", () => {
     expect(mapReasoningEffort("extreme", PCC_MODEL, "reasoning.effort")).toBeUndefined();
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('"extreme"'));

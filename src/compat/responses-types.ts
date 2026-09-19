@@ -193,7 +193,8 @@ export type Response = {
   model: string;
   output: ResponseOutputItem[];
   output_text: string;
-  status: "completed" | "failed" | "incomplete";
+  /** `"in_progress"` only on the `response.created` and `response.in_progress` stream events. */
+  status: "completed" | "failed" | "incomplete" | "in_progress";
   error: ResponseError | null;
   incomplete_details: { reason?: "max_output_tokens" | "content_filter" } | null;
   instructions: string | null;

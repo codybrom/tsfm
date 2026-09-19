@@ -239,6 +239,31 @@ describe("Tool", () => {
       );
     });
 
+    it("answers a non-string result with an error naming the tool and the type", async () => {
+      class NumberTool extends Tool {
+        readonly name = "number-tool";
+        readonly description = "Resolves with a number by mistake";
+        readonly argumentsSchema = new GenerationSchema("Args");
+
+        async call(): Promise<string> {
+          return 42 as unknown as string;
+        }
+      }
+
+      new NumberTool()._register();
+      capturedCallbacks[0]("mock-content-ref", 7);
+
+      await vi.waitFor(() => {
+        expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1);
+      });
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        7,
+        "Tool 'number-tool' failed: call() must resolve with a string, got number",
+      );
+      expect(mockContentDispose).toHaveBeenCalledWith("mock-content-ref");
+    });
+
     it("calls FMBridgedToolFinishCall with error message when call() throws an Error", async () => {
       class FailingTool extends Tool {
         readonly name = "failing-tool";

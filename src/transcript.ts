@@ -98,6 +98,17 @@ export class Transcript {
     if (!this._owned) this._detached = true;
   }
 
+  /**
+   * @internal The native pointer, for building a session or counting tokens.
+   * Throws a FoundationModelsError once the transcript is disposed or its
+   * session is; the addon would refuse the released handle anyway, but with a
+   * bare Error.
+   */
+  _pointer(): NativePointer {
+    this._assertNotDisposed();
+    return this._nativeSession;
+  }
+
   /** @internal Release the C object this instance owns, if any. */
   private _releaseIfOwned(): void {
     if (!this._owned) return;

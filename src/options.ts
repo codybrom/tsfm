@@ -9,6 +9,39 @@ export interface SamplingMode {
   readonly seed?: number;
 }
 
+/**
+ * Checks the constraints of a random sampling mode. Shared by
+ * `SamplingMode.random()` and `serializeOptions()`, because `SamplingMode` is
+ * a plain object that can be built by hand: the bridge reads `top` and `seed`
+ * with `as? Int` / `as? UInt64` and silently drops a value that doesn't fit,
+ * and a `top` of zero would reach the framework unchecked.
+ */
+function validateRandomSampling(opts: {
+  top?: number;
+  probabilityThreshold?: number;
+  seed?: number;
+}): void {
+  if (opts.top !== undefined && opts.probabilityThreshold !== undefined) {
+    throw new Error(
+      "Cannot specify both 'top' and 'probabilityThreshold'. Choose one sampling constraint.",
+    );
+  }
+  if (opts.top !== undefined && (!Number.isSafeInteger(opts.top) || opts.top <= 0)) {
+    throw new Error("'top' must be a positive integer");
+  }
+  if (
+    opts.probabilityThreshold !== undefined &&
+    !(opts.probabilityThreshold >= 0.0 && opts.probabilityThreshold <= 1.0)
+  ) {
+    throw new Error("'probabilityThreshold' must be between 0.0 and 1.0");
+  }
+  // The framework takes a UInt64; JavaScript can only represent integers up to
+  // 2^53 exactly, so that's the range accepted.
+  if (opts.seed !== undefined && (!Number.isSafeInteger(opts.seed) || opts.seed < 0)) {
+    throw new Error("'seed' must be a non-negative integer no larger than Number.MAX_SAFE_INTEGER");
+  }
+}
+
 export const SamplingMode = {
   greedy(): SamplingMode {
     return { type: "greedy" };
@@ -20,20 +53,7 @@ export const SamplingMode = {
       seed?: number;
     } = {},
   ): SamplingMode {
-    if (opts.top !== undefined && opts.probabilityThreshold !== undefined) {
-      throw new Error(
-        "Cannot specify both 'top' and 'probabilityThreshold'. Choose one sampling constraint.",
-      );
-    }
-    if (opts.top !== undefined && opts.top <= 0) {
-      throw new Error("'top' must be a positive integer");
-    }
-    if (
-      opts.probabilityThreshold !== undefined &&
-      (opts.probabilityThreshold < 0.0 || opts.probabilityThreshold > 1.0)
-    ) {
-      throw new Error("'probabilityThreshold' must be between 0.0 and 1.0");
-    }
+    validateRandomSampling(opts);
     return { type: "random", ...opts };
   },
 };
@@ -118,13 +138,16 @@ export function serializeOptions(options: GenerationOptions | undefined): string
     const sampling = options.sampling;
     if (sampling.type === "greedy") {
       obj.sampling = { mode: "greedy" };
-    } else {
+    } else if (sampling.type === "random") {
+      validateRandomSampling(sampling);
       const r: SerializedSampling = { mode: "random" };
       // Key names aligned with Python SDK: top_k, top_p
       if (sampling.top !== undefined) r.top_k = sampling.top;
       if (sampling.probabilityThreshold !== undefined) r.top_p = sampling.probabilityThreshold;
       if (sampling.seed !== undefined) r.seed = sampling.seed;
       obj.sampling = r;
+    } else {
+      throw new Error("'sampling.type' must be 'greedy' or 'random'");
     }
   }
   if (options.toolCallingMode !== undefined) {

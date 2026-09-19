@@ -12,6 +12,8 @@ import {
   SystemLanguageModelGuardrails,
   SystemLanguageModelUnavailableReason,
 } from "../../src/core.js";
+import { Transcript } from "../../src/transcript.js";
+import { FoundationModelsError } from "../../src/errors.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -248,6 +250,15 @@ describe("SystemLanguageModel.tokenCount", () => {
       "mock-model-pointer",
       ["registered-tool"],
     );
+  });
+
+  it("rejects a disposed transcript with FoundationModelsError before reaching native code", async () => {
+    const transcript = Transcript.fromJson("{}");
+    transcript.dispose();
+    await expect(new SystemLanguageModel().tokenCount({ transcript })).rejects.toBeInstanceOf(
+      FoundationModelsError,
+    );
+    expect(mockFns.FMSystemLanguageModelTokenCountForTranscript).not.toHaveBeenCalled();
   });
 
   it("releases the request handle once the count arrives", async () => {

@@ -53,7 +53,8 @@ export function mapReasoningEffort(
     );
     return undefined;
   }
-  if (!(effort in EFFORT_TO_REASONING_LEVEL)) {
+  // hasOwn, not `in`: "constructor" or "toString" would otherwise pass.
+  if (!Object.hasOwn(EFFORT_TO_REASONING_LEVEL, effort)) {
     console.warn(
       `[tsfm compat] Parameter "${paramName}" value "${effort}" is not supported and will be ignored.`,
     );
