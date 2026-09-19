@@ -25,6 +25,10 @@
     "./chat": {
       "import": "./dist/compat/index.js",
       "types": "./dist/compat/index.d.ts"
+    },
+    "./openai": {
+      "import": "./dist/compat/index.js",
+      "types": "./dist/compat/index.d.ts"
     }
   },
   "scripts": {
