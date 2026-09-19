@@ -78,8 +78,9 @@ HAS_MACOS_27_SDK=false
 DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
 if [[ -f "$DYLIB" ]]; then
   if $HAS_MACOS_27_SDK && ! nm -m "$DYLIB" 2>/dev/null | grep 'Attachment.*from FoundationModels' >/dev/null; then
+    # Left in place until the copy step overwrites it, so a failed rebuild
+    # still leaves a loadable library.
     log "Native dylib was built without prompt attachments, but the macOS $SDK_VERSION SDK is active. Rebuilding."
-    rm -f "$DYLIB"
   else
     log "Native dylib already present, skipping build. Delete native/libFoundationModels.dylib to force rebuild."
     exit 0
