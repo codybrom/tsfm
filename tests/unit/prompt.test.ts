@@ -137,4 +137,19 @@ describe("composePrompt", () => {
     expect((err as PromptAttachmentError).reason).toBe("unsupported-os");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
   });
+
+  it.each([
+    [{ attachments: [{ path: "/tmp/x.png" }] }, 'has no "text"'],
+    [{ text: 42 }, 'has no "text"'],
+    [{ content: "not an array" }, '"content" must be an array'],
+    [{ text: "hi", attachments: "no" }, '"attachments" must be an array'],
+    [{ content: [null] }, "must be text or an attachment"],
+    [{ content: [{ label: "no path" }] }, "must be text or an attachment"],
+    [null, "A prompt must be"],
+    [7, "A prompt must be"],
+  ])("refuses the prompt shape %j with a TypeError", (prompt, message) => {
+    expect(() => composePrompt(fn, prompt as never)).toThrow(TypeError);
+    expect(() => composePrompt(fn, prompt as never)).toThrow(message as string);
+    expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
+  });
 });

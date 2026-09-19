@@ -34,11 +34,44 @@ export interface ContentPromptInput {
  */
 export type PromptInput = TextPromptInput | ContentPromptInput;
 
-/** The prompt's parts in order. A `{ text }` prompt always has its text, even empty. */
+const SHAPES = "a string, { text, attachments? } or { content: [...] }";
+
+/**
+ * The prompt's parts in order. A `{ text }` prompt always has its text, even
+ * empty. Shapes are checked here rather than trusted from the types, because
+ * JavaScript callers reach this too, and a missing `text` would otherwise
+ * surface as a null dereference further down.
+ */
 function promptParts(prompt: string | PromptInput): Array<string | PromptAttachment> {
   if (typeof prompt === "string") return [prompt];
-  if ("content" in prompt) return prompt.content;
-  return [prompt.text, ...(prompt.attachments ?? [])];
+  if (prompt === null || typeof prompt !== "object") {
+    throw new TypeError(
+      `A prompt must be ${SHAPES}, got ${prompt === null ? "null" : typeof prompt}`,
+    );
+  }
+  let parts: Array<string | PromptAttachment>;
+  if ("content" in prompt) {
+    if (!Array.isArray(prompt.content)) {
+      throw new TypeError(`A prompt's "content" must be an array of text and attachments`);
+    }
+    parts = prompt.content;
+  } else {
+    if (typeof prompt.text !== "string") {
+      throw new TypeError(`A prompt must be ${SHAPES}; this one has no "text"`);
+    }
+    const attachments = prompt.attachments ?? [];
+    if (!Array.isArray(attachments)) {
+      throw new TypeError(`A prompt's "attachments" must be an array`);
+    }
+    parts = [prompt.text, ...attachments];
+  }
+  for (const part of parts) {
+    if (typeof part === "string") continue;
+    if (part === null || typeof part !== "object" || typeof part.path !== "string") {
+      throw new TypeError(`Every prompt part must be text or an attachment with a "path"`);
+    }
+  }
+  return parts;
 }
 
 /**
