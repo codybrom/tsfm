@@ -114,6 +114,14 @@ entitlement; plain `node` can't use it. See
 - Schemas Apple's framework can't build throw `InvalidGenerationSchemaError`
   instead of `GenerationError` with code 255.
 
+## No more koffi
+
+tsfm now reaches Apple's framework through its own Node-API addon
+(`native/tsfm.node`) instead of the `koffi` package, so it has no runtime
+dependencies, and npm no longer warns about koffi's install script. If you
+listed `koffi` in `allowScripts` for tsfm, you can remove it. The public API
+doesn't change.
+
 ## Also new
 
 - `npx tsfm doctor` checks whether a machine can run tsfm.

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - Unreleased
 
-tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework, and still runs on macOS 26. On macOS 26, features that need macOS 27 report a clear reason instead of working. It also makes the native layer much harder to crash. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
+tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework, and still runs on macOS 26. On macOS 26, features that need macOS 27 report a clear reason instead of working. It replaces koffi with tsfm's own Node-API addon, so tsfm has no runtime dependencies, and makes the native layer much harder to crash. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
 
 ### Changed
 
@@ -21,6 +21,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - A schema the framework can't build, such as one with an undefined reference, throws `InvalidGenerationSchemaError` instead of `GenerationError` with code 255.
 - `generable()` names nested reference schemas by their property path, such as `shipping_address`, so objects under the same key in different places stay separate.
 - The Swift-to-C bridge is now tsfm's own code in `native/bridge`, forked from Apple's `foundation-models-c` (see `native/bridge/UPSTREAM.md`).
+- JavaScript reaches the bridge through tsfm's own Node-API addon, `native/tsfm.node`, instead of koffi. tsfm has no runtime dependencies, so npm no longer warns about koffi's install script. Native objects are type-tagged handles: passing the wrong kind, a released one, or a non-string where a string belongs throws instead of reaching native code, and native callbacks can't reach JavaScript after a stream is dropped, a tool is disposed or the process exits. Node-API is ABI-stable, so the one bundled build works on every supported Node version.
 
 ### Added
 
@@ -55,6 +56,8 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - A stream always releases the session's request lock, even if reading its usage fails.
 - The native library's load-failure hint reads the macOS version from `SystemVersion.plist` instead of guessing from the Darwin version.
 - Chat Completions: a streamed tool request that ended in a mapped error reported zero usage.
+- Disposing a tool while the model was waiting on one of its calls left the response waiting forever. Its pending calls now fail.
+- A stream the native side couldn't start (for example with invalid options) passed a null stream on to native code. It now throws `FoundationModelsError`.
 
 ## [0.5.1] - 2026-09-18
 

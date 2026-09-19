@@ -69,8 +69,6 @@ model.dispose();
 
 Unless you are building from source, Xcode is not required. Building from source needs Xcode 27.
 
-npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
-
 ## Development
 
 ```bash
