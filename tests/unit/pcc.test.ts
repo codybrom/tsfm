@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createMockFunctions, started } from "./helpers/mock-bindings.js";
 
-vi.hoisted(() => {
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
-});
-
 const mockFns = createMockFunctions();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,

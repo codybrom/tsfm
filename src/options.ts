@@ -29,11 +29,14 @@ function validateRandomSampling(opts: {
   if (opts.top !== undefined && (!Number.isSafeInteger(opts.top) || opts.top <= 0)) {
     throw new Error("'top' must be a positive integer");
   }
+  // typeof, not just the comparisons: `true` and `"0.5"` both compare as
+  // being within 0..1, and would serialize as the wrong JSON type.
   if (
     opts.probabilityThreshold !== undefined &&
-    !(opts.probabilityThreshold >= 0.0 && opts.probabilityThreshold <= 1.0)
+    (typeof opts.probabilityThreshold !== "number" ||
+      !(opts.probabilityThreshold >= 0.0 && opts.probabilityThreshold <= 1.0))
   ) {
-    throw new Error("'probabilityThreshold' must be between 0.0 and 1.0");
+    throw new Error("'probabilityThreshold' must be a number between 0.0 and 1.0");
   }
   // The framework takes a UInt64; JavaScript can only represent integers up to
   // 2^53 exactly, so that's the range accepted.

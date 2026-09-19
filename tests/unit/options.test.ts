@@ -130,6 +130,9 @@ describe("serializeOptions", () => {
       [{ type: "random", top: Number.NaN }, "'top' must be a positive integer"],
       [{ type: "random", probabilityThreshold: 1.5 }, "between 0.0 and 1.0"],
       [{ type: "random", probabilityThreshold: Number.NaN }, "between 0.0 and 1.0"],
+      // true and "0.5" both compare as inside 0..1.
+      [{ type: "random", probabilityThreshold: true }, "must be a number"],
+      [{ type: "random", probabilityThreshold: "0.5" }, "must be a number"],
       [{ type: "random", top: 2, probabilityThreshold: 0.5 }, "Cannot specify both"],
       [{ type: "random", seed: -1 }, "'seed'"],
       [{ type: "random", seed: 1.5 }, "'seed'"],
