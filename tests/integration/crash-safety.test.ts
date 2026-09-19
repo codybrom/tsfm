@@ -32,6 +32,12 @@ function run(scenario: string) {
   };
 }
 
+// Node prints an uncaught error at the start of a line ("TypeError: ...",
+// "[TypeError: ...]"), and tsfm's exit cleanup reports failures. Scenario
+// output lines start with a case name, so an expected "rejected: TypeError"
+// doesn't match.
+const UNCAUGHT = /^(Uncaught|\[?\w*Error\b)|cleanup on exit failed/m;
+
 // Scenarios that exit on purpose while work is in flight.
 const EXITS = [
   "exit-during-respond",
@@ -58,7 +64,7 @@ describeIfAvailable("crash safety (integration)", () => {
     (scenario) => {
       const { status, signal, output } = run(scenario);
       expect({ status, signal }, output).toEqual({ status: 0, signal: null });
-      expect(output).not.toMatch(/Uncaught|TypeError|failed:/);
+      expect(output).not.toMatch(UNCAUGHT);
     },
     180_000,
   );
@@ -69,7 +75,7 @@ describeIfAvailable("crash safety (integration)", () => {
       const { status, signal, output } = run(scenario);
       expect({ status, signal }, output).toEqual({ status: 0, signal: null });
       expect(output).toContain("survived");
-      expect(output).not.toMatch(/Uncaught|TypeError|failed:/);
+      expect(output).not.toMatch(UNCAUGHT);
     },
     180_000,
   );

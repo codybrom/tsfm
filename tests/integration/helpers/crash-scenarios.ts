@@ -297,6 +297,29 @@ const scenarios: Record<string, () => Promise<void>> = {
       });
     }
 
+    // Wrong types where the C API takes a string. koffi passes a number as a
+    // raw pointer, so each of these crashed before strings were checked.
+    const bad = 42 as never;
+    add("prompt that isn't a string", () => session.respond(bad));
+    add("prompt object without text", () => session.respond({} as never));
+    add("attachment path that isn't a string", () =>
+      session.respond({ text: "hi", attachments: [{ path: bad }] }),
+    );
+    add("instructions that aren't a string", () => new LanguageModelSession({ instructions: bad }));
+    add("transcript JSON that isn't a string", () => Transcript.fromJson(bad));
+    add("schema name that isn't a string", () => new GenerationSchema(bad, "d"));
+    add("anyOf with a number", () =>
+      new GenerationSchema("S", "d").property("p", "string", {
+        guides: [GenerationGuide.anyOf([bad])],
+      }),
+    );
+    add("regex that isn't a string", () =>
+      new GenerationSchema("S", "d").property("p", "string", {
+        guides: [GenerationGuide.regex(bad)],
+      }),
+    );
+    add("prewarm prefix that isn't a string", () => session.prewarm(bad));
+
     // Use after dispose, and double dispose.
     add("respond after dispose", () => {
       const s = new LanguageModelSession();
