@@ -10,7 +10,9 @@
  */
 import {
   SystemLanguageModel,
+  PrivateCloudComputeLanguageModel,
   LanguageModelSession,
+  FailRequestError,
   GenerationSchema,
   GenerationGuide,
   Transcript,
@@ -217,6 +219,47 @@ const scenarios: Record<string, () => Promise<void>> = {
       console.log(`main request after the worker's ${how}: ${outcome}`);
       session.dispose();
     }
+  },
+
+  // Private Cloud Compute's model info: reads that need no entitlement, on a
+  // disposed model, and with odd locale strings. On macOS 26 none reach native code.
+  async "pcc-model-info"() {
+    const pcc = new PrivateCloudComputeLanguageModel();
+    console.log(`languages: ${(await pcc.supportedLanguages()).length}`);
+    for (const locale of [undefined, "en-US", "en_US", "", "\0", "xx-XX", "🧪".repeat(50)]) {
+      console.log(
+        `supportsLocale(${JSON.stringify(locale)}): ${await settle(pcc.supportsLocale(locale))}`,
+      );
+    }
+    pcc.dispose();
+    console.log(`languages after dispose: ${await settle(pcc.supportedLanguages())}`);
+    console.log(`supportsLocale after dispose: ${await settle(pcc.supportsLocale())}`);
+  },
+
+  // A tool that fails the request (FailRequestError) ends the response with
+  // RequestFailedByToolError, including under toolCallingMode "required".
+  async "tool-fails-request"() {
+    class FailingTool extends Tool {
+      readonly name = "lookup";
+      readonly description = "Looks up a fact. Always call this tool.";
+      readonly argumentsSchema = new GenerationSchema("Args", "Lookup arguments").property(
+        "query",
+        "string",
+      );
+      async call(): Promise<string> {
+        throw new FailRequestError("The database is unreachable");
+      }
+    }
+    const tool = new FailingTool();
+    const session = new LanguageModelSession({ tools: [tool] });
+    const outcome = await settle(
+      session.respond("Look up the capital of Peru.", {
+        options: { toolCallingMode: "required" },
+      }),
+    );
+    console.log(`respond: ${outcome}`);
+    session.dispose();
+    tool.dispose();
   },
 
   // An undisposed Tool nobody references is collected (its native callback

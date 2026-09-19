@@ -6,9 +6,33 @@ import {
   LanguageModelSession,
   GenerationSchema,
   GenerationGuide,
+  GeneratedContent,
+  Tool,
+  Transcript,
+  CancelledError,
   UnsupportedCapabilityError,
 } from "../../src/index.js";
 import Client from "../../src/compat/index.js";
+import { retryAttempts } from "./helpers/retry.js";
+
+/** Returns a code the model can't know without calling it (see tools.test.ts). */
+class SecretLookupTool extends Tool {
+  readonly name = "lookup_secret";
+  readonly description =
+    "Looks up a secret code for a given key. Always use this tool when asked about secret codes.";
+  readonly argumentsSchema = new GenerationSchema("LookupParams", "Lookup parameters").property(
+    "key",
+    "string",
+    { description: "The key to look up" },
+  );
+
+  called = false;
+
+  async call(args: GeneratedContent): Promise<string> {
+    this.called = true;
+    return args.value<string>("key") === "alpha" ? "XRAY-7749" : "UNKNOWN";
+  }
+}
 
 /*
  * Private Cloud Compute needs a host signed with its managed entitlement.
@@ -133,9 +157,151 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
     expect(completion.usage?.completion_tokens).toBeGreaterThan(0);
   }, 60_000);
 
-  it("reports the quota", () => {
+  it("invokes a tool and includes its result", { timeout: 260_000 }, async () => {
+    const { successes } = await retryAttempts(
+      async () => {
+        const tool = new SecretLookupTool();
+        const session = new LanguageModelSession({
+          model: pcc,
+          instructions:
+            "You have access to a lookup_secret tool. You MUST call it when asked about secret codes. " +
+            "Do NOT guess or make up codes. Always call the tool first, then reply with only the code.",
+          tools: [tool],
+        });
+        try {
+          const { content: reply } = await Promise.race([
+            session.respond(
+              'Use the lookup_secret tool to find the secret code for key "alpha". ' +
+                "Do not guess — call the tool.",
+              { options: { maximumResponseTokens: 60 } },
+            ),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                session.cancel();
+                reject(new Error("Attempt timed out"));
+              }, 30_000);
+            }),
+          ]);
+          if (tool.called && reply.includes("XRAY-7749")) {
+            return { success: true, detail: `reply: "${reply.slice(0, 80)}"` };
+          }
+          return {
+            success: false,
+            detail: tool.called
+              ? `tool called but reply missing code: "${reply.slice(0, 100)}"`
+              : `tool not called: "${reply.slice(0, 100)}"`,
+          };
+        } finally {
+          session.dispose();
+          tool.dispose();
+        }
+      },
+      // Fewer attempts than tools.test.ts: each one counts against the daily quota.
+      { maxAttempts: 4, requiredSuccesses: 1, label: "pcc tools test" },
+    );
+    expect(successes).toBeGreaterThanOrEqual(1);
+  });
+
+  it("generates content matching a GenerationSchema", async () => {
+    const schema = new GenerationSchema("Color", "A color")
+      .property("name", "string", { guides: [GenerationGuide.anyOf(["red", "blue", "green"])] })
+      .property("isPrimary", "boolean", { description: "Whether this is a primary color" });
+    const session = new LanguageModelSession({ model: pcc });
+    const { content, usage } = await session.respondWithSchema("Pick a color.", schema);
+    expect(["red", "blue", "green"]).toContain(content.value<string>("name"));
+    expect(typeof content.value<boolean>("isPrimary")).toBe("boolean");
+    expect(usage?.output.totalTokens).toBeGreaterThan(0);
+    session.dispose();
+  }, 60_000);
+
+  it("generates content from a JSON schema", async () => {
+    const session = new LanguageModelSession({ model: pcc });
+    // Titled explicitly: untitled inline objects all become "Object" in
+    // afmSchemaFormat(), and the framework then gives them one shape.
+    const { content } = await session.respondWithJsonSchema("Make up a person and their pet.", {
+      type: "object",
+      properties: {
+        owner: { type: "object", title: "Owner", properties: { name: { type: "string" } } },
+        pet: {
+          type: "object",
+          title: "Pet",
+          properties: { species: { type: "string" }, legs: { type: "integer" } },
+        },
+      },
+    });
+    const value = content.toObject() as {
+      owner: { name: string };
+      pet: { species: string; legs: number };
+    };
+    expect(typeof value.owner.name).toBe("string");
+    expect(typeof value.pet.species).toBe("string");
+    expect(Number.isInteger(value.pet.legs)).toBe(true);
+    session.dispose();
+  }, 60_000);
+
+  it("keeps context across turns", async () => {
+    const session = new LanguageModelSession({ model: pcc });
+    // A benign fact: a "password" trips PCC's guardrail.
+    await session.respond("My cat is called Pumpernickel. Reply with just OK.", {
+      options: { maximumResponseTokens: 20 },
+    });
+    const { content } = await session.respond("What is my cat called? Reply with just the name.", {
+      options: { maximumResponseTokens: 20 },
+    });
+    expect(content).toContain("Pumpernickel");
+    expect(session.transcript.toJson()).toContain("Pumpernickel");
+    session.dispose();
+  }, 90_000);
+
+  it("resumes a transcript on PCC and sees the earlier turn", async () => {
+    const first = new LanguageModelSession({ model: pcc });
+    await first.respond("My name is Zephyrina. Reply with just OK.", {
+      options: { maximumResponseTokens: 20 },
+    });
+    const json = first.transcript.toJson();
+    first.dispose();
+
+    const resumed = LanguageModelSession.fromTranscript(Transcript.fromJson(json), { model: pcc });
+    const { content, usage } = await resumed.respond("What is my name? Reply with just the name.", {
+      options: { maximumResponseTokens: 20 },
+    });
+    expect(content).toContain("Zephyrina");
+    expect(usage?.input.totalTokens).toBeGreaterThan(0);
+    resumed.dispose();
+  }, 90_000);
+
+  it("rejects a cancelled request with CancelledError", async () => {
+    const session = new LanguageModelSession({ model: pcc });
+    const pending = session.respond("Write a 600-word story about a lighthouse keeper.", {
+      options: { maximumResponseTokens: 200 },
+    });
+    setTimeout(() => session.cancel(), 400);
+    // The model can beat the cancel; only the rejection shape is under test.
+    await pending.then(
+      () => undefined,
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(CancelledError);
+        expect((err as Error).message).toContain("cancelled");
+      },
+    );
+    // The session is still usable afterwards.
+    const { content } = await session.respond("Say hi in one word.", {
+      options: { maximumResponseTokens: 10 },
+    });
+    expect(content.length).toBeGreaterThan(0);
+    session.dispose();
+  }, 60_000);
+
+  it("reports a coherent quota", () => {
     const quota = pcc.quotaUsage;
+    expect(quota).not.toBeNull();
     expect(typeof quota?.limitReached).toBe("boolean");
     expect(typeof quota?.approachingLimit).toBe("boolean");
+    // These requests just ran, so the limit can't have been reached.
+    expect(quota?.limitReached).toBe(false);
+    if (quota?.resetDate !== null) {
+      expect(quota?.resetDate).toBeInstanceOf(Date);
+      expect(Number.isNaN(quota?.resetDate.getTime())).toBe(false);
+    }
   });
 });

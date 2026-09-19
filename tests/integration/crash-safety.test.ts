@@ -59,6 +59,8 @@ const SURVIVES = [
   "gc-with-sessions-in-flight",
   "worker-exits-mid-request",
   "undisposed-tool-collected",
+  "pcc-model-info",
+  "tool-fails-request",
   "accessor-disposes-handles",
   "fuzz",
 ];
