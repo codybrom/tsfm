@@ -15,9 +15,12 @@ describe("parseCapabilities", () => {
     expect(parseCapabilities('["vision","telepathy",3]')).toEqual(["vision"]);
   });
 
-  it("returns [] for null or malformed JSON", () => {
+  it("returns [] when nothing is reported", () => {
     expect(parseCapabilities(null)).toEqual([]);
-    expect(parseCapabilities("{nope")).toEqual([]);
-    expect(parseCapabilities('{"vision":true}')).toEqual([]);
+  });
+
+  it("throws on malformed JSON instead of reporting no capabilities", () => {
+    expect(() => parseCapabilities("{nope")).toThrow(/capabilities/);
+    expect(() => parseCapabilities('{"vision":true}')).toThrow(/capabilities/);
   });
 });

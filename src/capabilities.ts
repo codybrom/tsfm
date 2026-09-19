@@ -1,17 +1,27 @@
+import { FoundationModelsError } from "./errors.js";
+
 /** What a model can do. */
 export type ModelCapability = "vision" | "toolCalling" | "guidedGeneration" | "reasoning";
 
 const KNOWN = new Set<string>(["vision", "toolCalling", "guidedGeneration", "reasoning"]);
 
-/** @internal Parses the bridge's capabilities JSON; unknown names are dropped. */
+/**
+ * @internal Parses the bridge's capabilities JSON. null (nothing reported) is
+ * an empty list; malformed JSON throws, like supportedLanguages, instead of
+ * reading as "no capabilities". Names this version doesn't know are dropped.
+ */
 export function parseCapabilities(json: string | null): ModelCapability[] {
-  if (!json) return [];
+  if (json === null) return [];
+  let names: unknown;
   try {
-    const names = JSON.parse(json) as unknown;
-    return Array.isArray(names)
-      ? names.filter((n): n is ModelCapability => typeof n === "string" && KNOWN.has(n))
-      : [];
+    names = JSON.parse(json);
   } catch {
-    return [];
+    names = undefined;
   }
+  if (!Array.isArray(names)) {
+    throw new FoundationModelsError(
+      `Failed to parse model capabilities JSON: ${json.slice(0, 200)}`,
+    );
+  }
+  return names.filter((n): n is ModelCapability => typeof n === "string" && KNOWN.has(n));
 }
