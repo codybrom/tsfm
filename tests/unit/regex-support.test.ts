@@ -86,6 +86,32 @@ describe("collectSchemaPatterns", () => {
     ]);
   });
 
+  it("ignores pattern keys inside instance data", () => {
+    const schema = {
+      type: "object",
+      examples: [{ pattern: "[0-9]" }],
+      default: { pattern: "[a-z]" },
+      const: { pattern: "^x" },
+      enum: [{ pattern: "(?:a)" }],
+      properties: { v: { type: "string", examples: [{ pattern: "[0-9]" }] } },
+    };
+    expect(collectSchemaPatterns(schema)).toEqual([]);
+  });
+
+  it("follows combinators, tuple items and conditionals", () => {
+    const schema = {
+      anyOf: [{ pattern: "a" }, { properties: { x: { pattern: "b" } } }],
+      items: [{ pattern: "c" }],
+      if: { pattern: "d" },
+      not: { pattern: "e" },
+    };
+    expect(
+      collectSchemaPatterns(schema)
+        .map((p) => p.pattern)
+        .sort(),
+    ).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
   it("ignores a property that happens to be named pattern", () => {
     expect(collectSchemaPatterns({ properties: { pattern: { type: "string" } } })).toEqual([]);
   });
