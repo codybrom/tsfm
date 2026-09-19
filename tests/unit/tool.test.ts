@@ -14,6 +14,7 @@ const { mockFns, mockKoffi, capturedCallbacks, capturedRegistryCallback } = vi.h
     mockFns: {
       FMBridgedToolCreate: vi.fn((): string | null => "mock-tool-pointer"),
       FMBridgedToolFinishCall: vi.fn(),
+      FMBridgedToolFailCall: vi.fn(),
       FMRelease: vi.fn(),
     },
     mockKoffi: {
@@ -40,8 +41,9 @@ vi.mock("../../src/bindings.js", () => ({
   ToolCallbackProto: "ToolCallbackProto",
 }));
 
-const { shouldThrowOnConstruct } = vi.hoisted(() => ({
+const { shouldThrowOnConstruct, mockContentDispose } = vi.hoisted(() => ({
   shouldThrowOnConstruct: { value: false as boolean | string },
+  mockContentDispose: vi.fn(),
 }));
 
 vi.mock("../../src/schema.js", () => ({
@@ -55,10 +57,17 @@ vi.mock("../../src/schema.js", () => ({
       if (shouldThrowOnConstruct.value) throw shouldThrowOnConstruct.value;
       this._nativeContent = pointer;
     }
+    toObject() {
+      return {};
+    }
+    dispose() {
+      mockContentDispose(this._nativeContent);
+    }
   },
 }));
 
 vi.mock("../../src/errors.js", () => ({
+  GenerationErrorCode: { TOOL_CALL_LIMIT_EXCEEDED: 15 },
   statusToError: vi.fn((_code: number, msg?: string) => new Error(msg ?? "mock error")),
   ToolCallError: class extends Error {
     toolName: string;
@@ -70,6 +79,7 @@ vi.mock("../../src/errors.js", () => ({
 }));
 
 import { Tool } from "../../src/tool.js";
+import { ToolCallBudget } from "../../src/tool-budget.js";
 import { GenerationSchema } from "../../src/schema.js";
 
 class TestTool extends Tool {
@@ -297,6 +307,65 @@ describe("Tool", () => {
       } finally {
         shouldThrowOnConstruct.value = false;
       }
+    });
+  });
+
+  describe("tool-call budget (maximumToolCalls)", () => {
+    it("runs calls while the request's budget has room, then fails the next one", async () => {
+      const tool = new TestTool();
+      const calls = vi.spyOn(tool, "call");
+      tool._register();
+      const budget = new ToolCallBudget(2);
+      tool._budgets.add(budget);
+      const callback = capturedCallbacks[0];
+
+      callback("ref-1", 1);
+      callback("ref-2", 2);
+      callback("ref-3", 3);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(2));
+      expect(calls).toHaveBeenCalledTimes(2);
+      expect(budget.used).toBe(2);
+      // The third call isn't run: it's failed with TOOL_CALL_LIMIT_EXCEEDED,
+      // which ends the response, and its arguments are released.
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        3,
+        15,
+        expect.stringMatching(/limit of 2 tool calls.*'test-tool' was not run/),
+      );
+      expect(mockContentDispose).toHaveBeenCalledWith("ref-3");
+    });
+
+    it("doesn't fire onCall for a refused call", () => {
+      const tool = new TestTool();
+      tool.onCall = vi.fn();
+      tool._register();
+      tool._budgets.add(new ToolCallBudget(0));
+      capturedCallbacks[0]("ref", 1);
+      expect(tool.onCall).not.toHaveBeenCalled();
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("respects every attached budget when a tool is shared by two requests", () => {
+      const tool = new TestTool();
+      tool._register();
+      const roomy = new ToolCallBudget(10);
+      const spent = new ToolCallBudget(1);
+      spent.used = 1;
+      tool._budgets.add(roomy).add(spent);
+      capturedCallbacks[0]("ref", 1);
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+      expect(roomy.used).toBe(0);
+    });
+
+    it("runs normally with no budget attached", async () => {
+      const tool = new TestTool();
+      tool._register();
+      capturedCallbacks[0]("ref", 1);
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
     });
   });
 

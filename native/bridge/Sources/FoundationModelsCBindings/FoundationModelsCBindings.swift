@@ -413,6 +413,8 @@ private enum StatusCode: Int32 {
   case timeout = 12
   case unsupportedCapability = 13
   case unsupportedTranscriptContent = 14
+  // tsfm: a bridged tool was failed on purpose (see FMBridgedToolFailCall).
+  case toolCallLimitExceeded = 15
   case unknownError = 255
 }
 
@@ -457,10 +459,27 @@ private func mapGenerationErrorToStatusCode(_ error: LanguageModelSession.Genera
 /// The status code for a framework error, or nil when the error isn't one the
 /// framework defines (callers then report it as unknownError).
 private func frameworkStatusCode(for error: Error) -> Int32? {
+  // tsfm: a tool failed with FMBridgedToolFailCall; the framework wraps it.
+  if let error = error as? LanguageModelSession.ToolCallError,
+    let failure = error.underlyingError as? BridgedToolFailure
+  {
+    return failure.code
+  }
   if let error = error as? LanguageModelSession.GenerationError {
     return mapGenerationErrorToStatusCode(error)
   }
   return macOS27StatusCode(for: error)
+}
+
+/// tsfm: The message to report for a framework error. A tool failed with
+/// FMBridgedToolFailCall reports its own message, not the ToolCallError wrapper's.
+private func frameworkErrorDescription(for error: Error) -> String {
+  if let error = error as? LanguageModelSession.ToolCallError,
+    let failure = error.underlyingError as? BridgedToolFailure
+  {
+    return failure.message
+  }
+  return error.localizedDescription
 }
 
 /// frameworkStatusCode(for:), falling back to unknownError.
@@ -554,14 +573,14 @@ private func parseGenerationOptions(from jsonString: String?) throws -> Generati
   {
     switch mode {
     case "greedy":
-      options.sampling = .greedy
+      options.samplingMode = .greedy
     case "random":
       let seed = samplingDict["seed"] as? UInt64
       // Swift API supports either topK or probabilityThreshold, not both
       if let topK = samplingDict["top_k"] as? Int {
-        options.sampling = .random(top: topK, seed: seed)
+        options.samplingMode = .random(top: topK, seed: seed)
       } else if let probabilityThreshold = samplingDict["top_p"] as? Double {
-        options.sampling = .random(probabilityThreshold: probabilityThreshold, seed: seed)
+        options.samplingMode = .random(probabilityThreshold: probabilityThreshold, seed: seed)
       }
     default:
       break
@@ -576,6 +595,14 @@ private func parseGenerationOptions(from jsonString: String?) throws -> Generati
   // Parse maximum_response_tokens
   if let maxTokens = json["maximum_response_tokens"] as? Int {
     options.maximumResponseTokens = maxTokens
+  }
+
+  // tsfm: tool_calling_mode (macOS 27). Unknown values leave the default (allowed).
+  switch json["tool_calling_mode"] as? String {
+  case "allowed": options.toolCallingMode = .allowed
+  case "required": options.toolCallingMode = .required
+  case "disallowed": options.toolCallingMode = .disallowed
+  default: break
   }
 
   return options
@@ -629,7 +656,7 @@ public func FMLanguageModelSessionRespond(
       )
     } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
-      let debugDescription = error.localizedDescription
+      let debugDescription = frameworkErrorDescription(for: error)
       let statusCode = statusCode(for: error)
       callback(
         statusCode,
@@ -742,7 +769,7 @@ public func FMLanguageModelSessionResponseStreamIterate(
     } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
       let statusCode = statusCode(for: error)
-      let debugDescription = error.localizedDescription
+      let debugDescription = frameworkErrorDescription(for: error)
       callback(
         statusCode,
         debugDescription,
@@ -823,7 +850,7 @@ public func FMLanguageModelSessionRespondWithSchema(
     } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
       let statusCode = statusCode(for: error)
-      let contentWrapper = GeneratedContentWrapper(content: error.localizedDescription)
+      let contentWrapper = GeneratedContentWrapper(content: frameworkErrorDescription(for: error))
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(statusCode, contentRef, unsafeSendableUserInfo.pointer)
     } catch {
@@ -898,7 +925,7 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
     } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
       let statusCode = statusCode(for: error)
-      let contentWrapper = GeneratedContentWrapper(content: error.localizedDescription)
+      let contentWrapper = GeneratedContentWrapper(content: frameworkErrorDescription(for: error))
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(statusCode, contentRef, unsafeSendableUserInfo.pointer)
     } catch {
@@ -1835,6 +1862,35 @@ public func FMBridgedToolCreate(
       outErrorDescription?.pointee = UnsafePointer(strdup(cString))
     }
     return nil
+  }
+}
+
+/// tsfm: Thrown from a bridged tool's call(arguments:) by FMBridgedToolFailCall.
+/// Throwing is how a response stops calling tools (Apple documents it as the
+/// exit condition for toolCallingMode .required); the framework then ends the
+/// response with a ToolCallError wrapping this, mapped to `code`.
+struct BridgedToolFailure: Error, LocalizedError {
+  let code: Int32
+  let message: String
+  var errorDescription: String? { message }
+}
+
+/// tsfm: Fails a pending tool call instead of returning output to the model,
+/// which ends the whole response with `code` (e.g. toolCallLimitExceeded).
+@_cdecl("FMBridgedToolFailCall")
+public func FMBridgedToolFailCall(
+  tool: FMBridgedToolRef,
+  callId: CUnsignedInt,
+  code: Int32,
+  message: UnsafePointer<CChar>
+) {
+  let bridgedTool = Unmanaged<BridgedTool>.fromOpaque(tool).takeUnretainedValue()
+  let failure = BridgedToolFailure(code: code, message: String(cString: message))
+  bridgedTool.outputContinuation.withLock {
+    if let continuation = $0[callId] {
+      continuation.resume(throwing: failure)
+      $0.removeValue(forKey: callId)
+    }
   }
 }
 
