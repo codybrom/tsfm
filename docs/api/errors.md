@@ -93,6 +93,7 @@ Thrown when an attachment cannot be added to a prompt. Carries a `reason`:
 | `unsupported-os` | The library supports attachments, but this macOS does not |
 | `unknown` | The bridge refused the attachment without saying why |
 
-Attachments need macOS 27 both to build and to run, so the bundled library —
-built on macOS 26 — reports `unsupported-sdk` for every attachment. See
+The bundled library is built against the macOS 27 SDK, so on macOS 26 each
+attachment reports `unsupported-os`. `unsupported-sdk` appears only when you
+build the library yourself with an older Xcode. See
 [prompt attachments](/api/language-model-session#prompt-attachments).

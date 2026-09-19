@@ -156,8 +156,22 @@ fi
 
 # --- Build (redirect verbose Swift output to log file) ---
 
+# Prompt attachments compile only when FM_HAS_MACOS_27_SDK is defined, which
+# upstream's build_backend.py sets for a macOS 27+ SDK. The deployment target
+# stays at macOS 26 (Package.swift), and the bridge gates attachments behind
+# #available(macOS 27), so one dylib loads on 26 and supports attachments on 27.
+SWIFT_ARGS=()
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
+SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
+if [[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]]; then
+  SWIFT_ARGS+=(-Xswiftc -DFM_HAS_MACOS_27_SDK)
+  log "macOS SDK $SDK_VERSION: prompt attachments enabled"
+else
+  log "macOS SDK ${SDK_VERSION:-unknown}: prompt attachments disabled (needs the macOS 27 SDK)"
+fi
+
 log "Building Foundation Models C bindings (this takes ~1-2 min)..."
-swift build -c release --package-path "$FM_C_DIR" >> "$LOG_FILE" 2>&1
+swift build -c release --package-path "$FM_C_DIR" "${SWIFT_ARGS[@]}" >> "$LOG_FILE" 2>&1
 log "Build complete."
 
 BUILD_DIR="$(swift build -c release --package-path "$FM_C_DIR" --show-bin-path 2>>"$LOG_FILE")"

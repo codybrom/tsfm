@@ -10,10 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Official support for macOS 27. The SDK is tested on macOS 27, and the full unit and integration suites pass there. macOS 26 is still supported, and the native library's minimum deployment target stays at macOS 26.0.
+- Prompt attachments now work on macOS 27 with the bundled library. It is built against the macOS 27 SDK and still loads on macOS 26, where each attachment is rejected with `PromptAttachmentError` (`reason: "unsupported-os"`).
+
+### Fixed
+
+- Building from source with the macOS 27 SDK did not enable prompt attachments. `scripts/build-native.sh` never defined `FM_HAS_MACOS_27_SDK`, so the bridge compiled attachments out and every attachment was rejected with `unsupported-sdk`. The script now defines it when the active SDK is macOS 27 or later, as upstream's build does.
 
 ### Changed
 
 - `koffi` upgraded from `^3.1.5` to `^3.3.0`. This is the runtime FFI dependency.
+- The published package is now built on the `xcode-27` runner instead of `macos-26`. A new `scripts/verify-native.sh` check fails the publish if the library's deployment target is not macOS 26.0, or if any macOS 27 attachment symbol is strongly linked.
 - Development toolchain moved to Vitest 5 (`vitest` and `@vitest/coverage-v8` 5.0.1). `openai`, `eslint`, `typescript-eslint`, `@types/node`, `prettier`, and `tsx` also moved to their latest versions.
 
 ### Security
