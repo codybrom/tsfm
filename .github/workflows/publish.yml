@@ -31,8 +31,8 @@ jobs:
     # the Swift bridge and needs Xcode 27 (macOS 27 SDK). On a Linux runner this
     # fails deep in the build rather than at publish time.
     #
-    # The Verify step below fails the publish unless the dylib targets macOS 27
-    # and links the macOS 27 APIs.
+    # The Verify step below fails the publish unless the dylib and the addon
+    # deploy to macOS 26.0 with the macOS 27 APIs weak-linked.
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
