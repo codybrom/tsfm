@@ -540,6 +540,18 @@ export function jsonNestingDepth(value: unknown, limit = Infinity): number {
 }
 
 /**
+ * Claims `title` for one object, adding a numeric suffix if it's taken. Apple
+ * resolves object types by title, so a duplicate makes one object adopt the
+ * other's properties.
+ */
+function reserveTitle(title: string, used: Set<string>): string {
+  let unique = title;
+  for (let n = 2; used.has(unique); n++) unique = `${title}_${n}`;
+  used.add(unique);
+  return unique;
+}
+
+/**
  * Normalize a JSON Schema object for the Foundation Models C API.
  *
  * The AFM schema parser requires every `object` node to have `title`,
@@ -550,6 +562,38 @@ export function jsonNestingDepth(value: unknown, limit = Infinity): number {
  * @internal
  */
 export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
+  // Titles written into the schema are reserved first: a generated one must
+  // move aside rather than rename a title a $ref may point at.
+  const used = new Set<string>();
+  collectTitles(schema, used);
+  return formatSchema(schema, isRoot, [], used);
+}
+
+/** Every title already in the schema, at any depth. */
+function collectTitles(node: unknown, into: Set<string>): void {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectTitles(item, into);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  if (typeof record.title === "string" && record.title) into.add(record.title);
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== "title") collectTitles(value, into);
+  }
+}
+
+/**
+ * `path` is where this subschema sits, used to title untitled objects; `used`
+ * holds the titles already taken, because the framework keys object types by
+ * title and two objects sharing one silently take the same shape.
+ */
+function formatSchema(
+  schema: JsonSchema,
+  isRoot: boolean,
+  path: string[],
+  used: Set<string>,
+): JsonSchema {
   const result: JsonSchema = { ...schema };
 
   // Recurse into $defs entries (Apple uses $defs/$ref for nested objects)
@@ -561,7 +605,7 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
       // must be its key; otherwise every $ref is an undefined reference.
       normalized[key] =
         value && typeof value === "object"
-          ? afmSchemaFormat({ ...value, title: key }, false)
+          ? formatSchema({ ...value, title: key }, false, [key], used)
           : value;
     }
     result.$defs = normalized;
@@ -576,7 +620,9 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
         normalized[key] = value;
       } else {
         normalized[key] =
-          value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+          value && typeof value === "object"
+            ? formatSchema(value, false, [...path, key], used)
+            : value;
       }
     }
     result.properties = normalized;
@@ -589,12 +635,15 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
     !Array.isArray(result.items) &&
     !("$ref" in (result.items as JsonSchema))
   ) {
-    result.items = afmSchemaFormat(result.items as JsonSchema, false);
+    result.items = formatSchema(result.items as JsonSchema, false, [...path, "item"], used);
   }
 
   // Apple requires every object to have title, properties, required, additionalProperties, and x-order
   if (result.type === "object") {
-    if (!result.title) result.title = isRoot ? "Schema" : "Object";
+    // A title already in the schema stays exactly as written.
+    if (typeof result.title !== "string" || !result.title) {
+      result.title = reserveTitle(isRoot ? "Schema" : path.join("_") || "Object", used);
+    }
     if (!result.properties) result.properties = {};
     if (!result.required) result.required = [];
     if (!("additionalProperties" in result)) result.additionalProperties = false;

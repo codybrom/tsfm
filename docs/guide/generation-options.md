@@ -26,7 +26,7 @@ const { content: reply } = await session.respond("Write a haiku about rain", {
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `temperature` | `number` | Influences the confidence of the model's response. Higher values produce more varied output. Lower values produce more deterministic output. |
+| `temperature` | `number` | Influences the confidence of the model's response, from `0` (most deterministic) to `1` (most varied) inclusive. |
 | `maximumResponseTokens` | `number` | Maximum tokens the model is allowed to produce. Enforcing a strict limit can lead to truncated or grammatically incorrect responses. |
 | `sampling` | `SamplingMode` | Controls how the model picks tokens from its probability distribution (see below). |
 

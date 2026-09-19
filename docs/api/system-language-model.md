@@ -42,13 +42,15 @@ waitUntilAvailable(timeoutMs?: number): Promise<AvailabilityResult>
 
 ### `supportsLocale()`
 
-Check whether the model supports a given locale.
+Check whether the model supports a locale. With no argument, the host's current
+locale, as Apple's `supportsLocale(_:)` defaults to `.current`.
 
 ```ts
-supportsLocale(localeIdentifier: string): boolean
+supportsLocale(localeIdentifier?: string): boolean
 ```
 
 ```ts
+model.supportsLocale(); // the locale this process runs in
 model.supportsLocale("en_US"); // true
 model.supportsLocale("ja_JP"); // true or false depending on model
 ```

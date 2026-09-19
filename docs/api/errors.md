@@ -27,10 +27,15 @@ FoundationModelsError
 │   ├── PrivateCloudComputeUnavailableError
 │   ├── PrivateCloudComputeEntitlementError
 │   ├── CancelledError
+│   ├── TranscriptMutationWhileRespondingError
+│   ├── RequestFailedByToolError
 │   └── ServiceCrashedError
 ├── PromptAttachmentError
 └── ToolCallError
 ```
+
+`FailRequestError` extends plain `Error`, not `FoundationModelsError`: it's what
+a tool throws, not what tsfm throws (see below).
 
 ## Error Reference
 
@@ -56,9 +61,12 @@ FoundationModelsError
 | `PrivateCloudComputeUnavailableError` | 18 | PCC is temporarily unavailable |
 | `PrivateCloudComputeEntitlementError` | 19 | The host isn't signed with the PCC entitlement |
 | `CancelledError` | 20 | The request was stopped by `session.cancel()`, or its stream was dropped, before it finished |
+| `TranscriptMutationWhileRespondingError` | 21 | The transcript was changed while the session was responding¹ |
+| `RequestFailedByToolError` | 22 | A tool threw `FailRequestError`. `toolName` says which, and `cause` is that error. This is also how a tool ends a `toolCallingMode: "required"` request |
 | `ServiceCrashedError` | 255 | An Apple Intelligence system service crashed; wait for macOS to restart it, then retry with a new session |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
+| `FailRequestError` | — | Thrown by a tool's `call()`, on purpose, to fail the request instead of answering the model. `respond()` then rejects with `RequestFailedByToolError` |
 
 ¹ Only reported when the host process (Node, Electron, your app) was built with the macOS 27 SDK.
 Older hosts receive the framework's legacy error type, which has no equivalent for these codes.
@@ -103,6 +111,8 @@ enum GenerationErrorCode {
   PCC_SERVICE_UNAVAILABLE = 18,
   PCC_ENTITLEMENT_MISSING = 19,
   CANCELLED = 20,
+  TRANSCRIPT_MUTATION_WHILE_RESPONDING = 21,
+  REQUEST_FAILED_BY_TOOL = 22,
   UNKNOWN_ERROR = 255,
 }
 ```

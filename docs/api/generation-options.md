@@ -12,17 +12,19 @@ interface GenerationOptions {
   toolCallingMode?: "allowed" | "required" | "disallowed";
   maximumToolCalls?: number;
   reasoningLevel?: "light" | "moderate" | "deep";
+  includeSchemaInPrompt?: boolean;
 }
 ```
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `temperature` | `number` | Controls randomness. Higher = more varied. Must be ≥ 0. |
+| `temperature` | `number` | Controls randomness. Higher = more varied. Must be between `0` and `1` inclusive. |
 | `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
 | `toolCallingMode` | `string` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). `"required"` and `"disallowed"` need macOS 27; on macOS 26 they throw `UnsupportedCapabilityError`. |
 | `reasoningLevel` | `string` | How much the model reasons first. [Private Cloud Compute](/guide/private-cloud-compute#reasoning) only; the on-device model throws `UnsupportedCapabilityError`. |
 | `maximumToolCalls` | `number` | Most tool calls one request may make. Default `32`. The request fails with `ToolCallLimitExceededError` instead of making another. Must be a non-negative integer. |
+| `includeSchemaInPrompt` | `boolean` | For `respondWithSchema()` and `respondWithJsonSchema()`: whether the schema goes into the prompt. Default `true`; set `false` when the model already knows the format (say, from earlier turns) to save tokens. `respond()` and `streamResponse()` ignore it. |
 
 Invalid values throw immediately when the options are serialized (before the native call).
 

@@ -22,6 +22,39 @@ abstract class Tool {
 | `argumentsSchema` | `GenerationSchema` | Schema defining the tool's arguments |
 | `call(args)` | `async (GeneratedContent) => string` | Handler invoked when the model calls this tool. `args` is released once `call()` settles, so read what you need from it before then. |
 
+## Failing the request
+
+If `call()` throws, the error's message goes back to the model as the tool's
+output and generation continues. To fail the whole request instead, throw
+`FailRequestError`:
+
+```ts
+import { Tool, FailRequestError, RequestFailedByToolError } from "tsfm-sdk";
+
+class Lookup extends Tool {
+  // ...
+  async call(args: GeneratedContent): Promise<string> {
+    const row = await db.find(args.value<string>("id"));
+    if (!row) throw new FailRequestError("No such record", { cause: notFound });
+    return row.summary;
+  }
+}
+
+try {
+  await session.respond("Look up record 42", { options: { toolCallingMode: "required" } });
+} catch (err) {
+  if (err instanceof RequestFailedByToolError) {
+    err.toolName; // "lookup"
+    err.cause; // the FailRequestError
+  }
+}
+```
+
+The call is answered once, by failing it, and `respond()` (or the stream)
+rejects with `RequestFailedByToolError`. With `toolCallingMode: "required"`,
+this is how a tool ends the request, as Apple documents for a throwing
+`call(arguments:)`.
+
 ## Properties
 
 ### `onCall`

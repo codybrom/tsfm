@@ -80,7 +80,8 @@ describe("afmSchemaFormat", () => {
       },
     });
     const nested = (result.properties as Record<string, Record<string, unknown>>).nested;
-    expect(nested.title).toBe("Object");
+    // Titled by its property path: Apple resolves object types by title.
+    expect(nested.title).toBe("nested");
     expect(nested.required).toEqual([]);
     expect(nested.additionalProperties).toBe(false);
     expect(nested["x-order"]).toEqual(["name"]);
@@ -105,12 +106,44 @@ describe("afmSchemaFormat", () => {
     expect(result.required).toEqual([]);
   });
 
-  it("uses 'Object' as title for non-root objects", () => {
+  it("falls back to 'Object' for a non-root object with no path", () => {
     const result = afmSchemaFormat(
       { type: "object", properties: { a: { type: "string" } } },
       false,
     );
     expect(result.title).toBe("Object");
+  });
+
+  it("gives each inline nested object its own title", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        owner: { type: "object", properties: { name: { type: "string" } } },
+        pet: { type: "object", properties: { species: { type: "string" } } },
+      },
+    });
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    // Sharing one title made the second object silently take the first's shape.
+    expect(props.owner.title).toBe("owner");
+    expect(props.pet.title).toBe("pet");
+  });
+
+  it("titles objects by their full path, and disambiguates a repeat", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        home: { type: "object", properties: { city: { type: "object", properties: {} } } },
+        work: { type: "object", properties: { city: { type: "object", properties: {} } } },
+        city: { title: "home_city", type: "object", properties: {} },
+      },
+    });
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    const nested = (key: string) =>
+      (props[key].properties as Record<string, Record<string, unknown>>).city.title;
+    // "home_city" is written into the schema, so the generated one moves aside.
+    expect(props.city.title).toBe("home_city");
+    expect(nested("home")).toBe("home_city_2");
+    expect(nested("work")).toBe("work_city");
   });
 
   it("passes through falsy property values without recursing", () => {
@@ -200,7 +233,7 @@ describe("afmSchemaFormat", () => {
     });
     const props = result.properties as Record<string, Record<string, unknown>>;
     const items = props.people.items as Record<string, unknown>;
-    expect(items.title).toBe("Object");
+    expect(items.title).toBe("people_item");
     expect(items.required).toEqual([]);
     expect(items.additionalProperties).toBe(false);
     expect(items["x-order"]).toEqual(["name", "age"]);
