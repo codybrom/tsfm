@@ -59,6 +59,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - The native library's load-failure hint reads the macOS version from `SystemVersion.plist` instead of guessing from the Darwin version.
 - Chat Completions: a streamed tool request that ended in a mapped error reported zero usage.
 - Disposing a tool while the model was waiting on one of its calls left the response waiting forever. Its pending calls now fail.
+- A `Tool` that was used by a session and never disposed was never garbage-collected, so it and its native tool leaked. Once nothing references it, it's collected and its native tool released.
 - A stream the native side couldn't start (for example with invalid options) passed a null stream on to native code. It now throws `FoundationModelsError`.
 
 ## [0.5.1] - 2026-09-18
