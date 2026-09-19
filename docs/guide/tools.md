@@ -52,7 +52,7 @@ const session = new LanguageModelSession({
   tools: [tool],
 });
 
-const reply = await session.respond("What's the weather in Tokyo?");
+const { content: reply } = await session.respond("What's the weather in Tokyo?");
 // The model calls get_weather, receives the result, and formulates a response
 ```
 
