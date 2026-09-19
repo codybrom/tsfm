@@ -738,7 +738,7 @@ export class LanguageModelSession {
     this._assertOptionsSupported(options);
     if (jsonNestingDepth(jsonSchema, MAX_SCHEMA_DEPTH) > MAX_SCHEMA_DEPTH) {
       throw new InvalidGenerationSchemaError(
-        `The schema nests more than ${MAX_SCHEMA_DEPTH} levels of JSON deep. ` +
+        `The schema nests more than ${MAX_SCHEMA_DEPTH} levels of JSON deep, or contains itself. ` +
           "Flatten it, or move nested shapes into $defs and refer to them with $ref.",
       );
     }
