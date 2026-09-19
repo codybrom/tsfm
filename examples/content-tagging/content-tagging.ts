@@ -13,7 +13,7 @@ async function main() {
   }
 
   const session = new LanguageModelSession({ model });
-  const reply = await session.respond("Classify this text: 'I love pizza!'");
+  const { content: reply } = await session.respond("Classify this text: 'I love pizza!'");
   console.log("Tag:", reply);
 
   session.dispose();

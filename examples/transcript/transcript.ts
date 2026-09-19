@@ -13,7 +13,7 @@ async function main() {
   // Resume from saved transcript
   const savedTranscript = Transcript.fromJson(json);
   const resumed = LanguageModelSession.fromTranscript(savedTranscript);
-  const recall = await resumed.respond("Summarize our conversation so far.");
+  const { content: recall } = await resumed.respond("Summarize our conversation so far.");
   console.log("Recalled:", recall);
 
   session.dispose();
