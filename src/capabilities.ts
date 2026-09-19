@@ -6,9 +6,10 @@ export type ModelCapability = "vision" | "toolCalling" | "guidedGeneration" | "r
 const KNOWN = new Set<string>(["vision", "toolCalling", "guidedGeneration", "reasoning"]);
 
 /**
- * @internal Parses the bridge's capabilities JSON. null (nothing reported) is
- * an empty list; malformed JSON throws, like supportedLanguages, instead of
- * reading as "no capabilities". Names this version doesn't know are dropped.
+ * @internal Parses the bridge's capabilities JSON. null means capabilities
+ * aren't available (macOS 26 doesn't report them) and is returned as null;
+ * malformed JSON throws, like supportedLanguages, instead of reading as "no
+ * capabilities". Names this version doesn't know are dropped.
  */
 export function parseCapabilities(json: string | null): ModelCapability[] | null {
   // null: capabilities aren't available (macOS 26 doesn't report them).

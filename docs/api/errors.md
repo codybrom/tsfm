@@ -54,7 +54,7 @@ FoundationModelsError
 | `PrivateCloudComputeQuotaExceededError` | 17 | The user's daily PCC quota is used up |
 | `PrivateCloudComputeUnavailableError` | 18 | PCC is temporarily unavailable |
 | `PrivateCloudComputeEntitlementError` | 19 | The host isn't signed with the PCC entitlement |
-| `ServiceCrashedError` | 255 | The Apple Intelligence service crashed; the message says how to restart it |
+| `ServiceCrashedError` | 255 | An Apple Intelligence system service crashed; wait for macOS to restart it, then retry with a new session |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw |
 
