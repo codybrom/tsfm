@@ -22,7 +22,9 @@ const describeIfAvailable = available ? describe : describe.skip;
 function run(scenario: string) {
   const result = spawnSync(
     process.execPath,
-    ["--expose-gc", path.join(root, "node_modules/tsx/dist/cli.mjs"), script, scenario],
+    // tsx's CLI runs the script in a child process without --expose-gc, so
+    // load tsx as a hook instead; the GC scenarios need a real gc().
+    ["--expose-gc", "--import", "tsx", script, scenario],
     { cwd: root, encoding: "utf8", timeout: 170_000 },
   );
   return {
@@ -55,6 +57,9 @@ const SURVIVES = [
   "dispose-during-tool-call",
   "abandoned-stream-collected",
   "gc-with-sessions-in-flight",
+  "worker-exits-mid-request",
+  "undisposed-tool-collected",
+  "accessor-disposes-handles",
   "fuzz",
 ];
 
@@ -79,6 +84,21 @@ describeIfAvailable("crash safety (integration)", () => {
     },
     180_000,
   );
+
+  it("collects an undisposed Tool nobody references", () => {
+    expect(run("undisposed-tool-collected").output).toContain("tool collected: true");
+  }, 180_000);
+
+  it("refuses handles an accessor released mid-call", () => {
+    const { output } = run("accessor-disposes-handles");
+    expect(output.match(/: threw Error: The \w+ has been released/g)).toHaveLength(4);
+  }, 180_000);
+
+  it("keeps the main thread's request alive when a worker exits", () => {
+    const { output } = run("worker-exits-mid-request");
+    expect(output).not.toContain("timed out");
+    expect(output.match(/^main request after the worker's/gm)).toHaveLength(2);
+  }, 180_000);
 
   it("rejects queued requests once the session is disposed", () => {
     const { output } = run("dispose-with-queued-requests");

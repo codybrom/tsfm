@@ -6,7 +6,7 @@
  * A scenario that survives prints "survived" and exits 0. Scenarios that exit
  * mid-request do so themselves and never print it.
  *
- *   tsx tests/integration/helpers/crash-scenarios.ts <scenario>
+ *   node --expose-gc --import tsx tests/integration/helpers/crash-scenarios.ts <scenario>
  */
 import {
   SystemLanguageModel,
@@ -18,6 +18,9 @@ import {
   type GenerationOptions,
   type JsonSchema,
 } from "../../../src/index.js";
+import { getFunctions, type NativePointer } from "../../../src/bindings.js";
+import { Worker } from "node:worker_threads";
+import path from "node:path";
 
 const LONG_PROMPT = "Write a 400-word story about a lighthouse keeper.";
 
@@ -178,6 +181,127 @@ const scenarios: Record<string, () => Promise<void>> = {
     globalThis.gc?.();
     await tick(500);
     globalThis.gc?.();
+  },
+
+  // A worker using tsfm exits (by process.exit, which runs its shutdown, and by
+  // terminate(), which tears its env down) while the main thread has a request
+  // in flight. The main thread's request must still settle.
+  async "worker-exits-mid-request"() {
+    const addon = path.join(import.meta.dirname, "../../../native/tsfm.node");
+    const workerCode = (exit: string) => `
+      const { createRequire } = require("node:module");
+      const { parentPort } = require("node:worker_threads");
+      const fn = createRequire(${JSON.stringify(addon)})(${JSON.stringify(addon)});
+      process.on("exit", () => fn.FMShutdown());
+      const model = fn.FMSystemLanguageModelCreate(0, 0);
+      const session = fn.FMLanguageModelSessionCreateFromSystemLanguageModel(model, null, null);
+      const prompt = fn.FMComposedPromptInitialize();
+      fn.FMComposedPromptAddText(prompt, ${JSON.stringify(LONG_PROMPT)});
+      const [promise] = fn.FMLanguageModelSessionRespond(session, prompt, null);
+      promise.then(() => {}, () => {});
+      parentPort.postMessage("started");
+      setTimeout(() => { ${exit} }, 100);
+    `;
+    for (const [how, exit] of [
+      ["process.exit", "process.exit(0)"],
+      ["terminate", "parentPort.postMessage('terminate')"],
+    ]) {
+      const session = new LanguageModelSession();
+      const main = settle(session.respond("Say hi.", { options: { maximumResponseTokens: 8 } }));
+      const worker = new Worker(workerCode(exit), { eval: true });
+      worker.on("message", (m) => {
+        if (m === "terminate") void worker.terminate();
+      });
+      await new Promise((resolve) => worker.once("exit", resolve));
+      const outcome = await Promise.race([main, tick(60_000).then(() => "timed out")]);
+      console.log(`main request after the worker's ${how}: ${outcome}`);
+      session.dispose();
+    }
+  },
+
+  // An undisposed Tool nobody references is collected (its native callback
+  // doesn't pin it), which releases the native tool.
+  async "undisposed-tool-collected"() {
+    let collected = false;
+    const registry = new FinalizationRegistry(() => {
+      collected = true;
+    });
+    (() => {
+      const tool = new NeverReturnsTool(() => {});
+      registry.register(tool, "tool");
+      new LanguageModelSession({ tools: [tool] });
+    })();
+    for (let i = 0; i < 40 && !collected; i++) {
+      globalThis.gc?.();
+      await tick(50);
+    }
+    console.log(`tool collected: ${collected}`);
+  },
+
+  // JavaScript that runs while the addon reads an argument (an array element
+  // accessor) disposes handles the call already read. The addon must see that.
+  async "accessor-disposes-handles"() {
+    const fn = getFunctions();
+    const tryCall = (name: string, run: () => unknown) => {
+      try {
+        const result = run();
+        console.log(`${name}: returned ${result === null ? "null" : typeof result}`);
+      } catch (err) {
+        console.log(`${name}: threw ${(err as Error).constructor.name}: ${(err as Error).message}`);
+      }
+    };
+    const disposingArray = <T>(items: T[], onRead: () => void): T[] => {
+      const array = [...items];
+      Object.defineProperty(array, items.length - 1, {
+        get() {
+          onRead();
+          return items[items.length - 1];
+        },
+      });
+      return array;
+    };
+
+    const tools = [new NeverReturnsTool(() => {}), new NeverReturnsTool(() => {})];
+    for (const tool of tools) tool._register();
+    const handles = tools.map((t) => t._nativeTool as NativePointer);
+    tryCall("session create, a tool disposed by a later element", () =>
+      fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
+        null,
+        null,
+        disposingArray(handles, () => tools[0].dispose()),
+      ),
+    );
+
+    const model = new SystemLanguageModel();
+    const tool = new NeverReturnsTool(() => {});
+    tool._register();
+    tryCall("session create, the model disposed while reading tools", () =>
+      fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
+        model._nativeModel,
+        null,
+        disposingArray([tool._nativeTool as NativePointer], () => model.dispose()),
+      ),
+    );
+    const countModel = new SystemLanguageModel();
+    tryCall("token count, the model disposed while reading tools", () => {
+      const [promise] = fn.FMSystemLanguageModelTokenCountForTools(
+        countModel._nativeModel as NativePointer,
+        disposingArray([tool._nativeTool as NativePointer], () => countModel.dispose()),
+      );
+      void promise.catch(() => {});
+      return promise;
+    });
+
+    const property = fn.FMGenerationSchemaPropertyCreate("v", null, "string", false);
+    tryCall("anyOf, the property released while reading choices", () =>
+      fn.FMGenerationSchemaPropertyAddAnyOfGuide(
+        property,
+        disposingArray(["a", "b"], () => fn.FMRelease(property)),
+        false,
+      ),
+    );
+    tool.dispose();
+    for (const t of tools) t.dispose();
   },
 
   // --- Adversarial inputs ------------------------------------------------------
@@ -399,6 +523,11 @@ const scenarios: Record<string, () => Promise<void>> = {
     session.dispose();
   },
 };
+
+if (!globalThis.gc) {
+  console.error("Run with --expose-gc: the GC scenarios need a real gc().");
+  process.exit(64);
+}
 
 const name = process.argv[2] ?? "";
 const scenario = scenarios[name];
