@@ -7,30 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - Unreleased
 
-tsfm 1.0 targets macOS 27. It adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework. It also makes the native layer much harder to crash. macOS 26 stays supported on the 0.x line. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
+tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework, and still runs on macOS 26. On macOS 26, features that need macOS 27 report a clear reason instead of working. It also makes the native layer much harder to crash. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
 
 ### Changed
 
-- **Breaking:** requires macOS 27 on Apple silicon. The native library targets macOS 27.0, and building it from source needs Xcode 27. On macOS 26, use `tsfm-sdk@0.x`.
-- **Breaking:** `respond()`, `respondWithSchema()` and `respondWithJsonSchema()` return a `Response` whose `.content` is the old return value and whose `.usage` is the request's token usage.
+- Building from source needs Xcode 27 (the macOS 27 SDK). The native library still targets macOS 26.0 and weak-links the macOS 27 APIs, so it loads on macOS 26.
+- **Breaking:** `respond()`, `respondWithSchema()` and `respondWithJsonSchema()` return a `Response` whose `.content` is the old return value and whose `.usage` is the request's token usage (`null` on macOS 26).
 - **Breaking:** `streamResponse()` returns a `ResponseStream`. It iterates text deltas as before, can be iterated once, and adds `.usage` once finished and a `collect()` method.
 - **Breaking:** a request may make at most 32 tool calls by default. Past `maximumToolCalls` it fails with `ToolCallLimitExceededError` instead of calling another tool.
 - **Breaking:** `GenerationErrorCode` is a regular `enum` instead of a `const enum`. Comparisons still work; it now exists at runtime.
-- **Breaking:** regex guides are checked against what the on-device model supports before a request is sent. Unsupported syntax, such as character classes like `[a-z]`, throws `UnsupportedGuideError` naming the construct and, where there is one, a replacement. Private Cloud Compute requests aren't checked, because PCC supports more.
+- **Breaking:** on macOS 27, regex guides are checked against what the on-device model supports before a request is sent. Unsupported syntax, such as character classes like `[a-z]`, throws `UnsupportedGuideError` naming the construct and, where there is one, a replacement. Private Cloud Compute requests aren't checked, because PCC supports more.
 - Errors from the macOS 27 framework map to typed errors instead of `GenerationError` with code 255.
 - A schema the framework can't build, such as one with an undefined reference, throws `InvalidGenerationSchemaError` instead of `GenerationError` with code 255.
-- `PromptAttachmentError` no longer reports `unsupported-os` or `unsupported-sdk`, because attachments always work on macOS 27.
 - `generable()` names nested reference schemas by their property path, such as `shipping_address`, so objects under the same key in different places stay separate.
 - The Swift-to-C bridge is now tsfm's own code in `native/bridge`, forked from Apple's `foundation-models-c` (see `native/bridge/UPSTREAM.md`).
 
 ### Added
 
-- Token usage: `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts.
-- `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`) and `maximumToolCalls` in `GenerationOptions`.
-- `PrivateCloudComputeLanguageModel` for Apple's server model: a 32K context, reasoning, and a daily quota. It's opt-in and needs a host signed with Apple's PCC entitlement. Includes availability (with a missing-entitlement reason), `waitUntilAvailable()`, `quotaUsage`, `contextSize()` and `capabilities`. Sessions and `fromTranscript()` accept it as their `model`.
+- Token usage (macOS 27): `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts. `null` on macOS 26.
+- `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
+- `PrivateCloudComputeLanguageModel` for Apple's server model: a 32K context, reasoning, and a daily quota. It's opt-in, needs macOS 27, and needs a host signed with Apple's PCC entitlement. Includes availability (with missing-entitlement and requires-newer-OS reasons), `waitUntilAvailable()`, `quotaUsage`, `contextSize()` and `capabilities`. Sessions and `fromTranscript()` accept it as their `model`.
 - `reasoningLevel` in `GenerationOptions` (`"light"`, `"moderate"` or `"deep"`), for Private Cloud Compute. The on-device model throws `UnsupportedCapabilityError`.
 - New errors: `InvalidArgumentError`, `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`, `ToolCallLimitExceededError`, `PrivateCloudComputeNetworkError`, `PrivateCloudComputeQuotaExceededError`, `PrivateCloudComputeUnavailableError` and `PrivateCloudComputeEntitlementError`.
-- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities`.
+- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities` (macOS 27; `null` on macOS 26).
+- `UnsupportedCapabilityError.requiredMacOS`: `27` when a macOS 27 feature is used on macOS 26, so an app can fall back instead of crashing.
 - Transcripts support `reasoning` entries, plus the `contextOptions` and `metadata` fields.
 - `npx tsfm doctor` reports whether a machine can run tsfm and why not. It only reads, and never agrees to the `fm` CLI's license.
 - Chat and Responses APIs:

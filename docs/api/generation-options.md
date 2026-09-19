@@ -20,7 +20,7 @@ interface GenerationOptions {
 | `temperature` | `number` | Controls randomness. Higher = more varied. Must be ≥ 0. |
 | `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
-| `toolCallingMode` | `string` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). |
+| `toolCallingMode` | `string` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). `"required"` and `"disallowed"` need macOS 27; on macOS 26 they throw `UnsupportedCapabilityError`. |
 | `reasoningLevel` | `string` | How much the model reasons first. [Private Cloud Compute](/guide/private-cloud-compute#reasoning) only; the on-device model throws `UnsupportedCapabilityError`. |
 | `maximumToolCalls` | `number` | Most tool calls one request may make. Default `32`. The request fails with `ToolCallLimitExceededError` instead of making another. Must be a non-negative integer. |
 
