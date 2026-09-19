@@ -1,0 +1,3 @@
+{
+  "ignorePatterns": "native/foundation-models-c/**"
+}
