@@ -5,19 +5,12 @@ import { createMockFunctions } from "../helpers/mock-bindings.js";
 // Hoisted mocks — must run before any import
 // ---------------------------------------------------------------------------
 
-const { decodeAndFreeStringMock } = vi.hoisted(() => {
+vi.hoisted(() => {
   globalThis.FinalizationRegistry = class MockFinalizationRegistry {
     constructor(_callback: unknown) {}
     register() {}
     unregister() {}
   } as unknown as typeof FinalizationRegistry;
-
-  return {
-    decodeAndFreeStringMock: vi.fn((_pointer: unknown): string | null => {
-      if (!_pointer) return null;
-      return '{"key":"value"}';
-    }),
-  };
 });
 
 const mockFns = createMockFunctions();
@@ -25,14 +18,9 @@ const mockFns = createMockFunctions();
 /** Feeds two cumulative usage readings (before, after) through the mocks. */
 function withUsageReadings(before: string, after: string): () => void {
   const readings = [before, after];
-  const original = decodeAndFreeStringMock.getMockImplementation();
-  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => "usage-pointer");
-  decodeAndFreeStringMock.mockImplementation((pointer: unknown) =>
-    pointer === "usage-pointer" ? (readings.shift() ?? null) : (original?.(pointer) ?? null),
-  );
+  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => readings.shift() ?? null);
   return () => {
     mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
-    if (original) decodeAndFreeStringMock.mockImplementation(original);
   };
 }
 
@@ -41,31 +29,8 @@ const USAGE_BEFORE =
 const USAGE_AFTER =
   '{"input":{"totalTokens":162,"cachedTokens":64},"output":{"totalTokens":25,"reasoningTokens":0}}';
 
-let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
-
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
-      lastRegisteredCallback = cb;
-      return "mock-cb-pointer";
-    }),
-    unregister: vi.fn(),
-    as: vi.fn((_arr: unknown[], _type: string) => "mock-arr-pointer"),
-    pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-  },
-}));
-
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    if (typeof pointer === "string") return pointer;
-    return null;
-  }),
-  decodeAndFreeString: decodeAndFreeStringMock,
-  unregisterCallback: vi.fn(),
-  ResponseCallbackProto: "ResponseCallbackProto",
-  StructuredResponseCallbackProto: "StructuredResponseCallbackProto",
 }));
 
 vi.mock("../../../src/tool.js", () => ({
@@ -82,71 +47,59 @@ import type { ChatCompletionChunk } from "../../../src/compat/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
+type OnChunk = (status: number, text: string | null) => void;
+
+/** A started request whose result arrives on a later macrotask, like the addon's. */
+function later<T>(result: T): [Promise<never>, string] {
+  const promise = new Promise<T>((resolve) => setTimeout(() => resolve(result), 0));
+  return [promise as unknown as Promise<never>, "mock-request"];
+}
+
 function simulateRespondSuccess(text: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(0, text, text.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status: 0, text }));
 }
 
 function simulateRespondError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(status, msg, msg.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status, text: msg }));
 }
 
 function simulateStreamSuccess(chunks: string[]) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
       let cumulative = "";
       let i = 0;
       function next() {
         if (i < chunks.length) {
           cumulative += chunks[i];
           i++;
+          const snapshot = cumulative;
           setTimeout(() => {
-            lastRegisteredCallback?.(0, cumulative, cumulative.length, null);
+            onChunk(0, snapshot);
             next();
           }, 0);
         } else {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, null, 0, null);
-          }, 0);
+          setTimeout(() => onChunk(0, null), 0);
         }
       }
       next();
+      return "mock-stream-request";
     },
   );
 }
 
 function simulateStructuredSuccess(jsonObj: Record<string, unknown>) {
   const jsonStr = JSON.stringify(jsonObj);
-  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-    (..._args: unknown[]) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(0, "mock-content-pointer", null);
-      }, 0);
-      return "mock-task-pointer";
-    },
+  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+    later({ status: 0, content: "mock-content-pointer", message: null }),
   );
-  mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-  decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-    if (!pointer) return null;
-    return jsonStr;
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockReturnValue(jsonStr);
 }
 
 function simulateStreamError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(status, msg, msg.length, null);
-      }, 0);
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
+      setTimeout(() => onChunk(status, msg), 0);
+      return "mock-stream-request";
     },
   );
 }
@@ -170,11 +123,7 @@ const sampleTools = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  lastRegisteredCallback = null;
-  decodeAndFreeStringMock.mockImplementation((_pointer: unknown): string | null => {
-    if (!_pointer) return null;
-    return '{"key":"value"}';
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockImplementation(() => '{"key":"value"}');
 });
 
 describe("Chat API compat layer", () => {
@@ -778,19 +727,10 @@ describe("Chat API compat layer", () => {
 
     it("passes through invalid JSON unchanged during reordering", async () => {
       // Make decodeAndFreeString return invalid JSON for this test
-      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, "mock-content-pointer", null);
-          }, 0);
-          return "mock-task-pointer";
-        },
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+        later({ status: 0, content: "mock-content-pointer", message: null }),
       );
-      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-      decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-        if (!pointer) return null;
-        return "not valid json {{{";
-      });
+      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("not valid json {{{");
 
       const client = new Client();
       const result = await client.chat.completions.create({
@@ -857,18 +797,12 @@ describe("Chat API compat layer", () => {
     it("reports the tokens a tool request used even when it ends in a mapped error", async () => {
       // Usage reads return BEFORE until the structured request starts, then AFTER.
       let reading = USAGE_BEFORE;
-      mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => "usage-pointer");
-      decodeAndFreeStringMock.mockImplementation((pointer: unknown) =>
-        pointer === "usage-pointer" ? reading : null,
-      );
-      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
-          reading = USAGE_AFTER;
-          // Status 1 = ExceededContextWindowSizeError
-          setTimeout(() => lastRegisteredCallback?.(1, null, null), 0);
-          return "mock-task-pointer";
-        },
-      );
+      mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => reading);
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() => {
+        reading = USAGE_AFTER;
+        // Status 1 = ExceededContextWindowSizeError
+        return later({ status: 1, content: null, message: null });
+      });
       try {
         const client = new Client();
         const stream = await client.chat.completions.create({

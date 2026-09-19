@@ -297,7 +297,7 @@ const scenarios: Record<string, () => Promise<void>> = {
       });
     }
 
-    // Wrong types where the C API takes a string. koffi passes a number as a
+    // Wrong types where the C API takes a string. koffi passed a number as a
     // raw pointer, so each of these crashed before strings were checked.
     const bad = 42 as never;
     add("prompt that isn't a string", () => session.respond(bad));

@@ -1,47 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockFunctions } from "./helpers/mock-bindings.js";
-
-const { capturedRegistryCallback } = vi.hoisted(() => {
-  let cb: ((pointer: unknown) => void) | null = null;
-  const OriginalFR = globalThis.FinalizationRegistry;
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    constructor(callback: (pointer: unknown) => void) {
-      cb = callback;
-    }
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
-  return {
-    capturedRegistryCallback: () => cb,
-    OriginalFR,
-  };
-});
-
-const { lastTokenCallback } = vi.hoisted(() => {
-  const holder: { cb: ((...args: unknown[]) => void) | null } = { cb: null };
-  return { lastTokenCallback: holder };
-});
-
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
-      lastTokenCallback.cb = cb;
-      return "mock-cb-pointer";
-    }),
-    unregister: vi.fn(),
-    as: vi.fn(() => "mock-arr-pointer"),
-    pointer: vi.fn(() => "mock-proto-pointer"),
-    proto: vi.fn(() => "mock-proto"),
-  },
-}));
+import { createMockFunctions, started } from "./helpers/mock-bindings.js";
 
 const mockFns = createMockFunctions();
-const mockDecodeAndFreeString = vi.fn();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: (...args: unknown[]) => mockDecodeAndFreeString(...args),
-  unregisterCallback: vi.fn(),
-  TokenCountCallbackProto: "mock-token-proto",
 }));
 
 import {
@@ -86,12 +48,10 @@ describe("SystemLanguageModel", () => {
     });
 
     it("returns available: false with reason when C reports unavailable", () => {
-      mockFns.FMSystemLanguageModelIsAvailable.mockImplementationOnce(
-        (_pointer: unknown, reasonOut: number[]) => {
-          reasonOut[0] = SystemLanguageModelUnavailableReason.DEVICE_NOT_ELIGIBLE;
-          return false;
-        },
-      );
+      mockFns.FMSystemLanguageModelIsAvailable.mockReturnValueOnce({
+        available: false,
+        reason: SystemLanguageModelUnavailableReason.DEVICE_NOT_ELIGIBLE,
+      });
       const model = new SystemLanguageModel();
       const result = model.isAvailable();
       expect(result.available).toBe(false);
@@ -99,12 +59,10 @@ describe("SystemLanguageModel", () => {
     });
 
     it("returns UNKNOWN for unrecognized reason codes", () => {
-      mockFns.FMSystemLanguageModelIsAvailable.mockImplementationOnce(
-        (_pointer: unknown, reasonOut: number[]) => {
-          reasonOut[0] = 999;
-          return false;
-        },
-      );
+      mockFns.FMSystemLanguageModelIsAvailable.mockReturnValueOnce({
+        available: false,
+        reason: 999,
+      });
       const model = new SystemLanguageModel();
       const result = model.isAvailable();
       expect(result.reason).toBe(SystemLanguageModelUnavailableReason.UNKNOWN);
@@ -119,12 +77,10 @@ describe("SystemLanguageModel", () => {
     });
 
     it("returns immediately for non-transient failures", async () => {
-      mockFns.FMSystemLanguageModelIsAvailable.mockImplementation(
-        (_pointer: unknown, reasonOut: number[]) => {
-          reasonOut[0] = SystemLanguageModelUnavailableReason.DEVICE_NOT_ELIGIBLE;
-          return false;
-        },
-      );
+      mockFns.FMSystemLanguageModelIsAvailable.mockReturnValue({
+        available: false,
+        reason: SystemLanguageModelUnavailableReason.DEVICE_NOT_ELIGIBLE,
+      });
       const model = new SystemLanguageModel();
       const result = await model.waitUntilAvailable(1000);
       expect(result.available).toBe(false);
@@ -132,12 +88,10 @@ describe("SystemLanguageModel", () => {
     });
 
     it("times out when MODEL_NOT_READY persists past deadline", async () => {
-      mockFns.FMSystemLanguageModelIsAvailable.mockImplementation(
-        (_pointer: unknown, reasonOut: number[]) => {
-          reasonOut[0] = SystemLanguageModelUnavailableReason.MODEL_NOT_READY;
-          return false;
-        },
-      );
+      mockFns.FMSystemLanguageModelIsAvailable.mockReturnValue({
+        available: false,
+        reason: SystemLanguageModelUnavailableReason.MODEL_NOT_READY,
+      });
       const model = new SystemLanguageModel();
       const result = await model.waitUntilAvailable(50, 10);
       expect(result.available).toBe(false);
@@ -146,17 +100,12 @@ describe("SystemLanguageModel", () => {
 
     it("retries on MODEL_NOT_READY then succeeds", async () => {
       let callCount = 0;
-      mockFns.FMSystemLanguageModelIsAvailable.mockImplementation(
-        (_pointer: unknown, reasonOut: number[]) => {
-          callCount++;
-          if (callCount < 3) {
-            reasonOut[0] = SystemLanguageModelUnavailableReason.MODEL_NOT_READY;
-            return false;
-          }
-          reasonOut[0] = 0;
-          return true;
-        },
-      );
+      mockFns.FMSystemLanguageModelIsAvailable.mockImplementation(() => {
+        callCount++;
+        return callCount < 3
+          ? { available: false, reason: SystemLanguageModelUnavailableReason.MODEL_NOT_READY }
+          : { available: true, reason: null };
+      });
       const model = new SystemLanguageModel();
       const result = await model.waitUntilAvailable(5000, 10);
       expect(result.available).toBe(true);
@@ -164,21 +113,14 @@ describe("SystemLanguageModel", () => {
     });
   });
 
-  describe("FinalizationRegistry cleanup", () => {
-    it("releases pointer when GC callback fires", () => {
-      const cleanup = capturedRegistryCallback();
-      expect(cleanup).toBeTypeOf("function");
-      cleanup!("leaked-model-pointer");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("leaked-model-pointer");
-    });
-
-    it("swallows errors in GC callback", () => {
-      mockFns.FMRelease.mockImplementationOnce(() => {
-        throw new Error("already released");
-      });
-      const cleanup = capturedRegistryCallback();
-      // Should not throw
-      expect(() => cleanup!("bad-pointer")).not.toThrow();
+  describe("after dispose", () => {
+    it("refuses use instead of passing a released handle to native code", () => {
+      const model = new SystemLanguageModel();
+      model.dispose();
+      expect(() => model.isAvailable()).toThrow(/disposed/);
+      expect(() => model.contextSize).toThrow(/disposed/);
+      expect(() => model.tokenCount({ instructions: "x" })).toThrow(/disposed/);
+      expect(mockFns.FMSystemLanguageModelIsAvailable).not.toHaveBeenCalled();
     });
   });
 
@@ -219,7 +161,7 @@ describe("SystemLanguageModel", () => {
 
   describe("supportedLanguages", () => {
     it("parses JSON array from the C API", () => {
-      mockDecodeAndFreeString.mockReturnValueOnce('["en-US","es-ES"]');
+      mockFns.FMSystemLanguageModelGetSupportedLanguages.mockReturnValueOnce('["en-US","es-ES"]');
       const model = new SystemLanguageModel();
       expect(model.supportedLanguages).toEqual(["en-US", "es-ES"]);
       expect(mockFns.FMSystemLanguageModelGetSupportedLanguages).toHaveBeenCalledWith(
@@ -228,7 +170,7 @@ describe("SystemLanguageModel", () => {
     });
 
     it("returns empty array when pointer is null", () => {
-      mockDecodeAndFreeString.mockReturnValueOnce(null);
+      mockFns.FMSystemLanguageModelGetSupportedLanguages.mockReturnValueOnce(null);
       const model = new SystemLanguageModel();
       expect(model.supportedLanguages).toEqual([]);
     });
@@ -253,46 +195,47 @@ describe("SystemLanguageModel", () => {
 });
 
 describe("SystemLanguageModel.tokenCount", () => {
-  it("resolves the count the callback reports", async () => {
-    const model = new SystemLanguageModel();
-    const promise = model.tokenCount({ instructions: "Be brief." });
-    queueMicrotask(() => lastTokenCallback.cb?.(0, 42, null, null));
-    await expect(promise).resolves.toBe(42);
-  });
+  const counts = (count: number, status = 0, message: string | null = null) =>
+    started({ status, count, message }) as never;
 
-  it("passes instructions straight to the C API", async () => {
-    const model = new SystemLanguageModel();
-    const promise = model.tokenCount({ instructions: "Be brief." });
-    queueMicrotask(() => lastTokenCallback.cb?.(0, 7, null, null));
-    await promise;
-    expect(mockFns.FMSystemLanguageModelTokenCountForInstructions).toHaveBeenCalledWith(
-      "mock-model-pointer",
-      "Be brief.",
-      null,
-      "mock-cb-pointer",
+  it("resolves the count the native side reports", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForInstructions.mockReturnValueOnce(counts(42));
+    await expect(new SystemLanguageModel().tokenCount({ instructions: "Be brief." })).resolves.toBe(
+      42,
     );
   });
 
-  it("rejects with the description the callback reports", async () => {
-    const model = new SystemLanguageModel();
-    const promise = model.tokenCount({ instructions: "x" });
-    queueMicrotask(() => lastTokenCallback.cb?.(5, 0, "model unavailable", null));
-    await expect(promise).rejects.toThrow(/model unavailable/);
+  it("passes instructions straight to the native side", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForInstructions.mockReturnValueOnce(counts(7));
+    await new SystemLanguageModel().tokenCount({ instructions: "Be brief." });
+    expect(mockFns.FMSystemLanguageModelTokenCountForInstructions).toHaveBeenCalledWith(
+      "mock-model-pointer",
+      "Be brief.",
+    );
   });
 
-  it("releases the task handle once the count arrives", async () => {
-    const model = new SystemLanguageModel();
-    const promise = model.tokenCount({ instructions: "x" });
-    queueMicrotask(() => lastTokenCallback.cb?.(0, 1, null, null));
-    await promise;
-    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-token-task");
+  it("rejects with the description the native side reports", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForInstructions.mockReturnValueOnce(
+      counts(0, 5, "model unavailable"),
+    );
+    await expect(new SystemLanguageModel().tokenCount({ instructions: "x" })).rejects.toThrow(
+      /model unavailable/,
+    );
+  });
+
+  it("passes the tools' handles", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForTools.mockReturnValueOnce(counts(9));
+    const tool = { _nativeTool: "mock-tool-pointer" } as never;
+    await new SystemLanguageModel().tokenCount({ tools: [tool] });
+    expect(mockFns.FMSystemLanguageModelTokenCountForTools).toHaveBeenCalledWith(
+      "mock-model-pointer",
+      ["mock-tool-pointer"],
+    );
   });
 
   it("builds and releases a composed prompt for a text prompt", async () => {
-    const model = new SystemLanguageModel();
-    const promise = model.tokenCount({ prompt: "Hello" });
-    queueMicrotask(() => lastTokenCallback.cb?.(0, 3, null, null));
-    await promise;
+    mockFns.FMSystemLanguageModelTokenCountForPrompt.mockReturnValueOnce(counts(3));
+    await new SystemLanguageModel().tokenCount({ prompt: "Hello" });
     expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
   });
@@ -300,12 +243,14 @@ describe("SystemLanguageModel.tokenCount", () => {
 
 describe("model information", () => {
   it("reads the variant name", () => {
-    mockDecodeAndFreeString.mockReturnValueOnce("AFM 3 Core Advanced");
+    mockFns.FMSystemLanguageModelGetVariantName.mockReturnValueOnce("AFM 3 Core Advanced");
     expect(new SystemLanguageModel().variant).toBe("AFM 3 Core Advanced");
   });
 
   it("reads the capabilities", () => {
-    mockDecodeAndFreeString.mockReturnValueOnce('["vision","toolCalling","guidedGeneration"]');
+    mockFns.FMSystemLanguageModelGetCapabilitiesJSON.mockReturnValueOnce(
+      '["vision","toolCalling","guidedGeneration"]',
+    );
     expect(new SystemLanguageModel().capabilities).toEqual([
       "vision",
       "toolCalling",
