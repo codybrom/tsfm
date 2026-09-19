@@ -6,6 +6,8 @@ foundation-models-c
 .build
 native/*
 !native/extensions/
+!native/foundation-models-c/
+!native/UPSTREAM.md
 coverage
 docs/.vitepress/dist
 docs/.vitepress/cache
