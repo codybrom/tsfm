@@ -1,6 +1,7 @@
 import { getFunctions, type NativePointer } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
 import { parseCapabilities, type ModelCapability } from "./capabilities.js";
+import { currentLocale } from "./core.js";
 import { hasMacOS27, requireMacOS27, runtimeMacOSMajor } from "./os.js";
 
 export enum PrivateCloudComputeUnavailableReason {
@@ -141,6 +142,70 @@ export class PrivateCloudComputeLanguageModel {
         this._assertNotDisposed(),
       ),
     );
+  }
+
+  /**
+   * The language identifiers the model supports, as minimal BCP 47 language tags (e.g. `["en-GB", "fr-CA", "de", "ja"]`), not full locales.
+   *
+   * **Asynchronous**, unlike `SystemLanguageModel.supportedLanguages` (a
+   * synchronous getter): Apple defined it `async throws` on
+   * `PrivateCloudComputeLanguageModel`, as with `contextSize()`. Resolves `[]`
+   * on macOS 26, which has no Private Cloud Compute.
+   */
+  supportedLanguages(): Promise<string[]> {
+    if (this._requiresNewerOS && !this._disposed) return Promise.resolve([]);
+    let model: NativePointer;
+    try {
+      model = this._assertNotDisposed();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    const fn = getFunctions();
+    const [result, request] = fn.FMPrivateCloudComputeLanguageModelGetSupportedLanguages(model);
+    return result
+      .then(({ status, text }) => {
+        if (status !== 0) throw statusToError(status, text ?? undefined);
+        if (!text) return [];
+        try {
+          return JSON.parse(text) as string[];
+        } catch {
+          throw new FoundationModelsError(
+            `Failed to parse supported languages JSON: ${text.slice(0, 200)}`,
+          );
+        }
+      })
+      .finally(() => fn.FMRelease(request));
+  }
+
+  /**
+   * Whether the model supports a locale; the host's current locale when none is
+   * given, as Apple's `supportsLocale(_:)` defaults to `.current`.
+   *
+   * **Asynchronous**, unlike `SystemLanguageModel.supportsLocale()` (synchronous):
+   * Apple defined it `async throws` on `PrivateCloudComputeLanguageModel`.
+   * Resolves `false` on macOS 26, which has no Private Cloud Compute.
+   *
+   * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)
+   */
+  supportsLocale(localeIdentifier: string = currentLocale()): Promise<boolean> {
+    if (this._requiresNewerOS && !this._disposed) return Promise.resolve(false);
+    let model: NativePointer;
+    try {
+      model = this._assertNotDisposed();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+    const fn = getFunctions();
+    const [result, request] = fn.FMPrivateCloudComputeLanguageModelSupportsLocale(
+      model,
+      localeIdentifier,
+    );
+    return result
+      .then(({ status, count, message }) => {
+        if (status !== 0) throw statusToError(status, message ?? undefined);
+        return count === 1;
+      })
+      .finally(() => fn.FMRelease(request));
   }
 
   /** The user's daily quota, or `null` on macOS 26. */

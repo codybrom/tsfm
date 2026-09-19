@@ -143,13 +143,35 @@ describe("serializeOptions", () => {
     });
   });
 
-  it("throws when temperature is negative", () => {
-    expect(() => serializeOptions({ temperature: -0.1 })).toThrow("non-negative");
+  // Apple documents temperature as a number between 0 and 1 inclusive.
+  it.each([0, 0.5, 1])("allows temperature %s", (temperature) => {
+    const result = JSON.parse(serializeOptions({ temperature })!);
+    expect(result.temperature).toBe(temperature);
   });
 
-  it("allows zero temperature", () => {
-    const result = JSON.parse(serializeOptions({ temperature: 0 })!);
-    expect(result.temperature).toBe(0);
+  it.each([-0.1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "throws for temperature %s",
+    (temperature) => {
+      expect(() => serializeOptions({ temperature })).toThrow("between 0 and 1 inclusive");
+    },
+  );
+
+  it("serializes includeSchemaInPrompt as include_schema_in_prompt", () => {
+    expect(JSON.parse(serializeOptions({ includeSchemaInPrompt: false })!)).toEqual({
+      include_schema_in_prompt: false,
+    });
+    expect(JSON.parse(serializeOptions({ includeSchemaInPrompt: true })!)).toEqual({
+      include_schema_in_prompt: true,
+    });
+    expect(JSON.parse(serializeOptions({ temperature: 0.2 })!)).not.toHaveProperty(
+      "include_schema_in_prompt",
+    );
+  });
+
+  it("rejects a non-boolean includeSchemaInPrompt", () => {
+    expect(() => serializeOptions({ includeSchemaInPrompt: "no" as never })).toThrow(
+      "'includeSchemaInPrompt' must be a boolean",
+    );
   });
 
   it("throws when maximumResponseTokens is not a positive integer", () => {

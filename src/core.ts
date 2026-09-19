@@ -17,6 +17,11 @@ export type TokenCountInput =
   | { schema: GenerationSchema }
   | { transcript: Transcript };
 
+/** @internal The host's current locale, as ICU/BCP 47 (e.g. "en-US"). */
+export function currentLocale(): string {
+  return Intl.DateTimeFormat().resolvedOptions().locale;
+}
+
 export enum SystemLanguageModelUseCase {
   GENERAL = 0,
   CONTENT_TAGGING = 1,
@@ -129,7 +134,7 @@ export class SystemLanguageModel {
     return getFunctions().FMSystemLanguageModelGetVariantName(this._model());
   }
 
-  /** What the model can do, or `null` on macOS 26. The on-device model doesn't reason. */
+  /** What the model can do, or `null` on macOS 26. Apple doesn't publish the set; read it rather than assuming it. */
   get capabilities(): ModelCapability[] | null {
     return parseCapabilities(
       getFunctions().FMSystemLanguageModelGetCapabilitiesJSON(this._model()),
@@ -137,7 +142,7 @@ export class SystemLanguageModel {
   }
 
   /**
-   * Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+   * Returns the language identifiers the model supports, as minimal BCP 47 language tags (e.g. `["en-GB", "fr-CA", "de", "ja"]`), not full locales.
    */
   get supportedLanguages(): string[] {
     const json = getFunctions().FMSystemLanguageModelGetSupportedLanguages(this._model());
@@ -152,11 +157,12 @@ export class SystemLanguageModel {
   }
 
   /**
-   * Check whether the model supports a given locale.
+   * Check whether the model supports a locale; the host's current locale when
+   * none is given, as Apple's `supportsLocale(_:)` defaults to `.current`.
    *
    * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)
    */
-  supportsLocale(localeIdentifier: string): boolean {
+  supportsLocale(localeIdentifier: string = currentLocale()): boolean {
     return getFunctions().FMSystemLanguageModelSupportsLocale(this._model(), localeIdentifier);
   }
 

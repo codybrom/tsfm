@@ -90,6 +90,12 @@ export interface GenerationOptions {
    * with `UnsupportedCapabilityError`.
    */
   reasoningLevel?: ReasoningLevel;
+  /**
+   * Whether a schema request puts the schema in the prompt (default `true`).
+   * Set `false` when the model already knows the format, e.g. from earlier
+   * turns, to save tokens. Text requests ignore it.
+   */
+  includeSchemaInPrompt?: boolean;
 }
 
 /** Reasoning effort for `PrivateCloudComputeLanguageModel`. */
@@ -108,6 +114,7 @@ interface SerializedOptions {
   sampling?: SerializedSampling | { mode: "greedy" };
   tool_calling_mode?: ToolCallingMode;
   reasoning_level?: ReasoningLevel;
+  include_schema_in_prompt?: boolean;
 }
 
 /** The tool-call limit for a request, validated. */
@@ -125,8 +132,9 @@ export function serializeOptions(options: GenerationOptions | undefined): string
   const obj: SerializedOptions = {};
 
   if (options.temperature !== undefined) {
-    if (options.temperature < 0) {
-      throw new Error("'temperature' must be non-negative");
+    // Apple documents the range as 0 to 1 inclusive.
+    if (!(options.temperature >= 0 && options.temperature <= 1)) {
+      throw new Error("'temperature' must be a number between 0 and 1 inclusive");
     }
     obj.temperature = options.temperature;
   }
@@ -164,6 +172,12 @@ export function serializeOptions(options: GenerationOptions | undefined): string
       throw new Error("'reasoningLevel' must be 'light', 'moderate' or 'deep'");
     }
     obj.reasoning_level = options.reasoningLevel;
+  }
+  if (options.includeSchemaInPrompt !== undefined) {
+    if (typeof options.includeSchemaInPrompt !== "boolean") {
+      throw new Error("'includeSchemaInPrompt' must be a boolean");
+    }
+    obj.include_schema_in_prompt = options.includeSchemaInPrompt;
   }
   // maximumToolCalls isn't sent: the session enforces it (see Tool._budgets).
   resolveMaximumToolCalls(options);

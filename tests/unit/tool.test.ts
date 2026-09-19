@@ -54,7 +54,13 @@ vi.mock("../../src/schema.js", () => ({
 }));
 
 vi.mock("../../src/errors.js", () => ({
-  GenerationErrorCode: { TOOL_CALL_LIMIT_EXCEEDED: 15 },
+  GenerationErrorCode: { TOOL_CALL_LIMIT_EXCEEDED: 15, REQUEST_FAILED_BY_TOOL: 22 },
+  FailRequestError: class extends Error {
+    constructor(message: string, options?: { cause?: unknown }) {
+      super(message, options);
+      this.name = "FailRequestError";
+    }
+  },
   statusToError: vi.fn((_code: number, msg?: string) => new Error(msg ?? "mock error")),
   ToolCallError: class extends Error {
     toolName: string;
@@ -67,6 +73,7 @@ vi.mock("../../src/errors.js", () => ({
 
 import { Tool } from "../../src/tool.js";
 import { ToolCallBudget } from "../../src/tool-budget.js";
+import { FailRequestError } from "../../src/errors.js";
 import { GenerationSchema } from "../../src/schema.js";
 
 class TestTool extends Tool {
@@ -390,6 +397,82 @@ describe("Tool", () => {
       } finally {
         shouldThrowOnConstruct.value = false;
       }
+    });
+  });
+
+  describe("failing the request (FailRequestError)", () => {
+    class FailingTool extends Tool {
+      readonly name = "lookup";
+      readonly description = "Fails the request on purpose";
+      readonly argumentsSchema = new GenerationSchema("Args");
+      readonly failure = new FailRequestError("no such record", { cause: new Error("404") });
+      gate: Promise<void> = Promise.resolve();
+
+      async call(): Promise<string> {
+        await this.gate;
+        throw this.failure;
+      }
+    }
+
+    it("fails the call with REQUEST_FAILED_BY_TOOL and records the failure on the budgets", async () => {
+      const tool = new FailingTool();
+      tool._register();
+      const budget = new ToolCallBudget(5);
+      tool._budgets.add(budget);
+      capturedCallbacks[0]("ref-1", 1);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        22,
+        "no such record",
+      );
+      // Answered exactly once, and only by failing it.
+      expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+      expect(budget.failure).toEqual({ toolName: "lookup", cause: tool.failure });
+      expect(mockContentDispose).toHaveBeenCalledWith("ref-1");
+    });
+
+    it("keeps the default for any other error: the model sees it and the response continues", async () => {
+      class OrdinaryFailure extends Tool {
+        readonly name = "lookup";
+        readonly description = "Throws an ordinary error";
+        readonly argumentsSchema = new GenerationSchema("Args");
+        async call(): Promise<string> {
+          throw new Error("timeout");
+        }
+      }
+      const tool = new OrdinaryFailure();
+      tool._register();
+      const budget = new ToolCallBudget(5);
+      tool._budgets.add(budget);
+      capturedCallbacks[0]("ref-1", 1);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        "Tool 'lookup' failed: timeout",
+      );
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+      expect(budget.failure).toBeNull();
+    });
+
+    it("doesn't answer through a released handle when the tool is disposed mid-call", async () => {
+      const tool = new FailingTool();
+      let open!: () => void;
+      tool.gate = new Promise((resolve) => (open = resolve));
+      tool._register();
+      capturedCallbacks[0]("ref-1", 1);
+      // The addon fails the pending call when the handle is released; JavaScript
+      // must not answer it again afterwards, and must not wait on it either.
+      tool.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
+      open();
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("ref-1"));
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+      expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
     });
   });
 

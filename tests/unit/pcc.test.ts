@@ -90,11 +90,99 @@ describe("PrivateCloudComputeLanguageModel", () => {
     );
   });
 
-  it("disposes once, and refuses use afterwards", () => {
+  it("disposes once, and refuses use afterwards", async () => {
     const model = new PrivateCloudComputeLanguageModel();
     model.dispose();
     model.dispose();
     expect(mockFns.FMRelease).toHaveBeenCalledTimes(1);
     expect(() => model.isAvailable()).toThrow(/disposed/);
+    await expect(model.supportedLanguages()).rejects.toThrow(/disposed/);
+    await expect(model.supportsLocale("en-US")).rejects.toThrow(/disposed/);
+  });
+
+  describe("supportedLanguages", () => {
+    const langs = (text: string | null, status = 0) => started({ status, text }) as never;
+
+    it("resolves the parsed native JSON and releases the request", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages.mockReturnValueOnce(
+        langs('["en-US","es-ES"]'),
+      );
+      await expect(new PrivateCloudComputeLanguageModel().supportedLanguages()).resolves.toEqual([
+        "en-US",
+        "es-ES",
+      ]);
+      expect(mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages).toHaveBeenCalledWith(
+        "mock-pcc-pointer",
+      );
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-request");
+    });
+
+    it("resolves empty when the native side has nothing", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages.mockReturnValueOnce(
+        langs(null),
+      );
+      await expect(new PrivateCloudComputeLanguageModel().supportedLanguages()).resolves.toEqual(
+        [],
+      );
+    });
+
+    it("rejects on malformed JSON rather than reading it as no languages", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages.mockReturnValueOnce(
+        langs("{oops"),
+      );
+      await expect(
+        new PrivateCloudComputeLanguageModel().supportedLanguages(),
+      ).rejects.toBeInstanceOf(FoundationModelsError);
+    });
+
+    it("rejects with a mapped error when the native side fails", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages.mockReturnValueOnce(
+        langs("offline", 16),
+      );
+      await expect(
+        new PrivateCloudComputeLanguageModel().supportedLanguages(),
+      ).rejects.toBeInstanceOf(PrivateCloudComputeNetworkError);
+    });
+  });
+
+  describe("supportsLocale", () => {
+    const answer = (count: number, status = 0, message: string | null = null) =>
+      started({ status, count, message }) as never;
+
+    it("resolves the native answer and passes the locale", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale.mockReturnValueOnce(answer(0));
+      await expect(new PrivateCloudComputeLanguageModel().supportsLocale("xx_XX")).resolves.toBe(
+        false,
+      );
+      expect(mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale).toHaveBeenCalledWith(
+        "mock-pcc-pointer",
+        "xx_XX",
+      );
+    });
+
+    it("resolves true when the count is 1", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale.mockReturnValueOnce(answer(1));
+      await expect(new PrivateCloudComputeLanguageModel().supportsLocale("en-US")).resolves.toBe(
+        true,
+      );
+    });
+
+    it("defaults to the host's current locale", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale.mockReturnValueOnce(answer(1));
+      await new PrivateCloudComputeLanguageModel().supportsLocale();
+      expect(mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale).toHaveBeenCalledWith(
+        "mock-pcc-pointer",
+        Intl.DateTimeFormat().resolvedOptions().locale,
+      );
+    });
+
+    it("rejects with a mapped error when the native side fails", async () => {
+      mockFns.FMPrivateCloudComputeLanguageModelSupportsLocale.mockReturnValueOnce(
+        answer(0, 16, "offline"),
+      );
+      await expect(
+        new PrivateCloudComputeLanguageModel().supportsLocale("en-US"),
+      ).rejects.toBeInstanceOf(PrivateCloudComputeNetworkError);
+    });
   });
 });

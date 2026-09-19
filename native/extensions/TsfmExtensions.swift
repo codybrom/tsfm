@@ -36,6 +36,84 @@ public func FMSystemLanguageModelSupportsLocale(
   return model.supportsLocale(locale)
 }
 
+/// Private Cloud Compute's supported languages, delivered as a JSON array of
+/// minimal locale identifiers through a response-style callback (its
+/// `supportedLanguages` is async on PCC, unlike SystemLanguageModel's, so this
+/// runs on a task and reports back like FMLanguageModelSessionRespond). The
+/// addon treats it as a text request.
+@_cdecl("FMPrivateCloudComputeLanguageModelGetSupportedLanguages")
+public func FMPrivateCloudComputeLanguageModelGetSupportedLanguages(
+  model: UnsafeMutableRawPointer,
+  userInfo: UnsafeMutableRawPointer?,
+  callback: FMLanguageModelSessionResponseCallback
+) -> FMTaskRef {
+  let unsafeSendableUserInfo = UnsafeSendableUserInfo(pointer: userInfo)
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else {
+    // The pcc.ts layer short-circuits macOS 26 without calling this; the guard
+    // is a backstop that reports it rather than trapping.
+    let task = Task.detached {
+      let message = RequiresNewerOS(feature: "Private Cloud Compute", version: "27")
+        .localizedDescription
+      message.withCString {
+        callback(
+          StatusCode.unsupportedCapability.rawValue, $0, message.utf8.count,
+          unsafeSendableUserInfo.pointer)
+      }
+    }
+    return FMTaskRef(Unmanaged.passRetained(TaskBox(task)).toOpaque())
+  }
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  let task = Task.detached {
+    do {
+      try Task.checkCancellation()
+      let languages = try await model.supportedLanguages.map { $0.minimalIdentifier }
+      try Task.checkCancellation()
+      let json = String(
+        decoding: try JSONSerialization.data(withJSONObject: languages), as: UTF8.self)
+      json.withCString {
+        callback(
+          StatusCode.success.rawValue, $0, json.utf8.count, unsafeSendableUserInfo.pointer)
+      }
+    } catch is CancellationError {
+      let message = "Operation cancelled"
+      message.withCString {
+        callback(
+          StatusCode.cancelled.rawValue, $0, message.utf8.count, unsafeSendableUserInfo.pointer)
+      }
+    } catch {
+      let message = error.localizedDescription
+      message.withCString {
+        callback(statusCode(for: error), $0, message.utf8.count, unsafeSendableUserInfo.pointer)
+      }
+    }
+  }
+  return FMTaskRef(Unmanaged.passRetained(TaskBox(task)).toOpaque())
+}
+
+/// Whether Private Cloud Compute supports a locale, delivered through the
+/// token-count callback: count 1 for yes, 0 for no (PCC's supportsLocale is
+/// async, so it can't be a plain synchronous C function). The addon treats it
+/// as a count request.
+@_cdecl("FMPrivateCloudComputeLanguageModelSupportsLocale")
+public func FMPrivateCloudComputeLanguageModelSupportsLocale(
+  model: UnsafeMutableRawPointer,
+  localeIdentifier: UnsafePointer<CChar>,
+  userInfo: UnsafeMutableRawPointer?,
+  callback: FMSystemLanguageModelTokenCountCallback
+) -> FMTaskRef {
+  // Copy the C string on the calling thread; the caller frees it after we return.
+  let identifier = String(cString: localeIdentifier)
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else {
+    return performTokenCount(userInfo: userInfo, callback: callback) {
+      throw RequiresNewerOS(feature: "Private Cloud Compute", version: "27")
+    }
+  }
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  return performTokenCount(userInfo: userInfo, callback: callback) {
+    try await model.supportsLocale(Locale(identifier: identifier)) ? 1 : 0
+  }
+}
+
 // MARK: - LanguageModelSession extensions
 
 @_cdecl("FMLanguageModelSessionPrewarm")

@@ -24,6 +24,8 @@ export enum GenerationErrorCode {
   PCC_SERVICE_UNAVAILABLE = 18,
   PCC_ENTITLEMENT_MISSING = 19,
   CANCELLED = 20,
+  TRANSCRIPT_MUTATION_WHILE_RESPONDING = 21,
+  REQUEST_FAILED_BY_TOOL = 22,
   UNKNOWN_ERROR = 255,
 }
 
@@ -419,6 +421,12 @@ export function statusToError(status: number, detail?: string | null): Generatio
         "This process isn't signed with the com.apple.developer.private-cloud-compute " +
           `entitlement, which Private Cloud Compute requires${suffix}`,
       );
+    case GenerationErrorCode.TRANSCRIPT_MUTATION_WHILE_RESPONDING:
+      return new TranscriptMutationWhileRespondingError(
+        `The transcript was changed while the session was responding${suffix}`,
+      );
+    case GenerationErrorCode.REQUEST_FAILED_BY_TOOL:
+      return new RequestFailedByToolError(`A tool failed the request${suffix}`);
     case GenerationErrorCode.CANCELLED:
       // The bridge's detail is just "Operation cancelled" / "Stream cancelled",
       // which would read twice in one sentence.

@@ -193,6 +193,16 @@ describe("SystemLanguageModel", () => {
       const model = new SystemLanguageModel();
       expect(model.supportsLocale("xx_XX")).toBe(false);
     });
+
+    it("defaults to the host's current locale, like Apple's supportsLocale(_:)", () => {
+      new SystemLanguageModel().supportsLocale();
+      const current = Intl.DateTimeFormat().resolvedOptions().locale;
+      expect(current).toMatch(/^[a-z]{2,3}(-|$)/);
+      expect(mockFns.FMSystemLanguageModelSupportsLocale).toHaveBeenCalledWith(
+        "mock-model-pointer",
+        current,
+      );
+    });
   });
 });
 

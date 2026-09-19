@@ -93,6 +93,15 @@ export interface NativeFunctions {
   FMPrivateCloudComputeLanguageModelIsAvailable(model: NativePointer): NativeAvailability;
   FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(model: NativePointer): string | null;
   FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(model: NativePointer): string | null;
+  /** Async on PCC: the supported languages arrive as JSON text. */
+  FMPrivateCloudComputeLanguageModelGetSupportedLanguages(
+    model: NativePointer,
+  ): Started<TextResult>;
+  /** Async on PCC: `count` is 1 when the locale is supported, 0 when not. */
+  FMPrivateCloudComputeLanguageModelSupportsLocale(
+    model: NativePointer,
+    locale: string,
+  ): Started<CountResult>;
   FMPrivateCloudComputeLanguageModelGetContextSize(model: NativePointer): Started<CountResult>;
 
   FMLanguageModelSessionCreateFromSystemLanguageModel(

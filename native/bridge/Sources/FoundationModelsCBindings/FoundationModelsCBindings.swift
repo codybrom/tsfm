@@ -164,7 +164,9 @@ public func FMSystemLanguageModelGetContextSize(model: FMSystemLanguageModelRef)
 ///
 /// Runs `work`, which produces the token count for some input, and forwards either the
 /// resulting count or a mapped error to `callback`.
-private func performTokenCount(
+// tsfm: internal (was private) so TsfmExtensions.swift, compiled into this same
+// module, can reuse it for the async PrivateCloudCompute language entry points.
+func performTokenCount(
   userInfo: UnsafeMutableRawPointer?,
   callback: FMSystemLanguageModelTokenCountCallback,
   work: @escaping @Sendable () async throws -> Int
@@ -558,13 +560,16 @@ public func FMLanguageModelSessionReset(session: FMLanguageModelSessionRef) {
   _ = session.isResponding
 }
 
-private struct UnsafeSendableUserInfo: @unchecked Sendable {
+// tsfm: internal (was private) so TsfmExtensions.swift can reuse it.
+struct UnsafeSendableUserInfo: @unchecked Sendable {
   var pointer: UnsafeMutableRawPointer?
 }
 
 /// Error codes that match Python GenerationErrorCode enum
 /// These codes are used across the C API to maintain consistency with Python bindings
-private enum StatusCode: Int32 {
+// tsfm: internal, not private, so TsfmExtensions.swift can report the same
+// status codes from its own entry points.
+enum StatusCode: Int32 {
   case success = 0
   case exceededContextWindowSize = 1
   case assetsUnavailable = 2
@@ -591,6 +596,11 @@ private enum StatusCode: Int32 {
   // tsfm: the task was cancelled (FMTaskCancel, or a released stream), so a
   // caller can tell its own cancel() apart from a failure.
   case cancelled = 20
+  // tsfm: LanguageModelSession.Error.transcriptMutationWhileResponding (macOS 27).
+  case transcriptMutationWhileResponding = 21
+  // tsfm: a bridged tool failed the request on purpose (FMBridgedToolFailCall
+  // from a tool that threw FailRequestError); distinct from the call limit.
+  case requestFailedByTool = 22
   case unknownError = 255
 }
 
@@ -669,7 +679,8 @@ private func frameworkErrorDescription(for error: Error) -> String {
 }
 
 /// frameworkStatusCode(for:), falling back to unknownError.
-private func statusCode(for error: Error) -> Int32 {
+// tsfm: internal (was private) so TsfmExtensions.swift can reuse it.
+func statusCode(for error: Error) -> Int32 {
   frameworkStatusCode(for: error) ?? StatusCode.unknownError.rawValue
 }
 
@@ -710,6 +721,8 @@ private func macOS27StatusCode(for error: Error) -> Int32? {
     switch error {
     case .concurrentRequests:
       return StatusCode.concurrentRequests.rawValue
+    case .transcriptMutationWhileResponding:
+      return StatusCode.transcriptMutationWhileResponding.rawValue
     default:  // Other cases aren't mapped; they become unknownError.
       return nil
     }
@@ -838,9 +851,21 @@ private func requireNoMacOS27Options(_ jsonString: String?) throws {
   }
 }
 
+/// tsfm: "include_schema_in_prompt" from the options JSON, for schema requests.
+/// Defaults to true, the framework's default; false is for a model that already
+/// knows the format. Text requests never read it.
+private func parseIncludeSchemaInPrompt(from jsonString: String?) -> Bool {
+  guard let jsonString, !jsonString.isEmpty,
+    let json = try? JSONSerialization.jsonObject(with: Data(jsonString.utf8)) as? [String: Any],
+    let include = json["include_schema_in_prompt"] as? Bool
+  else { return true }
+  return include
+}
+
 /// tsfm: ContextOptions from the same options JSON: "reasoning_level" is
 /// "light", "moderate" or "deep" (Private Cloud Compute only). Schema requests
-/// pass includeSchemaInPrompt: true, the default of the overloads they used.
+/// pass their includeSchemaInPrompt; on macOS 26 the same value goes to the
+/// respond(to:schema:includeSchemaInPrompt:options:) overload instead.
 @available(macOS 27, iOS 27, visionOS 27, *)
 private func parseContextOptions(
   from jsonString: String?,
@@ -1107,12 +1132,16 @@ public func FMLanguageModelSessionRespondWithSchema(
           schema: finalSchema,
           options: options ?? GenerationOptions(),
           contextOptions: try parseContextOptions(
-            from: optionsJSONString, includeSchemaInPrompt: true)
+            from: optionsJSONString,
+            includeSchemaInPrompt: parseIncludeSchemaInPrompt(from: optionsJSONString))
         )
       } else {
         try requireNoMacOS27Options(optionsJSONString)
         response = try await session.respond(
-          to: prompt, schema: finalSchema, options: options ?? GenerationOptions())
+          to: prompt,
+          schema: finalSchema,
+          includeSchemaInPrompt: parseIncludeSchemaInPrompt(from: optionsJSONString),
+          options: options ?? GenerationOptions())
       }
 
       // Check cancellation before callback
@@ -1191,12 +1220,16 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
           schema: schema,
           options: options ?? GenerationOptions(),
           contextOptions: try parseContextOptions(
-            from: optionsJSONString, includeSchemaInPrompt: true)
+            from: optionsJSONString,
+            includeSchemaInPrompt: parseIncludeSchemaInPrompt(from: optionsJSONString))
         )
       } else {
         try requireNoMacOS27Options(optionsJSONString)
         response = try await session.respond(
-          to: prompt, schema: schema, options: options ?? GenerationOptions())
+          to: prompt,
+          schema: schema,
+          includeSchemaInPrompt: parseIncludeSchemaInPrompt(from: optionsJSONString),
+          options: options ?? GenerationOptions())
       }
 
       // Check cancellation before callback

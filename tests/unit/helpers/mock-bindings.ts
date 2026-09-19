@@ -153,12 +153,11 @@ export function createMockFunctions() {
     FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON: vi.fn(
       (_model: unknown): string | null => null,
     ),
-    FMPrivateCloudComputeLanguageModelGetSupportedLanguages: vi.fn(
-      (_model: unknown): string | null => null,
+    // Async on PCC: started requests, pending unless a test settles them.
+    FMPrivateCloudComputeLanguageModelGetSupportedLanguages: vi.fn((..._args: unknown[]) =>
+      pending(),
     ),
-    FMPrivateCloudComputeLanguageModelSupportsLocale: vi.fn(
-      (_model: unknown, _locale: string) => true,
-    ),
+    FMPrivateCloudComputeLanguageModelSupportsLocale: vi.fn((..._args: unknown[]) => pending()),
     FMPrivateCloudComputeLanguageModelGetContextSize: vi.fn((_model: unknown) => pending()),
     FMLanguageModelSessionCreateFromPrivateCloudComputeModel: vi.fn(
       (..._args: unknown[]): string | null => "mock-pcc-session",

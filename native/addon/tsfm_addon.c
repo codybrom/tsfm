@@ -1546,6 +1546,18 @@ static napi_value start_count(napi_env env, const void *retained,
   return request_pair(env, promise, r);
 }
 
+/// Like start_count, but the native call reports text through on_response
+/// (an R_TEXT request). Used for PCC's async supportedLanguages.
+static napi_value start_text(napi_env env, const void *retained,
+                             const void *(*call)(Request *, void *), void *arg) {
+  napi_value promise;
+  Request *r = request_start(env, R_TEXT, NULL, retained, &promise);
+  if (!r) return NULL;
+  atomic_fetch_add(&r->refs, 1);
+  request_set_task(r, call(r, arg));
+  return request_pair(env, promise, r);
+}
+
 typedef struct {
   const void *model;
   const void *object;
@@ -1577,6 +1589,14 @@ static const void *count_transcript(Request *r, void *a) {
 static const void *count_pcc_context(Request *r, void *a) {
   CountArgs *c = a;
   return FMPrivateCloudComputeLanguageModelGetContextSize((void *)c->model, r, on_count);
+}
+static const void *count_pcc_locale(Request *r, void *a) {
+  CountArgs *c = a;
+  return FMPrivateCloudComputeLanguageModelSupportsLocale((void *)c->model, c->text, r, on_count);
+}
+static const void *text_pcc_languages(Request *r, void *a) {
+  CountArgs *c = a;
+  return FMPrivateCloudComputeLanguageModelGetSupportedLanguages((void *)c->model, r, on_response);
 }
 
 // Token counts: (model, input) → [Promise<{ status, count, message }>, request]
@@ -1639,6 +1659,30 @@ static napi_value PrivateCloudComputeLanguageModelGetContextSize(napi_env env,
   PTR(argv[0], K_PCC, false, model);
   CountArgs args = {.model = model};
   return start_count(env, model, count_pcc_context, &args);
+}
+
+// PCC's supportedLanguages is async, so it's a text request: [Promise<{ status,
+// text }>, request], the text being a JSON array of locale identifiers.
+static napi_value PrivateCloudComputeLanguageModelGetSupportedLanguages(napi_env env,
+                                                                        napi_callback_info info) {
+  ARGS(1);
+  PTR(argv[0], K_PCC, false, model);
+  CountArgs args = {.model = model};
+  return start_text(env, model, text_pcc_languages, &args);
+}
+
+// PCC's supportsLocale is async: [Promise<{ status, count, message }>, request],
+// count 1 for supported, 0 for not.
+static napi_value PrivateCloudComputeLanguageModelSupportsLocale(napi_env env,
+                                                                napi_callback_info info) {
+  ARGS(2);
+  PTR(argv[0], K_PCC, false, model);
+  char *locale;
+  if (!get_string(env, argv[1], "localeIdentifier", false, &locale)) return NULL;
+  CountArgs args = {.model = model, .text = locale};
+  napi_value result = start_count(env, model, count_pcc_locale, &args);
+  free(locale);
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -1854,6 +1898,8 @@ NAPI_MODULE_INIT(/* napi_env env, napi_value exports */) {
       EXPORT(PrivateCloudComputeLanguageModelIsAvailable),
       EXPORT(PrivateCloudComputeLanguageModelGetCapabilitiesJSON),
       EXPORT(PrivateCloudComputeLanguageModelGetQuotaUsageJSON),
+      EXPORT(PrivateCloudComputeLanguageModelGetSupportedLanguages),
+      EXPORT(PrivateCloudComputeLanguageModelSupportsLocale),
       EXPORT(PrivateCloudComputeLanguageModelGetContextSize),
       EXPORT(LanguageModelSessionCreateFromSystemLanguageModel),
       EXPORT(LanguageModelSessionCreateFromPrivateCloudComputeModel),

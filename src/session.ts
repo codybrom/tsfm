@@ -23,6 +23,7 @@ import {
   statusToError,
   FoundationModelsError,
   GenerationError,
+  RequestFailedByToolError,
   UnsupportedGuideError,
   UnsupportedCapabilityError,
   InvalidGenerationSchemaError,
@@ -79,6 +80,17 @@ function assertModelNotDisposed(
   if (model && !model._nativeModel) {
     throw new FoundationModelsError(`${model.constructor.name} has been disposed`);
   }
+}
+
+/**
+ * A request's rejection, with the tool's name and error filled in when a tool
+ * failed it with FailRequestError (see ToolCallBudget.failure).
+ */
+function withToolFailure(err: unknown, budget: ToolCallBudget): unknown {
+  if (err instanceof RequestFailedByToolError && budget.failure && !err.toolName) {
+    err._attach(budget.failure.toolName, budget.failure.cause);
+  }
+  return err;
 }
 
 /**
@@ -507,7 +519,7 @@ export class LanguageModelSession {
         if (cancelled) break;
         const item = queue.shift()!;
         if ("done" in item) {
-          if (item.error) throw item.error;
+          if (item.error) throw budget ? withToolFailure(item.error, budget) : item.error;
           break;
         }
         const delta = item.content.slice(prevLen);
@@ -628,6 +640,8 @@ export class LanguageModelSession {
     const budget = this._lendToolBudget(options);
     try {
       return await run();
+    } catch (err) {
+      throw withToolFailure(err, budget);
     } finally {
       this._returnToolBudget(budget);
     }

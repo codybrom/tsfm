@@ -80,14 +80,17 @@ vi.mock("../../src/tool.js", () => ({
 import { LanguageModelSession } from "../../src/session.js";
 import { PrivateCloudComputeLanguageModel } from "../../src/pcc.js";
 import {
+  FailRequestError,
   FoundationModelsError,
   GenerationError,
   InvalidGenerationSchemaError,
   PromptAttachmentError,
+  RequestFailedByToolError,
   UnsupportedCapabilityError,
   UnsupportedGuideError,
 } from "../../src/errors.js";
 import { GenerationSchema, type JsonSchema } from "../../src/schema.js";
+import type { ToolCallBudget } from "../../src/tool-budget.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -1071,6 +1074,64 @@ describe("LanguageModelSession", () => {
       });
 
       expect(mockTool._register).toHaveBeenCalled();
+    });
+  });
+
+  describe("a tool failing the request", () => {
+    // The tool side (see tool.test.ts) fails the native call with status 22 and
+    // records who did it on the request's budget; the session turns that into
+    // a RequestFailedByToolError naming the tool, with the FailRequestError as
+    // cause. Simulated here from the native side.
+    const failingTool = () => ({
+      name: "lookup",
+      _nativeTool: "ptr-lookup",
+      _register() {},
+      _budgets: new Set<ToolCallBudget>(),
+    });
+    const cause = new FailRequestError("no such record");
+    const failFromNative = (tool: ReturnType<typeof failingTool>) => {
+      for (const budget of tool._budgets) budget.failure = { toolName: "lookup", cause };
+      lastRegisteredCallback?.(22, "no such record", 14, null);
+    };
+
+    it("rejects respond() with the tool's name and cause", async () => {
+      const tool = failingTool();
+      const session = new LanguageModelSession({ tools: [tool as never] });
+      const promise = session.respond("Look it up.");
+      await vi.waitFor(() => expect(tool._budgets.size).toBe(1));
+      failFromNative(tool);
+      const err = await promise.catch((e) => e);
+      expect(err).toBeInstanceOf(RequestFailedByToolError);
+      expect(err.toolName).toBe("lookup");
+      expect(err.cause).toBe(cause);
+      expect(err.message).toBe("Tool 'lookup' failed the request: no such record");
+      // The budget is returned once the request settles.
+      expect(tool._budgets.size).toBe(0);
+    });
+
+    it("rejects a stream the same way", async () => {
+      const tool = failingTool();
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {
+        setTimeout(() => failFromNative(tool), 0);
+      });
+      const session = new LanguageModelSession({ tools: [tool as never] });
+      const err = await (async () => {
+        for await (const _ of session.streamResponse("Look it up.")) {
+          // Nothing arrives.
+        }
+      })().catch((e) => e);
+      expect(err).toBeInstanceOf(RequestFailedByToolError);
+      expect(err.toolName).toBe("lookup");
+      expect(err.cause).toBe(cause);
+    });
+
+    it("leaves toolName unset when no tool of this session recorded a failure", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond("Hi");
+      queueMicrotask(() => lastRegisteredCallback?.(22, "no such record", 14, null));
+      const err = await promise.catch((e) => e);
+      expect(err).toBeInstanceOf(RequestFailedByToolError);
+      expect(err.toolName).toBeNull();
     });
   });
 

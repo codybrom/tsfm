@@ -7,7 +7,7 @@
 
 import { getFunctions, type NativePointer } from "./bindings.js";
 import { GenerationSchema, GeneratedContent } from "./schema.js";
-import { statusToError, ToolCallError, GenerationErrorCode } from "./errors.js";
+import { statusToError, ToolCallError, FailRequestError, GenerationErrorCode } from "./errors.js";
 import type { ToolCallBudget } from "./tool-budget.js";
 
 export abstract class Tool {
@@ -23,9 +23,10 @@ export abstract class Tool {
    *
    * **Error handling:** if `call()` throws, the error is caught, converted to
    * a string message, and sent back to the model as the tool's output — the
-   * generation does **not** fail. If you need the caller to know about tool
-   * failures, capture them in the returned string or track them via side
-   * effects.
+   * generation does **not** fail. To fail the whole request instead, throw
+   * `FailRequestError`: the request then rejects with
+   * `RequestFailedByToolError` naming this tool, with the `FailRequestError`
+   * as its `cause`.
    *
    * `args` contains the structured arguments the model supplied, shaped
    * according to `argumentsSchema`. It's released once `call()` settles, so
@@ -140,9 +141,24 @@ export abstract class Tool {
             if (answering) fn.FMBridgedToolFinishCall(answering, callId, result);
           })
           .catch((err: unknown) => {
+            const answering = current();
+            if (err instanceof FailRequestError) {
+              // Failing the call ends the response with REQUEST_FAILED_BY_TOOL.
+              // Only the message crosses the bridge; the session reads the
+              // tool's name and the error from the request's budget.
+              for (const b of budgets) b.failure ??= { toolName: owner.name, cause: err };
+              if (answering) {
+                fn.FMBridgedToolFailCall(
+                  answering,
+                  callId,
+                  GenerationErrorCode.REQUEST_FAILED_BY_TOOL,
+                  err.message,
+                );
+              }
+              return;
+            }
             const cause = err instanceof Error ? err : new Error(String(err));
             const toolErr = new ToolCallError(owner.name, cause);
-            const answering = current();
             if (answering) fn.FMBridgedToolFinishCall(answering, callId, toolErr.message);
           })
           .finally(() => args.dispose());

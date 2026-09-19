@@ -107,11 +107,11 @@ describe("on macOS 26", () => {
       expect(pcc.quotaUsage).toBeNull();
     });
 
-    it("reports no supported languages and no supported locale, without native calls", () => {
+    it("resolves to no languages and no supported locale, without native calls", async () => {
       const pcc = new PrivateCloudComputeLanguageModel();
-      expect(pcc.supportedLanguages).toEqual([]);
-      expect(pcc.supportsLocale()).toBe(false);
-      expect(pcc.supportsLocale("en-US")).toBe(false);
+      await expect(pcc.supportedLanguages()).resolves.toEqual([]);
+      await expect(pcc.supportsLocale()).resolves.toBe(false);
+      await expect(pcc.supportsLocale("en-US")).resolves.toBe(false);
       expect(
         mockFns.FMPrivateCloudComputeLanguageModelGetSupportedLanguages,
       ).not.toHaveBeenCalled();
