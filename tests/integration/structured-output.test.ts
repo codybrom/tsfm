@@ -78,6 +78,32 @@ describeIfAvailable("structured output (integration)", () => {
     session.dispose();
   }, 60_000);
 
+  it("keeps same-named nested objects apart in generable()", async () => {
+    const Order = generable("Order", {
+      shipping: {
+        type: "object",
+        properties: {
+          address: { type: "object", properties: { city: { type: "string" } } },
+        },
+      },
+      billing: {
+        type: "object",
+        properties: {
+          address: { type: "object", properties: { postcode: { type: "string" } } },
+        },
+      },
+    });
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithSchema(
+      "Make up an order shipped to a city, billed to a postcode.",
+      Order.schema,
+    );
+    const order = Order.parse(content);
+    expect(typeof order.shipping.address.city).toBe("string");
+    expect(typeof order.billing.address.postcode).toBe("string");
+    session.dispose();
+  }, 60_000);
+
   it("resolves $ref to $defs in a JSON schema", async () => {
     const session = new LanguageModelSession();
     const { content } = await session.respondWithJsonSchema("Make up a person and their pet.", {
