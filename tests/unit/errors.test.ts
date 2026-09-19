@@ -12,6 +12,10 @@ import {
   ConcurrentRequestsError,
   RefusalError,
   InvalidGenerationSchemaError,
+  InvalidArgumentError,
+  TimeoutError,
+  UnsupportedCapabilityError,
+  UnsupportedTranscriptContentError,
   ServiceCrashedError,
   GenerationError,
   FoundationModelsError,
@@ -84,6 +88,26 @@ describe("statusToError", () => {
     // so callers catching GenerationError receive schema validation failures.
     const err = statusToError(GenerationErrorCode.INVALID_SCHEMA);
     expect(err).toBeInstanceOf(GenerationError);
+  });
+
+  it.each([
+    [GenerationErrorCode.INVALID_ARGUMENT, InvalidArgumentError, "Invalid argument"],
+    [GenerationErrorCode.TIMEOUT, TimeoutError, "Timed out"],
+    [
+      GenerationErrorCode.UNSUPPORTED_CAPABILITY,
+      UnsupportedCapabilityError,
+      "Unsupported capability",
+    ],
+    [
+      GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT,
+      UnsupportedTranscriptContentError,
+      "Unsupported transcript content",
+    ],
+  ])("maps code %i to its GenerationError subclass", (code, type, message) => {
+    const err = statusToError(code);
+    expect(err).toBeInstanceOf(type);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe(message);
   });
 
   it("maps unknown code to GenerationError", () => {

@@ -212,8 +212,8 @@ private func performTokenCount(
       message.withCString { cString in
         callback(StatusCode.unknownError.rawValue, 0, cString, unsafeSendableUserInfo.pointer)
       }
-    } catch let error as LanguageModelSession.GenerationError {
-      let statusCode = mapGenerationErrorToStatusCode(error)
+    } catch let error where frameworkStatusCode(for: error) != nil {
+      let statusCode = statusCode(for: error)
       error.localizedDescription.withCString { cString in
         callback(statusCode, 0, cString, unsafeSendableUserInfo.pointer)
       }
@@ -462,6 +462,10 @@ private enum StatusCode: Int32 {
   case refusal = 9
   case invalidSchema = 10
   case invalidArgument = 11  // For NULL pointer errors (not in Python but useful for C API)
+  // tsfm: LanguageModelError cases added in the macOS 27 SDK.
+  case timeout = 12
+  case unsupportedCapability = 13
+  case unsupportedTranscriptContent = 14
   case unknownError = 255
 }
 
@@ -494,6 +498,82 @@ private func mapGenerationErrorToStatusCode(_ error: LanguageModelSession.Genera
     return StatusCode.unknownError.rawValue
   }
 }
+
+// tsfm: The framework picks the error type from the host executable's linked
+// SDK. Hosts built with the macOS 27 SDK receive LanguageModelError,
+// SystemLanguageModel.Error, LanguageModelSession.Error and
+// GeneratedContent.ParsingError; older hosts (stock node is stamped SDK 15)
+// receive the deprecated LanguageModelSession.GenerationError. The upstream
+// bridge handled only the latter, so every error from an SDK 27 host reached
+// callers as unknownError.
+
+/// The status code for a framework error, or nil when the error isn't one the
+/// framework defines (callers then report it as unknownError).
+private func frameworkStatusCode(for error: Error) -> Int32? {
+  if let error = error as? LanguageModelSession.GenerationError {
+    return mapGenerationErrorToStatusCode(error)
+  }
+  #if FM_HAS_MACOS_27_SDK
+  if #available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *) {
+    return macOS27StatusCode(for: error)
+  }
+  #endif
+  return nil
+}
+
+/// frameworkStatusCode(for:), falling back to unknownError.
+private func statusCode(for error: Error) -> Int32 {
+  frameworkStatusCode(for: error) ?? StatusCode.unknownError.rawValue
+}
+
+#if FM_HAS_MACOS_27_SDK
+@available(iOS 27.0, macOS 27.0, visionOS 27.0, watchOS 27.0, *)
+private func macOS27StatusCode(for error: Error) -> Int32? {
+  switch error {
+  case let error as LanguageModelError:
+    switch error {
+    case .contextSizeExceeded:
+      return StatusCode.exceededContextWindowSize.rawValue
+    case .rateLimited:
+      return StatusCode.rateLimited.rawValue
+    case .guardrailViolation:
+      return StatusCode.guardrailViolation.rawValue
+    case .refusal:
+      return StatusCode.refusal.rawValue
+    case .unsupportedCapability:
+      return StatusCode.unsupportedCapability.rawValue
+    case .unsupportedTranscriptContent:
+      return StatusCode.unsupportedTranscriptContent.rawValue
+    case .unsupportedGenerationGuide:
+      return StatusCode.unsupportedGuide.rawValue
+    case .unsupportedLanguageOrLocale:
+      return StatusCode.unsupportedLanguageOrLocale.rawValue
+    case .timeout:
+      return StatusCode.timeout.rawValue
+    @unknown default:
+      return nil
+    }
+  case let error as SystemLanguageModel.Error:
+    switch error {
+    case .assetsUnavailable:
+      return StatusCode.assetsUnavailable.rawValue
+    @unknown default:
+      return nil
+    }
+  case let error as LanguageModelSession.Error:
+    switch error {
+    case .concurrentRequests:
+      return StatusCode.concurrentRequests.rawValue
+    @unknown default:
+      return nil
+    }
+  case is GeneratedContent.ParsingError:
+    return StatusCode.decodingFailure.rawValue
+  default:
+    return nil
+  }
+}
+#endif
 
 // Helper function to create detailed error descriptions from generic errors
 private func formatErrorDescription(_ error: Error, function: String = #function) -> String {
@@ -608,10 +688,10 @@ public func FMLanguageModelSessionRespond(
         message.utf8.count,
         unsafeSendableUserInfo.pointer
       )
-    } catch let error as LanguageModelSession.GenerationError {
+    } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
       let debugDescription = error.localizedDescription
-      let statusCode = mapGenerationErrorToStatusCode(error)
+      let statusCode = statusCode(for: error)
       callback(
         statusCode,
         debugDescription,
@@ -720,9 +800,9 @@ public func FMLanguageModelSessionResponseStreamIterate(
         message.utf8.count,
         unsafeSendableUserInfo.pointer
       )
-    } catch let error as LanguageModelSession.GenerationError {
+    } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
-      let statusCode = mapGenerationErrorToStatusCode(error)
+      let statusCode = statusCode(for: error)
       let debugDescription = error.localizedDescription
       callback(
         statusCode,
@@ -801,9 +881,9 @@ public func FMLanguageModelSessionRespondWithSchema(
         contentRef,
         unsafeSendableUserInfo.pointer
       )
-    } catch let error as LanguageModelSession.GenerationError {
+    } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
-      let statusCode = mapGenerationErrorToStatusCode(error)
+      let statusCode = statusCode(for: error)
       let contentWrapper = GeneratedContentWrapper(content: error.localizedDescription)
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(statusCode, contentRef, unsafeSendableUserInfo.pointer)
@@ -876,9 +956,9 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
         contentRef,
         unsafeSendableUserInfo.pointer
       )
-    } catch let error as LanguageModelSession.GenerationError {
+    } catch let error where frameworkStatusCode(for: error) != nil {
       // Map specific generation errors to status codes
-      let statusCode = mapGenerationErrorToStatusCode(error)
+      let statusCode = statusCode(for: error)
       let contentWrapper = GeneratedContentWrapper(content: error.localizedDescription)
       let contentRef = FMGeneratedContentRef(Unmanaged.passRetained(contentWrapper).toOpaque())
       callback(statusCode, contentRef, unsafeSendableUserInfo.pointer)
@@ -952,9 +1032,9 @@ public func FMLanguageModelSessionGetTranscriptJSONString(
     return transcript.withCString { cString in
       return UnsafeMutablePointer(strdup(cString))
     }
-  } catch let error as LanguageModelSession.GenerationError {
+  } catch let error where frameworkStatusCode(for: error) != nil {
     // Map specific generation errors to error codes
-    let errorCode = mapGenerationErrorToStatusCode(error)
+    let errorCode = statusCode(for: error)
     let debugDescription = error.localizedDescription
     debugDescription.withCString { cString in
       outErrorCode?.pointee = errorCode
@@ -1245,9 +1325,9 @@ public func FMGeneratedContentCreateFromJSON(
     let content = try GeneratedContent(json: jsonStr)
     let wrapper = GeneratedContentWrapper(content: content)
     return FMGeneratedContentRef(Unmanaged.passRetained(wrapper).toOpaque())
-  } catch let error as LanguageModelSession.GenerationError {
+  } catch let error where frameworkStatusCode(for: error) != nil {
     // Map specific generation errors to error codes
-    let errorCode = mapGenerationErrorToStatusCode(error)
+    let errorCode = statusCode(for: error)
     let debugDescription = error.localizedDescription
     debugDescription.withCString { cString in
       outErrorCode?.pointee = errorCode
@@ -1318,9 +1398,9 @@ public func FMGeneratedContentGetPropertyValue(
     return value.withCString { cString in
       return UnsafeMutablePointer(strdup(cString))
     }
-  } catch let error as LanguageModelSession.GenerationError {
+  } catch let error where frameworkStatusCode(for: error) != nil {
     // Map specific generation errors to error codes
-    let errorCode = mapGenerationErrorToStatusCode(error)
+    let errorCode = statusCode(for: error)
     let debugDescription = error.localizedDescription
     debugDescription.withCString { cString in
       outErrorCode?.pointee = errorCode
@@ -1795,9 +1875,9 @@ public func FMBridgedToolCreate(
       foreignCall: callable
     )
     return FMBridgedToolRef(Unmanaged.passRetained(bridgedTool).toOpaque())
-  } catch let error as LanguageModelSession.GenerationError {
+  } catch let error where frameworkStatusCode(for: error) != nil {
     // Map specific generation errors to error codes
-    let errorCode = mapGenerationErrorToStatusCode(error)
+    let errorCode = statusCode(for: error)
     let debugDescription = error.localizedDescription
     debugDescription.withCString { cString in
       outErrorCode?.pointee = errorCode
