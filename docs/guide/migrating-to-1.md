@@ -61,8 +61,9 @@ directly on the old `AsyncGenerator` should use
 Every response carries `usage`, and `session.usage` totals the whole session. See
 [`Usage`](/api/language-model-session#usage-1).
 
-The Chat and Responses compatibility APIs now fill in OpenAI's `usage` fields for
-non-streaming requests instead of returning `null`.
+The Chat and Responses compatibility APIs now fill in OpenAI's `usage` fields
+instead of returning `null`. Chat Completions streams report usage in a final
+chunk when you set `stream_options: { include_usage: true }`.
 
 ## Tool calls are limited per request
 
