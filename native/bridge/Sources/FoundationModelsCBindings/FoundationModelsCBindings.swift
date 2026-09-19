@@ -1785,11 +1785,15 @@ final class BridgedTool: Tool {
   func call(arguments: GeneratedContent) async throws -> String {
     let arguments = GeneratedContentWrapper(content: arguments)
     let id = nextID()
-    foreignCall(FMGeneratedContentRef(Unmanaged.passRetained(arguments).toOpaque()), id)
     return try await withCheckedThrowingContinuation { continuation in
+      // tsfm: register the continuation before calling out. Upstream called
+      // foreignCall first, so a caller that finished or failed the call
+      // synchronously (inside the callback) found nothing waiting, and the
+      // response hung forever.
       outputContinuation.withLock {
         $0[id] = continuation
       }
+      foreignCall(FMGeneratedContentRef(Unmanaged.passRetained(arguments).toOpaque()), id)
     }
   }
 }
