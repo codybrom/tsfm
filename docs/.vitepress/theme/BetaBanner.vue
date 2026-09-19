@@ -13,8 +13,9 @@
       <a href="/guide/migrating-to-1">Migrating to 1.0</a>
     </span>
     <span class="short">
-      <strong>tsfm 1.0 beta</strong> docs ·
-      <a href="https://github.com/codybrom/tsfm/tree/v0.5.1/docs">0.5 docs</a>
+      <strong>1.0 beta</strong> ·
+      <a href="https://github.com/codybrom/tsfm/tree/v0.5.1/docs">0.5 docs</a> ·
+      <a href="/guide/migrating-to-1">Migrating</a>
     </span>
   </div>
 </template>
@@ -30,6 +31,7 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
+  box-sizing: border-box;
   height: var(--vp-layout-top-height);
   padding: 4px 16px;
   font-size: 13px;
