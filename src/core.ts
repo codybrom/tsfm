@@ -140,12 +140,6 @@ export class SystemLanguageModel {
     return getFunctions().FMSystemLanguageModelGetContextSize(this._nativeModel) as number;
   }
 
-  // macOS 26.4+ runtime only — uncomment when targeting 26.4+
-  // /** Returns the number of tokens the model would use to encode the given text. */
-  // tokenCount(text: string): number {
-  //   return getFunctions().FMSystemLanguageModelGetTokenCount(this._nativeModel, text) as number;
-  // }
-
   /**
    * Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
    */
@@ -180,7 +174,6 @@ export class SystemLanguageModel {
    * Count the tokens a prompt, instruction set, tool list, schema, or
    * transcript would consume against the context window.
    *
-   * Requires a macOS 26.4+ runtime; the C bridge reports an error below that.
    * Each call dispatches asynchronously and owns a native task that is
    * released once the count arrives.
    */
