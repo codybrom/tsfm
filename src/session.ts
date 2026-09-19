@@ -653,6 +653,8 @@ export class LanguageModelSession {
       return text ?? "";
     } finally {
       if (this._activeTask === request) this._activeTask = null;
+      // Settled (or cancelled): the handle is no longer needed.
+      getFunctions().FMRelease(request);
     }
   }
 
@@ -667,6 +669,8 @@ export class LanguageModelSession {
       return new GeneratedContent(content);
     } finally {
       if (this._activeTask === request) this._activeTask = null;
+      // Settled (or cancelled): the handle is no longer needed.
+      getFunctions().FMRelease(request);
     }
   }
 
