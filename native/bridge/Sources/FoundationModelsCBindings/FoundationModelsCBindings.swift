@@ -81,19 +81,11 @@ public func FMSystemLanguageModelGetDefault() -> FMSystemLanguageModelRef {
 
 private extension SystemLanguageModel.UseCase {
   init(c: FMSystemLanguageModelUseCase) {
-    let useCase: SystemLanguageModel.UseCase? =
-      switch c {
-      case FMSystemLanguageModelUseCaseGeneral: .general
-      case FMSystemLanguageModelUseCaseContentTagging: .contentTagging
-      default:
-        nil
-      }
-
-    if useCase == nil {
-      self = .general
-      print("Warning: Unknown SystemLanguageModel use case \(c), defaulting to .general")
-    } else {
-      self = useCase!
+    // tsfm: no force-unwrap, and no print(): a library must not write to the
+    // host's stdout. TypeScript only passes known use cases.
+    switch c {
+    case FMSystemLanguageModelUseCaseContentTagging: self = .contentTagging
+    default: self = .general
     }
   }
 }
@@ -601,6 +593,10 @@ private func frameworkStatusCode(for error: Error) -> Int32? {
   }
   if let error = error as? LanguageModelSession.GenerationError {
     return mapGenerationErrorToStatusCode(error)
+  }
+  // tsfm: a schema the framework can't build (e.g. undefined references).
+  if error is GenerationSchema.SchemaError {
+    return StatusCode.invalidSchema.rawValue
   }
   return macOS27StatusCode(for: error)
 }
@@ -1184,7 +1180,8 @@ public func FMLanguageModelSessionGetTranscriptJSONString(
   do {
     let transcript_raw = session.transcript
     let json = try JSONEncoder().encode(transcript_raw)
-    let transcript = String(data: json, encoding: .utf8)!
+    // tsfm: JSONEncoder emits UTF-8, but decode leniently rather than trap.
+    let transcript = String(decoding: json, as: UTF8.self)
     return transcript.withCString { cString in
       return UnsafeMutablePointer(strdup(cString))
     }
