@@ -17,12 +17,28 @@ NODE="$(command -v node)"
 # Keyed by node version, so upgrading node produces a fresh copy.
 OUT="$PACKAGE_DIR/.build/node-sdk27-$(node -p process.version)"
 
-if [[ ! -x "$OUT" ]]; then
+# A usable host: executable, validly signed, and actually stamped SDK 27.
+is_usable() {
+  [[ -x "$1" ]] &&
+    codesign --verify "$1" 2>/dev/null &&
+    otool -l "$1" | awk '/LC_BUILD_VERSION/ {f=1} f && /sdk/ {print $2; exit}' | grep -qx '27.0'
+}
+
+if ! is_usable "$OUT"; then
   mkdir -p "$(dirname "$OUT")"
+  # Built and signed under a temporary name, then moved into place, so an
+  # interrupted or failed run never leaves a half-made host that gets reused.
+  TMP="$(mktemp "$OUT.XXXXXX")"
+  trap 'rm -f "$TMP"' EXIT
   MINOS="$(otool -l "$NODE" | awk '/LC_BUILD_VERSION/ {f=1} f && /minos/ {print $2; exit}')"
-  xcrun vtool -set-build-version macos "${MINOS:-13.5}" 27.0 -replace -output "$OUT" "$NODE" 2>/dev/null
+  xcrun vtool -set-build-version macos "${MINOS:-13.5}" 27.0 -replace -output "$TMP" "$NODE" 2>/dev/null
   # vtool invalidates the signature; an ad-hoc one lets it run locally.
-  codesign -f -s - "$OUT" 2>/dev/null
+  codesign -f -s - "$TMP" 2>/dev/null
+  if ! is_usable "$TMP"; then
+    echo "error: could not make an SDK 27 copy of $NODE" >&2
+    exit 1
+  fi
+  mv -f "$TMP" "$OUT"
 fi
 
 echo "$OUT"
