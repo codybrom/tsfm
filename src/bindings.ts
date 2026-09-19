@@ -113,11 +113,89 @@ export const ToolCallbackProto = koffi.proto("ToolCallback", "void", ["void *", 
 
 let _funcs: ReturnType<typeof defineFunctions> | null = null;
 
+// A string parameter the C header marks _Nullable. A plain `str` parameter is
+// _Nonnull (tests/unit/bindings-signatures.test.ts keeps the two in sync).
+koffi.alias("nullable_str", "str");
+
+/** @internal A string parameter of a koffi signature. */
+export interface StringParam {
+  index: number;
+  name: string;
+  kind: "str" | "nullable_str" | "str_array";
+}
+
+/** @internal Reads the string parameters out of a koffi function signature. */
+export function stringParams(signature: string): StringParam[] {
+  const params = /\(([^)]*)\)\s*$/.exec(signature)?.[1] ?? "";
+  return params
+    .split(",")
+    .map((p) => p.trim())
+    .flatMap((param, index): StringParam[] => {
+      const array = /^str\s*\*\s*(\w+)$/.exec(param);
+      if (array) return [{ index, name: array[1], kind: "str_array" }];
+      const single = /^(nullable_str|str)\s+(\w+)$/.exec(param);
+      if (single) return [{ index, name: single[2], kind: single[1] as StringParam["kind"] }];
+      return [];
+    });
+}
+
+function describe(value: unknown): string {
+  return value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+}
+
+/**
+ * @internal Throws a TypeError for a string argument that isn't a string. koffi
+ * passes a number given for a `str` parameter as a raw pointer, and null or
+ * undefined as NULL, either of which crashes the host inside Swift. The public
+ * API's types rule these out, but JavaScript callers can pass anything.
+ */
+export function checkStringArgs(
+  functionName: string,
+  params: StringParam[],
+  args: unknown[],
+): void {
+  for (const param of params) {
+    const value = args[param.index];
+    if (param.kind === "nullable_str" && value == null) continue;
+    if (param.kind === "str_array") {
+      if (Array.isArray(value) && value.every((v) => typeof v === "string")) continue;
+      throw new TypeError(
+        `Expected an array of strings for "${param.name}" (${functionName}), got ` +
+          (Array.isArray(value)
+            ? `an array containing ${describe(value.find((v) => typeof v !== "string"))}`
+            : describe(value)),
+      );
+    }
+    if (typeof value !== "string") {
+      throw new TypeError(
+        `Expected a string for "${param.name}" (${functionName}), got ${describe(value)}`,
+      );
+    }
+  }
+}
+
 function defineFunctions() {
   const l = lib();
 
-  // Helper to declare functions
-  const fn = (sig: string) => l.func(sig);
+  // Declares a function. Calls with string parameters check their arguments
+  // first, because a wrong type there crashes the host instead of throwing.
+  const fn = (sig: string) => {
+    const native = l.func(sig);
+    const params = stringParams(sig);
+    if (params.length === 0) return native;
+    const name = /\b(FM\w+)\s*\(/.exec(sig)?.[1] ?? "native function";
+    const checked = (...args: unknown[]) => {
+      checkStringArgs(name, params, args);
+      return native(...args);
+    };
+    return Object.assign(checked, {
+      info: native.info,
+      async: (...args: unknown[]) => {
+        checkStringArgs(name, params, args);
+        return native.async(...args);
+      },
+    }) as typeof native;
+  };
 
   return {
     // --- SystemLanguageModel ---
@@ -132,7 +210,7 @@ function defineFunctions() {
     // FMLanguageModelSessionCreateDefault: fn("void * FMLanguageModelSessionCreateDefault()"),
     // ^ unused: Python SDK also skips this — always route through CreateFromSystemLanguageModel
     FMLanguageModelSessionCreateFromSystemLanguageModel: fn(
-      "void * FMLanguageModelSessionCreateFromSystemLanguageModel(void * model, str instructions, void * * tools, int toolCount)",
+      "void * FMLanguageModelSessionCreateFromSystemLanguageModel(void * model, nullable_str instructions, void * * tools, int toolCount)",
     ),
     FMLanguageModelSessionCreateFromTranscript: fn(
       "void * FMLanguageModelSessionCreateFromTranscript(void * transcriptSession, void * model, void * * tools, int toolCount)",
@@ -171,25 +249,25 @@ function defineFunctions() {
     FMComposedPromptAddText: fn("void FMComposedPromptAddText(void * composedPrompt, str text)"),
     // Can't fail on macOS 27; the out-parameter is kept for ABI stability.
     FMComposedPromptAddAttachment: fn(
-      "bool FMComposedPromptAddAttachment(void * composedPrompt, str imagePath, str label, _Out_ int * outError)",
+      "bool FMComposedPromptAddAttachment(void * composedPrompt, str imagePath, nullable_str label, _Out_ int * outError)",
     ),
 
     // --- Text generation ---
     FMLanguageModelSessionRespond: fn(
-      "void * FMLanguageModelSessionRespond(void * session, void * composedPrompt, str optionsJSON, void * userInfo, ResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespond(void * session, void * composedPrompt, nullable_str optionsJSON, void * userInfo, ResponseCallback * callback)",
     ),
 
     // --- Structured generation ---
     FMLanguageModelSessionRespondWithSchema: fn(
-      "void * FMLanguageModelSessionRespondWithSchema(void * session, void * composedPrompt, void * schema, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchema(void * session, void * composedPrompt, void * schema, nullable_str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
     FMLanguageModelSessionRespondWithSchemaFromJSON: fn(
-      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, void * composedPrompt, str schemaJSON, str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
+      "void * FMLanguageModelSessionRespondWithSchemaFromJSON(void * session, void * composedPrompt, str schemaJSON, nullable_str optionsJSON, void * userInfo, StructuredResponseCallback * callback)",
     ),
 
     // --- Streaming ---
     FMLanguageModelSessionStreamResponse: fn(
-      "void * FMLanguageModelSessionStreamResponse(void * session, void * composedPrompt, str optionsJSON)",
+      "void * FMLanguageModelSessionStreamResponse(void * session, void * composedPrompt, nullable_str optionsJSON)",
     ),
     FMLanguageModelSessionResponseStreamIterate: fn(
       "void FMLanguageModelSessionResponseStreamIterate(void * stream, void * userInfo, ResponseCallback * callback)",
@@ -204,9 +282,11 @@ function defineFunctions() {
     ),
 
     // --- GenerationSchema ---
-    FMGenerationSchemaCreate: fn("void * FMGenerationSchemaCreate(str name, str description)"),
+    FMGenerationSchemaCreate: fn(
+      "void * FMGenerationSchemaCreate(str name, nullable_str description)",
+    ),
     FMGenerationSchemaPropertyCreate: fn(
-      "void * FMGenerationSchemaPropertyCreate(str name, str description, str typeName, bool isOptional)",
+      "void * FMGenerationSchemaPropertyCreate(str name, nullable_str description, str typeName, bool isOptional)",
     ),
     FMGenerationSchemaPropertyAddAnyOfGuide: fn(
       "void FMGenerationSchemaPropertyAddAnyOfGuide(void * property, str * anyOf, int choiceCount, bool wrapped)",
@@ -280,7 +360,7 @@ function defineFunctions() {
       "bool FMSystemLanguageModelSupportsLocale(void * model, str localeIdentifier)",
     ),
     FMLanguageModelSessionPrewarm: fn(
-      "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
+      "void FMLanguageModelSessionPrewarm(void * session, nullable_str promptPrefix)",
     ),
     // --- Model information (tsfm); free the results with FMFreeString ---
     FMSystemLanguageModelGetCapabilitiesJSON: fn(
@@ -307,7 +387,7 @@ function defineFunctions() {
       "void * FMPrivateCloudComputeLanguageModelGetContextSize(void * model, void * userInfo, TokenCountCallback * callback)",
     ),
     FMLanguageModelSessionCreateFromPrivateCloudComputeModel: fn(
-      "void * FMLanguageModelSessionCreateFromPrivateCloudComputeModel(void * model, str instructions, void * * tools, int toolCount)",
+      "void * FMLanguageModelSessionCreateFromPrivateCloudComputeModel(void * model, nullable_str instructions, void * * tools, int toolCount)",
     ),
     FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel: fn(
       "void * FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(void * transcriptSession, void * model, void * * tools, int toolCount)",
