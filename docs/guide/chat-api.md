@@ -53,7 +53,7 @@ console.log(completion.choices[0].message.content);
 client.close();
 ```
 
-If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute).
+If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute). The ids Apple's `fm serve` uses, `"system"` and `"pcc"`, are accepted as aliases, so a client written for it works unchanged; responses always report the full name.
 
 ## What TSFM Supports
 
@@ -74,7 +74,7 @@ Both APIs support the same core capabilities:
 
 ### Private Cloud Compute
 
-Set `model` to `"PrivateCloudComputeLanguageModel"` to send a request to Apple's
+Set `model` to `"PrivateCloudComputeLanguageModel"` (or `"pcc"`) to send a request to Apple's
 [Private Cloud Compute](/guide/private-cloud-compute) model instead of the
 on-device one. The process running your code needs Apple's PCC entitlement;
 without it, the request throws `PrivateCloudComputeEntitlementError`. The client

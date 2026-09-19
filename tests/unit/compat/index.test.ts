@@ -471,6 +471,22 @@ describe("Chat API compat layer", () => {
   });
 
   describe("Private Cloud Compute", () => {
+    it('selects PCC for the fm serve alias "pcc" and reports the full name', async () => {
+      simulateRespondSuccess("Hi");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "pcc",
+      });
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(console.warn).not.toHaveBeenCalled();
+      client.close();
+    });
+
     it("uses the PCC model and passes reasoning_effort as reasoning_level", async () => {
       simulateRespondSuccess("Hi");
       const client = new Client();

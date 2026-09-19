@@ -16,18 +16,27 @@ afterEach(() => {
 });
 
 describe("compatModelName", () => {
-  it("selects PCC only by its exact name", () => {
+  it("selects PCC by its name or its fm serve alias", () => {
     expect(compatModelName(PCC_MODEL)).toBe(PCC_MODEL);
+    expect(compatModelName("pcc")).toBe(PCC_MODEL);
     expect(compatModelName(SYSTEM_MODEL)).toBe(SYSTEM_MODEL);
+    expect(compatModelName("system")).toBe(SYSTEM_MODEL);
     expect(compatModelName(undefined)).toBe(SYSTEM_MODEL);
     expect(compatModelName("gpt-4o")).toBe(SYSTEM_MODEL);
+  });
+
+  it("matches aliases exactly, not by case or prototype names", () => {
+    expect(compatModelName("PCC")).toBe(SYSTEM_MODEL);
+    expect(compatModelName("constructor")).toBe(SYSTEM_MODEL);
   });
 });
 
 describe("warnOnUnknownModel", () => {
-  it("accepts both model names and an omitted model", () => {
+  it("accepts both model names, their aliases and an omitted model", () => {
     warnOnUnknownModel(SYSTEM_MODEL);
     warnOnUnknownModel(PCC_MODEL);
+    warnOnUnknownModel("system");
+    warnOnUnknownModel("pcc");
     warnOnUnknownModel(undefined);
     expect(console.warn).not.toHaveBeenCalled();
   });

@@ -8,7 +8,7 @@ import Client, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/chat";
 
 ## Client
 
-Main client class. Provides Chat-style and Responses-style API interfaces backed by on-device Apple Intelligence, or by Private Cloud Compute when a request sets `model: "PrivateCloudComputeLanguageModel"`.
+Main client class. Provides Chat-style and Responses-style API interfaces backed by on-device Apple Intelligence, or by Private Cloud Compute when a request sets `model: "PrivateCloudComputeLanguageModel"` (or its alias `"pcc"`).
 
 ### Constructor
 
@@ -62,7 +62,7 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `input` | `string \| ResponseInputItem[]` | Yes | Text prompt or array of input items |
-| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. Other names warn and use the on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `instructions` | `string` | No | System instructions |
 | `stream` | `boolean` | No | Enable streaming |
 | `temperature` | `number` | No | Sampling temperature |
@@ -187,7 +187,7 @@ Only `json_schema` triggers constrained generation.
   id: string;                    // "resp_<uuid>"
   object: "response";
   created_at: number;            // Unix timestamp (seconds)
-  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel"
+  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel" (never an alias)
   output: ResponseOutputItem[];
   output_text: string;           // convenience: concatenated text from output messages
   status: "completed" | "failed" | "incomplete";
@@ -332,7 +332,7 @@ Request parameters for `create()`.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `messages` | `ChatCompletionMessageParam[]` | Yes | Conversation messages |
-| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. Other names warn and use the on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `stream` | `boolean` | No | Enable streaming |
 | `stream_options` | `{ include_usage?: boolean }` | No | With `include_usage`, the stream ends with a chunk that carries `usage` |
 | `reasoning_effort` | `string` | No | Maps to `reasoningLevel` for Private Cloud Compute; ignored with a warning for the on-device model |
@@ -477,7 +477,7 @@ Only `json_schema` triggers constrained generation. `text` and `json_object` are
   id: string;                    // "chatcmpl-<uuid>"
   object: "chat.completion";
   created: number;               // Unix timestamp (seconds)
-  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel"
+  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel" (never an alias)
   choices: ChatCompletionChoice[];
   usage: CompletionUsage | null; // null if generation failed
   system_fingerprint: null;
