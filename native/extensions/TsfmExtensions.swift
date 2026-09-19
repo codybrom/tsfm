@@ -57,11 +57,13 @@ public func FMLanguageModelSessionPrewarm(
 ///
 /// The session total is exactly the sum of every response's usage, so callers
 /// that run one request at a time get per-request usage by reading this before
-/// and after. Returns nil only if encoding fails; free the result with FMFreeString.
+/// and after. Returns nil before macOS 27, which has no usage API, or if
+/// encoding fails; free the result with FMFreeString.
 @_cdecl("FMLanguageModelSessionGetUsageJSON")
 public func FMLanguageModelSessionGetUsageJSON(
   session: FMLanguageModelSessionRef
 ) -> UnsafeMutablePointer<CChar>? {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
   let session = Unmanaged<LanguageModelSession>.fromOpaque(session).takeUnretainedValue()
   let usage = session.usage
   let object: [String: [String: Int]] = [
@@ -86,6 +88,7 @@ public func FMLanguageModelSessionGetUsageJSON(
 
 // MARK: - Model information
 
+@available(macOS 27, iOS 27, visionOS 27, *)
 private func capabilitiesJSON(_ capabilities: LanguageModelCapabilities) -> UnsafeMutablePointer<CChar>? {
   let known: [(String, LanguageModelCapabilities.Capability)] = [
     ("vision", .vision),
@@ -100,12 +103,14 @@ private func capabilitiesJSON(_ capabilities: LanguageModelCapabilities) -> Unsa
   return strdup(json)
 }
 
-/// The on-device model's capabilities as a JSON array of names; free with FMFreeString.
+/// The on-device model's capabilities as a JSON array of names, or nil before
+/// macOS 27; free with FMFreeString.
 @_cdecl("FMSystemLanguageModelGetCapabilitiesJSON")
 public func FMSystemLanguageModelGetCapabilitiesJSON(
   model: FMSystemLanguageModelRef
 ) -> UnsafeMutablePointer<CChar>? {
-  capabilitiesJSON(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().capabilities)
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
+  return capabilitiesJSON(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().capabilities)
 }
 
 /// Private Cloud Compute's capabilities as a JSON array of names; free with FMFreeString.
@@ -113,14 +118,17 @@ public func FMSystemLanguageModelGetCapabilitiesJSON(
 public func FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
   model: UnsafeMutableRawPointer
 ) -> UnsafeMutablePointer<CChar>? {
-  capabilitiesJSON(
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
+  return capabilitiesJSON(
     Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue().capabilities)
 }
 
-/// The on-device model's variant, e.g. "AFM 3 Core Advanced"; free with FMFreeString.
+/// The on-device model's variant, e.g. "AFM 3 Core Advanced", or nil before
+/// macOS 27; free with FMFreeString.
 @_cdecl("FMSystemLanguageModelGetVariantName")
 public func FMSystemLanguageModelGetVariantName(
   model: FMSystemLanguageModelRef
 ) -> UnsafeMutablePointer<CChar>? {
-  strdup(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().variant.displayName)
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
+  return strdup(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().variant.displayName)
 }

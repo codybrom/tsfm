@@ -9,6 +9,16 @@ import FoundationModelsCDeclarations
 import Security
 import Synchronization
 
+// tsfm: a feature this OS doesn't have. tsfm deploys to macOS 26 but builds
+// against the macOS 27 SDK, so every macOS 27 API is behind #available, and the
+// fallback throws this. It maps to StatusCode.unsupportedCapability, so the host
+// gets a typed error it can handle instead of a crash.
+struct RequiresNewerOS: LocalizedError {
+  let feature: String
+  let version: String
+  var errorDescription: String? { "\(feature) requires macOS \(version) or later." }
+}
+
 /// Builder class for a `Prompt`.
 public class ComposedPrompt: NSObject, PromptRepresentable {
   public init(components: [PromptRepresentable] = []) {
@@ -22,14 +32,16 @@ public class ComposedPrompt: NSObject, PromptRepresentable {
     self.components.append(text)
   }
 
-  // tsfm: macOS 27 is the minimum, so attachments are always available; the
-  // SDK and OS checks upstream needed for macOS 26 are gone.
-  public func add(attachmentFromPath imagePath: String, label: String?) {
+  // tsfm: attachments need macOS 27. tsfm always builds with the macOS 27 SDK,
+  // so upstream's SDK check is gone; the OS check stays.
+  public func add(attachmentFromPath imagePath: String, label: String?) -> Bool {
+    guard #available(macOS 27, iOS 27, visionOS 27, *) else { return false }
     var attachment = Attachment(imageURL: URL(fileURLWithPath: imagePath))
     if let label {
       attachment = attachment.label(label)
     }
     self.components.append(attachment)
+    return true
   }
 
   public var promptRepresentation: Prompt {
@@ -61,8 +73,10 @@ public func FMComposedPromptAddAttachment(
   let composedPrompt = Unmanaged<ComposedPrompt>.fromOpaque(composedPrompt).takeUnretainedValue()
   let imageURLToAddToPrompt = String(cString: imagePath)
   let labelString = label.map(String.init(cString:))
-  // tsfm: can't fail on macOS 27; `error` stays in the signature for ABI stability.
-  composedPrompt.add(attachmentFromPath: imageURLToAddToPrompt, label: labelString)
+  guard composedPrompt.add(attachmentFromPath: imageURLToAddToPrompt, label: labelString) else {
+    error?.pointee = FMComposedPromptAddImageErrorUnsupportedOS
+    return false
+  }
   return true
 }
 
@@ -195,6 +209,9 @@ public func FMSystemLanguageModelTokenCountForPrompt(
   let prompt = Unmanaged<ComposedPrompt>.fromOpaque(composedPrompt).takeUnretainedValue()
     .promptRepresentation
   return performTokenCount(userInfo: userInfo, callback: callback) {
+    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
+      throw RequiresNewerOS(feature: "Token counting", version: "26.4")
+    }
     return try await model.tokenCount(for: prompt)
   }
 }
@@ -210,6 +227,9 @@ public func FMSystemLanguageModelTokenCountForInstructions(
   let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let instructions = Instructions(String(cString: instructions))
   return performTokenCount(userInfo: userInfo, callback: callback) {
+    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
+      throw RequiresNewerOS(feature: "Token counting", version: "26.4")
+    }
     return try await model.tokenCount(for: instructions)
   }
 }
@@ -235,6 +255,9 @@ public func FMSystemLanguageModelTokenCountForTools(
   let toolArray = collectedTools
 
   return performTokenCount(userInfo: userInfo, callback: callback) {
+    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
+      throw RequiresNewerOS(feature: "Token counting", version: "26.4")
+    }
     return try await model.tokenCount(for: toolArray)
   }
 }
@@ -251,6 +274,9 @@ public func FMSystemLanguageModelTokenCountForSchema(
   let schemaBuilder = Unmanaged<GenerationSchemaBuilder>.fromOpaque(schema).takeUnretainedValue()
   return performTokenCount(userInfo: userInfo, callback: callback) {
     let schema = try schemaBuilder.buildSchema()
+    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
+      throw RequiresNewerOS(feature: "Token counting", version: "26.4")
+    }
     return try await model.tokenCount(for: schema)
   }
 }
@@ -268,6 +294,9 @@ public func FMSystemLanguageModelTokenCountForTranscript(
     .takeUnretainedValue()
   let transcript = session.transcript
   return performTokenCount(userInfo: userInfo, callback: callback) {
+    guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
+      throw RequiresNewerOS(feature: "Token counting", version: "26.4")
+    }
     return try await model.tokenCount(for: transcript)
   }
 }
@@ -340,17 +369,23 @@ private func bridgedToolArray(
 }
 
 @_cdecl("FMPrivateCloudComputeLanguageModelCreate")
-public func FMPrivateCloudComputeLanguageModelCreate() -> UnsafeMutableRawPointer {
-  Unmanaged.passRetained(PrivateCloudComputeLanguageModel()).toOpaque()
+public func FMPrivateCloudComputeLanguageModelCreate() -> UnsafeMutableRawPointer? {
+  // tsfm: nil before macOS 27, which has no Private Cloud Compute.
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
+  return Unmanaged.passRetained(PrivateCloudComputeLanguageModel()).toOpaque()
 }
 
 /// Availability; on false, `unavailableReason` is 1 deviceNotEligible,
-/// 2 systemNotReady, 3 entitlementMissing, or 255 unknown.
+/// 2 systemNotReady, 3 entitlementMissing, 4 requiresNewerOS, or 255 unknown.
 @_cdecl("FMPrivateCloudComputeLanguageModelIsAvailable")
 public func FMPrivateCloudComputeLanguageModelIsAvailable(
   model: UnsafeMutableRawPointer,
   unavailableReason: UnsafeMutablePointer<Int32>?
 ) -> Bool {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else {
+    unavailableReason?.pointee = 4
+    return false
+  }
   let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
   guard processHasPrivateCloudComputeEntitlement() else {
     unavailableReason?.pointee = 3
@@ -376,6 +411,7 @@ public func FMPrivateCloudComputeLanguageModelIsAvailable(
 public func FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
   model: UnsafeMutableRawPointer
 ) -> UnsafeMutablePointer<CChar>? {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
   let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let quota = model.quotaUsage
   var approaching = false
@@ -404,6 +440,11 @@ public func FMPrivateCloudComputeLanguageModelGetContextSize(
   userInfo: UnsafeMutableRawPointer?,
   callback: FMSystemLanguageModelTokenCountCallback
 ) -> FMTaskRef {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else {
+    return performTokenCount(userInfo: userInfo, callback: callback) {
+      throw RequiresNewerOS(feature: "Private Cloud Compute", version: "27")
+    }
+  }
   let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
   return performTokenCount(userInfo: userInfo, callback: callback) {
     try await model.contextSize
@@ -416,7 +457,8 @@ public func FMLanguageModelSessionCreateFromPrivateCloudComputeModel(
   instructions: UnsafePointer<CChar>?,
   tools: UnsafeMutablePointer<FMBridgedToolRef>?,
   toolCount: Int32
-) -> FMLanguageModelSessionRef {
+) -> FMLanguageModelSessionRef? {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
   let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let session = LanguageModelSession(
     model: model,
@@ -432,7 +474,8 @@ public func FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeMod
   model: UnsafeMutableRawPointer,
   tools: UnsafeMutablePointer<FMBridgedToolRef>?,
   toolCount: Int32
-) -> FMLanguageModelSessionRef {
+) -> FMLanguageModelSessionRef? {
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
   let transcript = Unmanaged<LanguageModelSession>.fromOpaque(transcriptSession)
     .takeUnretainedValue().transcript
   let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
@@ -598,6 +641,13 @@ private func frameworkStatusCode(for error: Error) -> Int32? {
   if error is GenerationSchema.SchemaError {
     return StatusCode.invalidSchema.rawValue
   }
+  // tsfm: a macOS 27 feature used on an older macOS.
+  if error is RequiresNewerOS {
+    return StatusCode.unsupportedCapability.rawValue
+  }
+  // The macOS 27 error types don't exist on older systems, where the framework
+  // only throws the legacy ones handled above.
+  guard #available(macOS 27, iOS 27, visionOS 27, *) else { return nil }
   return macOS27StatusCode(for: error)
 }
 
@@ -617,6 +667,7 @@ private func statusCode(for error: Error) -> Int32 {
   frameworkStatusCode(for: error) ?? StatusCode.unknownError.rawValue
 }
 
+@available(macOS 27, iOS 27, visionOS 27, *)
 private func macOS27StatusCode(for error: Error) -> Int32? {
   switch error {
   case let error as LanguageModelError:
@@ -753,19 +804,38 @@ private func parseGenerationOptions(from jsonString: String?) throws -> Generati
   }
 
   // tsfm: tool_calling_mode (macOS 27). Unknown values leave the default (allowed).
-  switch json["tool_calling_mode"] as? String {
-  case "allowed": options.toolCallingMode = .allowed
-  case "required": options.toolCallingMode = .required
-  case "disallowed": options.toolCallingMode = .disallowed
-  default: break
+  if #available(macOS 27, iOS 27, visionOS 27, *) {
+    switch json["tool_calling_mode"] as? String {
+    case "allowed": options.toolCallingMode = .allowed
+    case "required": options.toolCallingMode = .required
+    case "disallowed": options.toolCallingMode = .disallowed
+    default: break
+    }
   }
 
   return options
 }
 
+/// tsfm: before macOS 27, requests use the overloads without ContextOptions.
+/// Options that only exist on macOS 27 then throw instead of being dropped:
+/// "allowed" tool calling is the default anyway, but "required" or
+/// "disallowed", or a reasoning level, would change what the request does.
+private func requireNoMacOS27Options(_ jsonString: String?) throws {
+  guard let jsonString, !jsonString.isEmpty,
+    let json = try? JSONSerialization.jsonObject(with: Data(jsonString.utf8)) as? [String: Any]
+  else { return }
+  if let mode = json["tool_calling_mode"] as? String, mode != "allowed" {
+    throw RequiresNewerOS(feature: "toolCallingMode \"\(mode)\"", version: "27")
+  }
+  if json["reasoning_level"] != nil {
+    throw RequiresNewerOS(feature: "reasoningLevel", version: "27")
+  }
+}
+
 /// tsfm: ContextOptions from the same options JSON: "reasoning_level" is
 /// "light", "moderate" or "deep" (Private Cloud Compute only). Schema requests
 /// pass includeSchemaInPrompt: true, the default of the overloads they used.
+@available(macOS 27, iOS 27, visionOS 27, *)
 private func parseContextOptions(
   from jsonString: String?,
   includeSchemaInPrompt: Bool? = nil
@@ -808,19 +878,26 @@ public func FMLanguageModelSessionRespond(
       let options = try parseGenerationOptions(from: optionsJSONString)
 
       // Perform the expensive operation with options
-      let response = try await session.respond(
-        to: prompt,
-        options: options ?? GenerationOptions(),
-        contextOptions: try parseContextOptions(from: optionsJSONString)
-      )
+      let content: String
+      if #available(macOS 27, iOS 27, visionOS 27, *) {
+        content = try await session.respond(
+          to: prompt,
+          options: options ?? GenerationOptions(),
+          contextOptions: try parseContextOptions(from: optionsJSONString)
+        ).content
+      } else {
+        try requireNoMacOS27Options(optionsJSONString)
+        content = try await session.respond(to: prompt, options: options ?? GenerationOptions())
+          .content
+      }
 
       // Check cancellation before callback
       try Task.checkCancellation()
 
       callback( /*status*/
         StatusCode.success.rawValue,
-        response.content, /*length*/
-        response.content.utf8.count,
+        content, /*length*/
+        content.utf8.count,
         unsafeSendableUserInfo.pointer
       )
     } catch is CancellationError {
@@ -889,11 +966,19 @@ public func FMLanguageModelSessionStreamResponse(
 
   do {
     let options = try parseGenerationOptions(from: optionsJSONString)
-    let stream = session.streamResponse(
-      to: prompt,
-      options: options ?? GenerationOptions(),
-      contextOptions: try parseContextOptions(from: optionsJSONString)
-    )
+    let stream: LanguageModelSession.ResponseStream<String>
+    if #available(macOS 27, iOS 27, visionOS 27, *) {
+      stream = session.streamResponse(
+        to: prompt,
+        options: options ?? GenerationOptions(),
+        contextOptions: try parseContextOptions(from: optionsJSONString)
+      )
+    } else {
+      // A macOS 27-only option returns nil below; TypeScript checks for these
+      // first and throws a typed error, so this is a backstop.
+      try requireNoMacOS27Options(optionsJSONString)
+      stream = session.streamResponse(to: prompt, options: options ?? GenerationOptions())
+    }
     let box = UnsafeSendableResponseStreamBox<String>(stream: stream, session: session)
     return FMLanguageModelSessionResponseStreamRef(Unmanaged.passRetained(box).toOpaque())
   } catch {
@@ -1007,13 +1092,20 @@ public func FMLanguageModelSessionRespondWithSchema(
 
       // Use Foundation Models guided generation API
       try Task.checkCancellation()
-      let response = try await session.respond(
-        to: prompt,
-        schema: finalSchema,
-        options: options ?? GenerationOptions(),
-        contextOptions: try parseContextOptions(
-          from: optionsJSONString, includeSchemaInPrompt: true)
-      )
+      let response: LanguageModelSession.Response<GeneratedContent>
+      if #available(macOS 27, iOS 27, visionOS 27, *) {
+        response = try await session.respond(
+          to: prompt,
+          schema: finalSchema,
+          options: options ?? GenerationOptions(),
+          contextOptions: try parseContextOptions(
+            from: optionsJSONString, includeSchemaInPrompt: true)
+        )
+      } else {
+        try requireNoMacOS27Options(optionsJSONString)
+        response = try await session.respond(
+          to: prompt, schema: finalSchema, options: options ?? GenerationOptions())
+      }
 
       // Check cancellation before callback
       try Task.checkCancellation()
@@ -1084,13 +1176,20 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
       let options = try parseGenerationOptions(from: optionsJSONString)
 
       try Task.checkCancellation()
-      let response = try await session.respond(
-        to: prompt,
-        schema: schema,
-        options: options ?? GenerationOptions(),
-        contextOptions: try parseContextOptions(
-          from: optionsJSONString, includeSchemaInPrompt: true)
-      )
+      let response: LanguageModelSession.Response<GeneratedContent>
+      if #available(macOS 27, iOS 27, visionOS 27, *) {
+        response = try await session.respond(
+          to: prompt,
+          schema: schema,
+          options: options ?? GenerationOptions(),
+          contextOptions: try parseContextOptions(
+            from: optionsJSONString, includeSchemaInPrompt: true)
+        )
+      } else {
+        try requireNoMacOS27Options(optionsJSONString)
+        response = try await session.respond(
+          to: prompt, schema: schema, options: options ?? GenerationOptions())
+      }
 
       // Check cancellation before callback
       try Task.checkCancellation()
