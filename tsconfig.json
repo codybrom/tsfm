@@ -11,7 +11,8 @@
     "noEmit": true,
     "paths": {
       "tsfm-sdk": ["./src/index.ts"],
-      "tsfm-sdk/chat": ["./src/compat/index.ts"]
+      "tsfm-sdk/chat": ["./src/compat/index.ts"],
+      "tsfm-sdk/openai": ["./src/compat/index.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*", "examples/**/*", "scripts/**/*"],
