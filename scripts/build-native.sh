@@ -2,7 +2,7 @@
 # Builds the Foundation Models C dylib from tsfm's Swift-to-C bridge in
 # native/bridge (a fork of Apple's foundation-models-c, see
 # native/bridge/UPSTREAM.md), plus native/extensions.
-# Requires: Xcode 27+ (macOS 27 SDK, Swift 6.4). The dylib runs on macOS 27+.
+# Requires: Xcode 27+ (macOS 27 SDK, Swift 6.4). The dylib runs on macOS 26+.
 #
 # Usage:
 #   bash scripts/build-native.sh [/path/to/bridge]
@@ -31,8 +31,8 @@ log "=== tsfm native build ==="
 log "Log: $LOG_FILE"
 > "$LOG_FILE"  # truncate
 
-# The bridge targets macOS 27 (Package.swift) and uses macOS 27 APIs directly,
-# so it needs the macOS 27 SDK. Checked below, after the skip shortcut.
+# The bridge deploys to macOS 26 (Package.swift) and uses macOS 27 APIs behind
+# #available, so it needs the macOS 27 SDK. Checked below, after the skip shortcut.
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
 SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
 
@@ -83,7 +83,7 @@ if [[ "$(uname)" != "Darwin" ]]; then
   exit 1
 fi
 
-# Building only needs the macOS 27 SDK (checked below); running needs macOS 27.
+# Building needs the macOS 27 SDK (checked below); the dylib runs on macOS 26 and 27.
 log "Build host: macOS $(sw_vers -productVersion)"
 
 if ! command -v swift &>/dev/null; then

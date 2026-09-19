@@ -10,7 +10,7 @@ import PackageDescription
 
 let package = Package(
   name: "foundation-models-c-bindings",
-  platforms: [.macOS(.v27), .iOS(.v27), .visionOS(.v27)],
+  platforms: [.macOS(.v26), .iOS(.v26), .visionOS(.v26)],
   products: [
     .library(name: "FoundationModels", type: .dynamic, targets: ["FoundationModelsCBindings"]),
     .library(name: "FoundationModelsStatic", type: .static, targets: ["FoundationModelsCBindings"]),
