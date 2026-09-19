@@ -253,10 +253,18 @@ static napi_value make_handle(napi_env env, Kind kind, const void *ptr) {
   h->kind = kind;
   h->ptr = ptr;
   napi_value v;
-  if (napi_create_external(env, h, handle_finalize, NULL, &v) != napi_ok ||
-      napi_type_tag_object(env, v, &HANDLE_TAG) != napi_ok) {
+  if (napi_create_external(env, h, handle_finalize, NULL, &v) != napi_ok) {
     if (ptr) FMRelease(ptr);
     free(h);
+    throw_last_error(env, "creating a handle");
+    return NULL;
+  }
+  if (napi_type_tag_object(env, v, &HANDLE_TAG) != napi_ok) {
+    // The external exists and its finalizer will free `h`, so only release
+    // the object here and leave the handle released.
+    if (ptr) FMRelease(ptr);
+    h->ptr = NULL;
+    h->released = true;
     throw_last_error(env, "creating a handle");
     return NULL;
   }
@@ -316,7 +324,8 @@ static napi_value make_result(napi_env env, napi_value value, int status, char *
   return obj;
 }
 
-/// Copies an array of Tool handles into a C array of bridge pointers.
+/// Copies an array of Tool handles into a C array of bridge pointers. Callers
+/// read it before any other handle argument: it can run JavaScript.
 static bool get_tools(napi_env env, napi_value v, FMBridgedToolRef **out, int *count) {
   *out = NULL;
   *count = 0;
@@ -331,20 +340,33 @@ static bool get_tools(napi_env env, napi_value v, FMBridgedToolRef **out, int *c
   napi_get_array_length(env, v, &length);
   if (length == 0) return true;
   FMBridgedToolRef *tools = calloc(length, sizeof(FMBridgedToolRef));
-  if (!tools) {
+  napi_value *items = calloc(length, sizeof(napi_value));
+  if (!tools || !items) {
+    free(tools);
+    free(items);
     napi_throw_error(env, NULL, "tsfm: out of memory");
     return false;
   }
+  // Reading an element can run JavaScript (an accessor can dispose a tool), so
+  // read them all before checking any handle; checks run no JavaScript.
   for (uint32_t i = 0; i < length; i++) {
-    napi_value item;
-    Handle *h;
-    if (napi_get_element(env, v, i, &item) != napi_ok ||
-        !get_handle(env, item, K_TOOL, false, &h)) {
+    if (napi_get_element(env, v, i, &items[i]) != napi_ok) {
       free(tools);
+      free(items);
+      throw_last_error(env, "reading the tools");
+      return false;
+    }
+  }
+  for (uint32_t i = 0; i < length; i++) {
+    Handle *h;
+    if (!get_handle(env, items[i], K_TOOL, false, &h)) {
+      free(tools);
+      free(items);
       return false;
     }
     tools[i] = h->ptr;
   }
+  free(items);
   *out = tools;
   *count = (int)length;
   return true;
@@ -356,7 +378,20 @@ static bool get_tools(napi_env env, napi_value v, FMBridgedToolRef **out, int *c
 // JavaScript while native threads are mid-callback.
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
-static bool g_shutdown = false;
+
+// Each env (the main thread and every worker) has its own lists and shutdown
+// flag, so one worker exiting doesn't cut off the others. Guarded by g_lock.
+typedef struct EnvState {
+  bool shutdown;
+  struct Request *requests;
+  struct ToolBox *tools;
+} EnvState;
+
+static EnvState *env_state(napi_env env) {
+  EnvState *state = NULL;
+  napi_get_instance_data(env, (void **)&state);
+  return state;
+}
 
 // ---------------------------------------------------------------------------
 // Requests: respond, structured respond, stream, token counts, context size.
@@ -374,30 +409,12 @@ typedef struct Request {
   FMLanguageModelSessionResponseStreamRef stream;  // R_STREAM
   bool stream_released;           // guarded by g_lock
   const void *retained;           // an object kept alive for the request (session/model)
-  struct Request *prev, *next;    // live list, guarded by g_lock
+  struct Message *spare;          // the final message, if allocating one fails then
+  EnvState *state;                // guarded by g_lock; NULL once off the env's list
+  struct Request *prev, *next;    // the env's live list, guarded by g_lock
 } Request;
 
-static Request *g_requests = NULL;
-
-static void request_list_add(Request *r) {
-  r->prev = NULL;
-  r->next = g_requests;
-  if (g_requests) g_requests->prev = r;
-  g_requests = r;
-}
-
-static void request_list_remove(Request *r) {
-  if (r->prev) r->prev->next = r->next;
-  else if (g_requests == r) g_requests = r->next;
-  if (r->next) r->next->prev = r->prev;
-  r->prev = r->next = NULL;
-}
-
-static void request_unref(Request *r) {
-  if (atomic_fetch_sub(&r->refs, 1) == 1) free(r);
-}
-
-typedef struct {
+typedef struct Message {
   int status;
   char *text;            // R_TEXT / R_STREAM content, or an error message
   const void *content;   // R_STRUCTURED success: a retained GeneratedContent
@@ -409,6 +426,45 @@ static void message_free(Message *m) {
   free(m->text);
   if (m->content) FMRelease(m->content);
   free(m);
+}
+
+/// A message for a request's native callback. If allocating fails, a final
+/// message comes from the spare, so the request still ends; a non-final one
+/// is NULL and dropped.
+static Message *message_new(Request *r, bool final) {
+  Message *m = calloc(1, sizeof(Message));
+  if (!m && final) {
+    m = r->spare;
+    r->spare = NULL;
+  }
+  return m;
+}
+
+/// Lock held.
+static void request_list_add(EnvState *state, Request *r) {
+  r->state = state;
+  r->prev = NULL;
+  r->next = state->requests;
+  if (state->requests) state->requests->prev = r;
+  state->requests = r;
+}
+
+/// Lock held.
+static void request_list_remove(Request *r) {
+  if (r->state) {
+    if (r->prev) r->prev->next = r->next;
+    else if (r->state->requests == r) r->state->requests = r->next;
+    if (r->next) r->next->prev = r->prev;
+  }
+  r->state = NULL;
+  r->prev = r->next = NULL;
+}
+
+static void request_unref(Request *r) {
+  if (atomic_fetch_sub(&r->refs, 1) == 1) {
+    message_free(r->spare);
+    free(r);
+  }
 }
 
 /// Releases the stream box once; its deinit cancels the Swift task, which then
@@ -456,17 +512,28 @@ static void request_deliver(Request *r, Message *m, bool final) {
 static void on_response(int status, const char *content, size_t length, void *user_info) {
   Request *r = user_info;
   bool final = r->kind == R_STREAM ? (status != STATUS_OK || content == NULL) : true;
-  Message *m = calloc(1, sizeof(Message));
+  Message *m = message_new(r, final);
   if (m) {
     m->status = status;
-    if (content) m->text = strndup(content, length);
+    if (content) {
+      m->text = strndup(content, length);
+      if (!m->text) {
+        if (!final) {
+          // A stream chunk with no text would read as the end; skip it.
+          message_free(m);
+          m = NULL;
+        } else if (status == STATUS_OK) {
+          m->status = STATUS_UNKNOWN;
+        }
+      }
+    }
   }
   request_deliver(r, m, final);
 }
 
 static void on_structured(int status, FMGeneratedContentRef content, void *user_info) {
   Request *r = user_info;
-  Message *m = calloc(1, sizeof(Message));
+  Message *m = message_new(r, true);
   if (m) {
     m->status = status;
     if (status == STATUS_OK) {
@@ -487,7 +554,7 @@ static void on_structured(int status, FMGeneratedContentRef content, void *user_
 
 static void on_count(int status, int count, const char *description, void *user_info) {
   Request *r = user_info;
-  Message *m = calloc(1, sizeof(Message));
+  Message *m = message_new(r, true);
   if (m) {
     m->status = status;
     m->count = count;
@@ -582,8 +649,15 @@ static Request *request_start(napi_env env, RequestKind kind, napi_value js_call
   }
   atomic_init(&r->refs, 2);  // native side + threadsafe function
   r->kind = kind;
+  r->spare = calloc(1, sizeof(Message));
+  if (!r->spare) {
+    free(r);
+    napi_throw_error(env, NULL, "tsfm: out of memory");
+    return NULL;
+  }
   if (kind != R_STREAM) {
     if (napi_create_promise(env, &r->deferred, promise) != napi_ok) {
+      free(r->spare);
       free(r);
       throw_last_error(env, "creating a promise");
       return NULL;
@@ -595,6 +669,7 @@ static Request *request_start(napi_env env, RequestKind kind, napi_value js_call
                                       r, request_tsfn_finalize, r, request_call_js,
                                       &r->tsfn) != napi_ok) {
     // The promise, if any, is never settled; the caller gets the thrown error.
+    free(r->spare);
     free(r);
     throw_last_error(env, "creating a threadsafe function");
     return NULL;
@@ -605,12 +680,13 @@ static Request *request_start(napi_env env, RequestKind kind, napi_value js_call
     FMRetain(retained);
     r->retained = retained;
   }
+  EnvState *state = env_state(env);
   pthread_mutex_lock(&g_lock);
-  if (g_shutdown) {
+  if (!state || state->shutdown) {
     napi_release_threadsafe_function(r->tsfn, napi_tsfn_abort);
     r->tsfn = NULL;
   } else {
-    request_list_add(r);
+    request_list_add(state, r);
   }
   pthread_mutex_unlock(&g_lock);
   return r;
@@ -668,15 +744,27 @@ typedef struct ToolBox {
   bool closed;                    // guarded by g_lock: the JS handle was released
   FMBridgedToolRef tool;          // guarded by g_lock
   PendingCall *pending;           // guarded by g_lock: calls sent to JS, not yet answered
-  struct ToolBox *prev, *next;    // live list, guarded by g_lock
+  EnvState *state;                // guarded by g_lock; NULL once off the env's list
+  struct ToolBox *prev, *next;    // the env's live list, guarded by g_lock
 } ToolBox;
 
-static ToolBox *g_tools = NULL;
+/// Lock held.
+static void tool_list_add(EnvState *state, ToolBox *b) {
+  b->state = state;
+  b->prev = NULL;
+  b->next = state->tools;
+  if (state->tools) state->tools->prev = b;
+  state->tools = b;
+}
 
+/// Lock held.
 static void tool_list_remove(ToolBox *b) {
-  if (b->prev) b->prev->next = b->next;
-  else if (g_tools == b) g_tools = b->next;
-  if (b->next) b->next->prev = b->prev;
+  if (b->state) {
+    if (b->prev) b->prev->next = b->next;
+    else if (b->state->tools == b) b->state->tools = b->next;
+    if (b->next) b->next->prev = b->prev;
+  }
+  b->state = NULL;
   b->prev = b->next = NULL;
 }
 
@@ -689,6 +777,14 @@ static void tool_unref(ToolBox *b) {
     p = next;
   }
   free(b);
+}
+
+/// Whether `id` is a pending call. Lock held.
+static bool is_pending(ToolBox *b, unsigned int id) {
+  for (PendingCall *p = b->pending; p; p = p->next) {
+    if (p->id == id) return true;
+  }
+  return false;
 }
 
 /// Removes `id` from the pending calls; whether it was there. Lock held.
@@ -726,9 +822,15 @@ static void on_tool_call(FMGeneratedContentRef content, unsigned int id, void *u
       b->pending = p;
       m->content = content;
       m->id = id;
+      // The queued message holds a reference: tool_call_js can run after the
+      // threadsafe function's finalizer dropped its own (at env teardown).
+      atomic_fetch_add(&b->refs, 1);
       if (napi_call_threadsafe_function(b->tsfn, m, napi_tsfn_nonblocking) == napi_ok) {
         sent = true;
       } else {
+        // Swift's reference is held while it's inside this call, so this
+        // can't be the last one.
+        atomic_fetch_sub(&b->refs, 1);
         take_pending(b, id);
         free(m);
       }
@@ -758,6 +860,17 @@ static void tool_call_js(napi_env env, napi_value js_callback, void *context, vo
     if (was_pending) FMBridgedToolFailCall(tool, m->id, STATUS_UNKNOWN, TOOL_GONE);
     FMRelease(m->content);
     free(m);
+    tool_unref(b);  // the message's reference
+    return;
+  }
+  // Released (and its calls failed) while this was queued: nothing to answer.
+  pthread_mutex_lock(&g_lock);
+  bool live = !b->closed && is_pending(b, m->id);
+  pthread_mutex_unlock(&g_lock);
+  if (!live) {
+    FMRelease(m->content);
+    free(m);
+    tool_unref(b);
     return;
   }
   napi_value content = make_handle(env, K_CONTENT, m->content);
@@ -771,6 +884,7 @@ static void tool_call_js(napi_env env, napi_value js_callback, void *context, vo
   napi_value argv[2] = {content, id};
   call_js_ignoring_exceptions(env, js_callback, 2, argv);
   free(m);
+  tool_unref(b);  // the message's reference
 }
 
 static void tool_env_teardown(void *arg) {
@@ -916,15 +1030,17 @@ static napi_value PrivateCloudComputeLanguageModelGetQuotaUsageJSON(napi_env env
 
 static napi_value SessionCreate(napi_env env, napi_callback_info info, bool pcc) {
   ARGS(3);
-  PTR(argv[0], pcc ? K_PCC : K_MODEL, !pcc, model);
-  char *instructions;
-  if (!get_string(env, argv[1], "instructions", true, &instructions)) return NULL;
   FMBridgedToolRef *tools;
   int count;
-  if (!get_tools(env, argv[2], &tools, &count)) {
-    free(instructions);
+  if (!get_tools(env, argv[2], &tools, &count)) return NULL;
+  Handle *model_handle;
+  char *instructions;
+  if (!get_handle(env, argv[0], pcc ? K_PCC : K_MODEL, !pcc, &model_handle) ||
+      !get_string(env, argv[1], "instructions", true, &instructions)) {
+    free(tools);
     return NULL;
   }
+  const void *model = model_handle ? model_handle->ptr : NULL;
   const void *session =
       pcc ? FMLanguageModelSessionCreateFromPrivateCloudComputeModel((void *)model, instructions,
                                                                      tools, count)
@@ -946,11 +1062,17 @@ static napi_value LanguageModelSessionCreateFromPrivateCloudComputeModel(napi_en
 
 static napi_value SessionCreateFromTranscript(napi_env env, napi_callback_info info, bool pcc) {
   ARGS(3);
-  PTR(argv[0], K_SESSION, false, transcript);
-  PTR(argv[1], pcc ? K_PCC : K_MODEL, !pcc, model);
   FMBridgedToolRef *tools;
   int count;
   if (!get_tools(env, argv[2], &tools, &count)) return NULL;
+  Handle *transcript_handle, *model_handle;
+  if (!get_handle(env, argv[0], K_SESSION, false, &transcript_handle) ||
+      !get_handle(env, argv[1], pcc ? K_PCC : K_MODEL, !pcc, &model_handle)) {
+    free(tools);
+    return NULL;
+  }
+  const void *transcript = transcript_handle->ptr;
+  const void *model = model_handle ? model_handle->ptr : NULL;
   const void *session =
       pcc ? FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
                 transcript, (void *)model, tools, count)
@@ -1129,7 +1251,6 @@ static napi_value GenerationSchemaGetJSONString(napi_env env, napi_callback_info
 
 static napi_value PropertyAddAnyOfGuide(napi_env env, napi_callback_info info) {
   ARGS(3);
-  PTR(argv[0], K_PROPERTY, false, property);
   bool wrapped;
   if (!get_bool(env, argv[2], "wrapped", &wrapped)) return NULL;
   bool is_array = false;
@@ -1145,13 +1266,18 @@ static napi_value PropertyAddAnyOfGuide(napi_env env, napi_callback_info info) {
     napi_throw_error(env, NULL, "tsfm: out of memory");
     return NULL;
   }
+  // Reading an element can run JavaScript (an accessor can dispose the
+  // property), so read the choices before checking the property's handle.
   bool ok = true;
   for (uint32_t i = 0; i < length && ok; i++) {
     napi_value item;
     ok = napi_get_element(env, argv[1], i, &item) == napi_ok &&
          get_string(env, item, "anyOf", false, &choices[i]);
   }
+  Handle *property_handle = NULL;
+  ok = ok && get_handle(env, argv[0], K_PROPERTY, false, &property_handle);
   if (ok) {
+    const void *property = property_handle->ptr;
     FMGenerationSchemaPropertyAddAnyOfGuide(property, (const char **)choices, (int)length, wrapped);
   }
   for (uint32_t i = 0; i < length; i++) free(choices[i]);
@@ -1378,8 +1504,9 @@ static napi_value LanguageModelSessionStreamResponse(napi_env env, napi_callback
   r->stream = stream;
   napi_value handle = request_handle(env, r);
   if (!handle) {
-    // No handle to cancel with; release the stream so the task ends.
-    release_stream_once(r);
+    // Never iterated, so no final call will come: end the request here, which
+    // releases the stream, the function and the native side's reference.
+    request_deliver(r, NULL, true);
     return NULL;
   }
   FMLanguageModelSessionResponseStreamIterate(stream, r, on_response);
@@ -1476,10 +1603,15 @@ static napi_value SystemLanguageModelTokenCountForInstructions(napi_env env,
 
 static napi_value SystemLanguageModelTokenCountForTools(napi_env env, napi_callback_info info) {
   ARGS(2);
-  PTR(argv[0], K_MODEL, false, model);
-  CountArgs args = {.model = model};
+  CountArgs args = {0};
   if (!get_tools(env, argv[1], &args.tools, &args.count)) return NULL;
-  napi_value result = start_count(env, model, count_tools, &args);
+  Handle *model;
+  if (!get_handle(env, argv[0], K_MODEL, false, &model)) {
+    free(args.tools);
+    return NULL;
+  }
+  args.model = model->ptr;
+  napi_value result = start_count(env, args.model, count_tools, &args);
   free(args.tools);
   return result;
 }
@@ -1576,16 +1708,14 @@ static napi_value BridgedToolCreate(napi_env env, napi_callback_info info) {
     return make_result(env, js_null(env), status, error_description);
   }
 
+  EnvState *state = env_state(env);
   pthread_mutex_lock(&g_lock);
   b->tool = tool;
-  if (g_shutdown) {
+  if (!state || state->shutdown) {
     if (b->tsfn) napi_release_threadsafe_function(b->tsfn, napi_tsfn_abort);
     b->tsfn = NULL;
   } else {
-    b->prev = NULL;
-    b->next = g_tools;
-    if (g_tools) g_tools->prev = b;
-    g_tools = b;
+    tool_list_add(state, b);
   }
   pthread_mutex_unlock(&g_lock);
 
@@ -1659,22 +1789,38 @@ static napi_value Release(napi_env env, napi_callback_info info) {
 /// hooks. Cuts every request and tool off from JavaScript; native callbacks
 /// after this are absorbed (tool calls fail).
 static napi_value Shutdown(napi_env env, napi_callback_info info) {
-  (void)env;
   (void)info;
+  EnvState *state = env_state(env);
+  if (!state) return js_undefined(env);
   pthread_mutex_lock(&g_lock);
-  g_shutdown = true;
-  for (Request *r = g_requests; r; r = r->next) {
+  state->shutdown = true;
+  while (state->requests) {
+    Request *r = state->requests;
     if (r->tsfn) napi_release_threadsafe_function(r->tsfn, napi_tsfn_abort);
     r->tsfn = NULL;
+    request_list_remove(r);
   }
-  g_requests = NULL;
-  for (ToolBox *b = g_tools; b; b = b->next) {
+  while (state->tools) {
+    ToolBox *b = state->tools;
     if (b->tsfn) napi_release_threadsafe_function(b->tsfn, napi_tsfn_abort);
     b->tsfn = NULL;
+    tool_list_remove(b);
   }
-  g_tools = NULL;
   pthread_mutex_unlock(&g_lock);
   return js_undefined(env);
+}
+
+/// The env is gone: detach anything still listed, so no later list update
+/// reaches the freed state.
+static void env_state_finalize(napi_env env, void *data, void *hint) {
+  (void)env;
+  (void)hint;
+  EnvState *state = data;
+  pthread_mutex_lock(&g_lock);
+  while (state->requests) request_list_remove(state->requests);
+  while (state->tools) tool_list_remove(state->tools);
+  pthread_mutex_unlock(&g_lock);
+  free(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -1683,6 +1829,14 @@ static napi_value Shutdown(napi_env env, napi_callback_info info) {
 #define EXPORT(name) {"FM" #name, NULL, name, NULL, NULL, NULL, napi_default_jsproperty, NULL}
 
 NAPI_MODULE_INIT(/* napi_env env, napi_value exports */) {
+  if (!env_state(env)) {
+    EnvState *state = calloc(1, sizeof(EnvState));
+    if (!state || napi_set_instance_data(env, state, env_state_finalize, NULL) != napi_ok) {
+      free(state);
+      napi_throw_error(env, NULL, "tsfm: couldn't set up the addon");
+      return NULL;
+    }
+  }
   napi_property_descriptor props[] = {
       EXPORT(SystemLanguageModelCreate),
       EXPORT(SystemLanguageModelIsAvailable),
