@@ -21,6 +21,7 @@ FoundationModelsError
 │   ├── TimeoutError
 │   ├── UnsupportedCapabilityError
 │   ├── UnsupportedTranscriptContentError
+│   ├── ToolCallLimitExceededError
 │   └── ServiceCrashedError
 ├── PromptAttachmentError
 └── ToolCallError
@@ -44,6 +45,7 @@ FoundationModelsError
 | `TimeoutError` | 12 | The model didn't finish in time¹ |
 | `UnsupportedCapabilityError` | 13 | The request needs a capability the model doesn't have¹ |
 | `UnsupportedTranscriptContentError` | 14 | The transcript has content the model can't accept¹ |
+| `ToolCallLimitExceededError` | 15 | A request reached `maximumToolCalls`; the extra call wasn't run |
 | `ServiceCrashedError` | 255 | The Apple Intelligence service crashed; the message says how to restart it |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw |
@@ -72,6 +74,7 @@ enum GenerationErrorCode {
   TIMEOUT = 12,
   UNSUPPORTED_CAPABILITY = 13,
   UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
+  TOOL_CALL_LIMIT_EXCEEDED = 15,
   UNKNOWN_ERROR = 255,
 }
 ```

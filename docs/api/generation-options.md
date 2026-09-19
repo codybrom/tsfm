@@ -9,6 +9,8 @@ interface GenerationOptions {
   temperature?: number;
   maximumResponseTokens?: number;
   sampling?: SamplingMode;
+  toolCallingMode?: "allowed" | "required" | "disallowed";
+  maximumToolCalls?: number;
 }
 ```
 
@@ -17,6 +19,8 @@ interface GenerationOptions {
 | `temperature` | `number` | Controls randomness. Higher = more varied. Must be ≥ 0. |
 | `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
+| `toolCallingMode` | `string` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). |
+| `maximumToolCalls` | `number` | Most tool calls one request may make. Default `32`. The request fails with `ToolCallLimitExceededError` instead of making another. Must be a non-negative integer. |
 
 Invalid values throw immediately when the options are serialized (before the native call).
 

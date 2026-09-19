@@ -64,13 +64,26 @@ Every response carries `usage`, and `session.usage` totals the whole session. Se
 The Chat and Responses compatibility APIs now fill in OpenAI's `usage` fields for
 non-streaming requests instead of returning `null`.
 
+## Tool calls are limited per request
+
+A request may now make at most 32 tool calls (`maximumToolCalls`), and fails with
+`ToolCallLimitExceededError` instead of making another. Raise the limit if a
+request legitimately needs more:
+
+```ts
+await session.respond(prompt, { options: { maximumToolCalls: 100 } });
+```
+
+`toolCallingMode` is new: `"allowed"` (the default, same as 0.x), `"required"` or
+`"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes).
+
 ## Errors
 
 - `GenerationErrorCode` is a regular `enum` now, not a `const enum`. Comparisons
   against its members keep working. It now exists at runtime, and its numbers
   are no longer inlined into your build.
 - New error classes, all subclasses of `GenerationError`: `InvalidArgumentError`,
-  `TimeoutError`, `UnsupportedCapabilityError` and
-  `UnsupportedTranscriptContentError`. See [Errors](/api/errors).
+  `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`
+  and `ToolCallLimitExceededError`. See [Errors](/api/errors).
 - `PromptAttachmentError` no longer reports `unsupported-os` or `unsupported-sdk`,
   because attachments always work on macOS 27.

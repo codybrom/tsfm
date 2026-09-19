@@ -56,6 +56,47 @@ const { content: reply } = await session.respond("What's the weather in Tokyo?")
 // The model calls get_weather, receives the result, and formulates a response
 ```
 
+## Tool Calling Modes
+
+`toolCallingMode` controls how the model may use the session's tools for one
+request:
+
+| Mode | Behavior |
+| --- | --- |
+| `"allowed"` | The default. The model decides whether to call tools. |
+| `"required"` | The model must call a tool before answering. |
+| `"disallowed"` | The model answers without calling any tool. |
+
+```ts
+// Skip tools when the answer is already in the conversation
+await session.respond("Summarize what you found", {
+  options: { toolCallingMode: "disallowed" },
+});
+```
+
+With `"required"`, the model keeps calling tools; it doesn't stop by itself. The
+request ends with `ToolCallLimitExceededError` when it reaches `maximumToolCalls`,
+so set a small limit and catch the error:
+
+```ts
+try {
+  await session.respond("What's the weather in Paris?", {
+    options: { toolCallingMode: "required", maximumToolCalls: 3 },
+  });
+} catch (err) {
+  if (err instanceof ToolCallLimitExceededError) {
+    // The tool ran 3 times; ask again with toolCallingMode "allowed" to get an answer.
+  }
+}
+```
+
+## Tool Call Limit
+
+Every request may make at most `maximumToolCalls` tool calls (default `32`). The
+call past the limit isn't run, and the request fails with
+`ToolCallLimitExceededError`. The session keeps working, and each request gets a
+fresh limit.
+
 ## Error Handling
 
 If `call()` throws, it's wrapped in a `ToolCallError`:
