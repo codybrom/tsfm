@@ -4,7 +4,7 @@ Usage examples for the [tsfm](https://www.npmjs.com/package/tsfm-sdk) package.
 
 ## Prerequisites
 
-- macOS 26+ (Tahoe) on Apple Silicon
+- macOS 27+ on Apple Silicon
 - Apple Intelligence enabled
 - Node.js 24+
 

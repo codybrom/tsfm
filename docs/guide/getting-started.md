@@ -2,13 +2,13 @@
 
 TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a pre-compiled dynamic library [via FFI](https://koffi.dev/), allowing it the same access as native Swift and ObjC applications.
 
-TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
+TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 27+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
 ## Requirements
 
-- **macOS 26** (Tahoe) or later, Apple Silicon
+- **macOS 27** or later, Apple Silicon (for macOS 26, use `tsfm-sdk@0.x`)
 - **Apple Intelligence** enabled in System Settings
 - **Node.js 24+**
 
@@ -18,7 +18,7 @@ You might use TSFM for CLI tools, local dev tooling, Electron apps, automation s
 npm install tsfm-sdk
 ```
 
-Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 26.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
+Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 27.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
 
 npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
 
@@ -74,4 +74,4 @@ cd tsfm
 npm run build
 ```
 
-Rebuilding from source requires **Xcode 26.4+** to compile the libFoundationModels.dylib Swift bridge. The 26.4 SDK is the first that declares `SystemLanguageModel.contextSize`, which the bridge reads.
+Rebuilding from source requires **Xcode 27** (the macOS 27 SDK and Swift 6.4) to compile the libFoundationModels.dylib Swift bridge in `native/bridge`.

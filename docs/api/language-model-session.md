@@ -46,23 +46,9 @@ await session.respond({
 });
 ```
 
-Attachments require **macOS 27** at runtime. The bundled library is built
-against the macOS 27 SDK and still loads on macOS 26, where each attachment is
-rejected with a `PromptAttachmentError`:
-
-```ts
-try {
-  await session.respond({ text: "…", attachments: [{ path: "/tmp/a.png" }] });
-} catch (err) {
-  if (err instanceof PromptAttachmentError) {
-    err.reason; // "unsupported-sdk" | "unsupported-os" | "unknown"
-  }
-}
-```
-
-If you build the library from source, use Xcode 27 or later. An older Xcode
-builds a library without attachment support, and every attachment is rejected
-with `unsupported-sdk`. Plain string prompts are unaffected.
+Attachments are always available on macOS 27, which tsfm 1.x requires. If the
+bridge refuses one anyway, `respond()` throws a `PromptAttachmentError` with
+`reason: "unknown"`.
 
 ### `respondWithSchema()`
 

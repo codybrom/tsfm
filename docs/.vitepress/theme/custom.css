@@ -213,7 +213,7 @@ body {
 }
 
 .VPHero .main::after {
-  content: "Requires macOS 26+ on Apple Silicon with Apple Intelligence enabled.";
+  content: "Requires macOS 27+ on Apple Silicon with Apple Intelligence enabled.";
   display: block;
   margin-top: 1.25rem;
   font-size: 0.8125rem;

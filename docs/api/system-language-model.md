@@ -79,10 +79,10 @@ The maximum number of tokens the model's context window can hold. All input — 
 readonly contextSize: number
 ```
 
-### `tokenCount()` <Badge type="info" text="macOS 26.4+" />
+### `tokenCount()`
 
 Counts the tokens an input consumes against the [context window](#contextsize).
-Asynchronous, and requires a macOS 26.4+ runtime.
+Asynchronous.
 
 ```ts
 tokenCount(input: TokenCountInput): Promise<number>
