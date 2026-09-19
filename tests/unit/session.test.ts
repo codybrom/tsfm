@@ -260,6 +260,16 @@ describe("LanguageModelSession", () => {
   });
 
   describe("respond", () => {
+    it("releases the request handle once the response settles", async () => {
+      mockFns.FMLanguageModelSessionRespond.mockReturnValueOnce([
+        Promise.resolve({ status: 0, text: "hi" }),
+        "settled-request",
+      ] as never);
+      const session = new LanguageModelSession();
+      await session.respond("Hi");
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("settled-request");
+    });
+
     it("resolves with response text on success", async () => {
       mockFns.FMLanguageModelSessionRespond.mockImplementation(
         textRequest(() => {

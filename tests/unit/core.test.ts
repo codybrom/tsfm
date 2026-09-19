@@ -225,12 +225,35 @@ describe("SystemLanguageModel.tokenCount", () => {
 
   it("passes the tools' handles", async () => {
     mockFns.FMSystemLanguageModelTokenCountForTools.mockReturnValueOnce(counts(9));
-    const tool = { _nativeTool: "mock-tool-pointer" } as never;
+    const tool = { name: "t", _nativeTool: "mock-tool-pointer", _register: vi.fn() } as never;
     await new SystemLanguageModel().tokenCount({ tools: [tool] });
     expect(mockFns.FMSystemLanguageModelTokenCountForTools).toHaveBeenCalledWith(
       "mock-model-pointer",
       ["mock-tool-pointer"],
     );
+  });
+
+  it("registers tools before counting them, as a session does", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForTools.mockReturnValueOnce(counts(4));
+    const tool = {
+      name: "t",
+      _nativeTool: null as string | null,
+      _register: vi.fn(function (this: { _nativeTool: string | null }) {
+        this._nativeTool = "registered-tool";
+      }),
+    };
+    await new SystemLanguageModel().tokenCount({ tools: [tool as never] });
+    expect(tool._register).toHaveBeenCalled();
+    expect(mockFns.FMSystemLanguageModelTokenCountForTools).toHaveBeenCalledWith(
+      "mock-model-pointer",
+      ["registered-tool"],
+    );
+  });
+
+  it("releases the request handle once the count arrives", async () => {
+    mockFns.FMSystemLanguageModelTokenCountForInstructions.mockReturnValueOnce(counts(1));
+    await new SystemLanguageModel().tokenCount({ instructions: "x" });
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-request");
   });
 
   it("builds and releases a composed prompt for a text prompt", async () => {

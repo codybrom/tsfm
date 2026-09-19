@@ -149,11 +149,14 @@ export class PrivateCloudComputeLanguageModel {
     } catch (err) {
       return Promise.reject(err);
     }
-    const [result] = getFunctions().FMPrivateCloudComputeLanguageModelGetContextSize(model);
-    return result.then(({ status, count, message }) => {
-      if (status !== 0) throw statusToError(status, message ?? undefined);
-      return count;
-    });
+    const fn = getFunctions();
+    const [result, request] = fn.FMPrivateCloudComputeLanguageModelGetContextSize(model);
+    return result
+      .then(({ status, count, message }) => {
+        if (status !== 0) throw statusToError(status, message ?? undefined);
+        return count;
+      })
+      .finally(() => fn.FMRelease(request));
   }
 
   dispose(): void {

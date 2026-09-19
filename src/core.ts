@@ -183,9 +183,15 @@ export class SystemLanguageModel {
       } else if ("instructions" in input) {
         started = fn.FMSystemLanguageModelTokenCountForInstructions(model, input.instructions);
       } else if ("tools" in input) {
+        // Registered like a session's tools, so every tool is counted.
         started = fn.FMSystemLanguageModelTokenCountForTools(
           model,
-          input.tools.map((t) => t._nativeTool).filter((t): t is NativePointer => t !== null),
+          input.tools.map((t) => {
+            t._register();
+            if (!t._nativeTool)
+              throw new FoundationModelsError(`Tool '${t.name}' has no native tool`);
+            return t._nativeTool;
+          }),
         );
       } else if ("schema" in input) {
         started = fn.FMSystemLanguageModelTokenCountForSchema(model, input.schema._nativeSchema);
@@ -195,9 +201,13 @@ export class SystemLanguageModel {
           input.transcript._nativeSession,
         );
       }
-      const { status, count, message } = await started[0];
-      if (status !== 0) throw statusToError(status, message ?? undefined);
-      return count;
+      try {
+        const { status, count, message } = await started[0];
+        if (status !== 0) throw statusToError(status, message ?? undefined);
+        return count;
+      } finally {
+        fn.FMRelease(started[1]);
+      }
     } finally {
       if (composed) fn.FMRelease(composed);
     }
