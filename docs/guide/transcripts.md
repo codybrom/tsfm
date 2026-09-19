@@ -38,7 +38,7 @@ for (const entry of entries) {
 }
 ```
 
-Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, or `"tool"`) and role-specific fields:
+Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, `"tool"`, or `"reasoning"`) and role-specific fields:
 
 | Field | Roles | Description |
 | --- | --- | --- |
@@ -46,10 +46,13 @@ Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, or `"tool"`) 
 | `tools` | `instructions` | Tool definitions registered with the session. |
 | `options` | `user` | Generation options for this prompt. |
 | `responseFormat` | `user` | Schema constraint for structured output. |
+| `contextOptions` | `user` | Context options the request used, e.g. `{ reasoningLevel: "deep" }`. |
 | `toolCalls` | `response` | Tool invocations with name and arguments. |
 | `assets` | `response` | Asset references in the response. |
 | `toolName` | `tool` | Name of the tool that produced this output. |
 | `toolCallID` | `tool` | ID linking this output to its tool call. |
+| `reasoning` | `reasoning` | The reasoning `contents` and its `signature`. |
+| `metadata` | all | Model and system details recorded with the entry, when present. |
 
 ## Exporting a Transcript
 
