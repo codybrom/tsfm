@@ -26,9 +26,14 @@
 
 ## Quick Start
 
-```bash
-npm install tsfm-sdk
-```
+> [!NOTE]
+> **tsfm 1.0 is in beta.** This README and [tsfm.dev](https://tsfm.dev) describe 1.0:
+>
+> ```bash
+> npm install tsfm-sdk@beta
+> ```
+>
+> A plain `npm install tsfm-sdk` installs the stable 0.5 release ([0.5 README](https://github.com/codybrom/tsfm/tree/v0.5.1#readme)). See [Migrating to 1.0](https://tsfm.dev/guide/migrating-to-1).
 
 ```ts
 import { SystemLanguageModel, LanguageModelSession } from "tsfm-sdk";

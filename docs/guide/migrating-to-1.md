@@ -4,6 +4,12 @@ tsfm 1.0 adds token usage, tool-calling modes, Private Cloud Compute and more fo
 macOS 27, and still runs on macOS 26. Most apps need one small change: read
 `.content` from responses.
 
+::: info 1.0 is in beta
+Install it with `npm install tsfm-sdk@beta`. Until 1.0.0 is released, a plain
+`npm install tsfm-sdk` installs 0.5. APIs can still change between betas; the
+[changelog](/changelog) lists what did.
+:::
+
 ## Requirements
 
 - **macOS 26** or later, as before. Token usage, tool-calling modes, Private

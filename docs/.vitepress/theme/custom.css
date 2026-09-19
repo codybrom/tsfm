@@ -1,4 +1,7 @@
 :root {
+  /* Room for the 1.0 beta banner above the nav (see BetaBanner.vue). */
+  --vp-layout-top-height: 36px;
+
   /* Typography — Apple system font stack (from Apple dev docs) */
   --vp-font-family-base:
     "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Helvetica",

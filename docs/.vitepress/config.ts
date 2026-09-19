@@ -144,6 +144,14 @@ export default defineConfig({
       { text: "Guide", link: "/guide/getting-started" },
       { text: "Reference", link: "/api/" },
       { text: "Changelog", link: "/changelog" },
+      {
+        text: "1.0 beta",
+        items: [
+          { text: "1.0 beta (these docs)", link: "/guide/getting-started" },
+          { text: "Migrating to 1.0", link: "/guide/migrating-to-1" },
+          { text: "0.5 docs (stable)", link: "https://github.com/codybrom/tsfm/tree/v0.5.1/docs" },
+        ],
+      },
     ],
 
     sidebar: {

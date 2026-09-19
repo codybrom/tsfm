@@ -36,11 +36,19 @@ fallbacks are verified at build time, but the model itself isn't tested there.
 
 ## Installation
 
+::: warning tsfm 1.0 is in beta
+These docs are for 1.0, which is published under the `beta` tag. Install it with:
+
 ```bash
-npm install tsfm-sdk
+npm install tsfm-sdk@beta
 ```
 
-Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 26.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
+A plain `npm install tsfm-sdk` still installs the stable 0.5 release, which has
+[its own docs](https://github.com/codybrom/tsfm/tree/v0.5.1/docs). Coming from 0.5? See
+[Migrating to 1.0](/guide/migrating-to-1).
+:::
+
+Xcode is not required to use this package. The npm package ships prebuilt native files for macOS 26.0+. If you know your machine requires a different build, see [Building from Source](#building-from-source).
 
 To check that everything tsfm needs is in place, run:
 
