@@ -190,6 +190,11 @@ const person = content.toObject();
 
 The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
 
+Shared shapes can go in `$defs` and be referenced with `$ref`, like
+`{ "$ref": "#/$defs/Person" }`. Apple names each definition by its title, so
+the SDK sets each definition's title to its key; a different `title` on a
+definition is replaced. A schema can nest at most 128 levels of JSON deep.
+
 `toObject()` returns `JsonObject` by default. Pass the shape your schema
 guarantees to get it typed, rather than asserting at the call site:
 

@@ -90,7 +90,9 @@ The model declined to generate a response. This is distinct from `GuardrailViola
 
 ### InvalidGenerationSchemaError
 
-Your `GenerationSchema` is malformed or was rejected by the on-device model. Common causes: unsupported property types, conflicting guides, or schemas that are too complex for the model to constrain. Also thrown when the native layer returns a `ModelManagerError Code=1041` rejection.
+Your `GenerationSchema` is malformed or was rejected by the on-device model. Common causes: unsupported property types, conflicting guides, a `$ref` to a definition that doesn't exist, or schemas that are too complex for the model to constrain. Also thrown when the native layer returns a `ModelManagerError Code=1041` rejection.
+
+A JSON schema that nests more than 128 levels deep is rejected before the request. Apple's framework would otherwise overflow its stack decoding it, which kills the process.
 
 ### ServiceCrashedError
 
