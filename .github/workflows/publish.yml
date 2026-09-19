@@ -89,7 +89,12 @@ jobs:
             TAG="${VERSION#*-}"
             TAG="${TAG%%.*}"
           else
-            LATEST="$(npm view tsfm-sdk dist-tags.latest 2>/dev/null || echo 0.0.0)"
+            # Guessing here could move latest backwards, so a failed lookup
+            # stops the publish instead.
+            if ! LATEST="$(npm view tsfm-sdk dist-tags.latest)" || [[ ! "$LATEST" =~ ^[0-9]+\. ]]; then
+              echo "::error::Couldn't read tsfm-sdk's latest dist-tag from npm (got '$LATEST')"
+              exit 1
+            fi
             if (( ${VERSION%%.*} < ${LATEST%%.*} )); then
               TAG="legacy"
             else
