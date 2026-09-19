@@ -341,6 +341,7 @@ describe("LanguageModelSession", () => {
       (session as unknown as { _activeTask: unknown })._activeTask = "mock-task";
       session.cancel();
       expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-task");
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-task");
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
   });

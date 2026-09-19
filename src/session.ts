@@ -241,7 +241,10 @@ export class LanguageModelSession {
   cancel(): void {
     if (this._disposed) return;
     if (this._activeTask) {
-      getFunctions().FMRequestCancel(this._activeTask);
+      const fn = getFunctions();
+      fn.FMRequestCancel(this._activeTask);
+      // The request's own finally releases it too; release is idempotent.
+      fn.FMRelease(this._activeTask);
       this._activeTask = null;
     }
     // Unblock any waiting stream consumer so the generator can exit.

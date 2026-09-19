@@ -122,7 +122,10 @@ export abstract class Tool {
         // If anything throws synchronously (e.g. GeneratedContent construction),
         // the call must still be answered or the response waits forever.
         const msg = err instanceof Error ? err.message : String(err);
-        fn.FMBridgedToolFinishCall(tool, callId, `Tool callback error: ${msg}`);
+        // Disposed meanwhile (e.g. by onCall): the addon already failed the call.
+        if (this._nativeTool) {
+          fn.FMBridgedToolFinishCall(this._nativeTool, callId, `Tool callback error: ${msg}`);
+        }
       }
     };
 
