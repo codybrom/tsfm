@@ -79,6 +79,25 @@ The maximum number of tokens the model's context window can hold. All input — 
 readonly contextSize: number
 ```
 
+On macOS 27 the on-device model has an 8,192-token context.
+
+### `variant`
+
+The on-device model's variant, e.g. `"AFM 3 Core Advanced"`.
+
+```ts
+readonly variant: string
+```
+
+### `capabilities`
+
+What the model can do. The on-device model has `"vision"`, `"toolCalling"` and
+`"guidedGeneration"`, but not `"reasoning"`.
+
+```ts
+readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[]
+```
+
 ### `tokenCount()`
 
 Counts the tokens an input consumes against the [context window](#contextsize).
