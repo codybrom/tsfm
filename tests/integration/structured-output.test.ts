@@ -104,6 +104,24 @@ describeIfAvailable("structured output (integration)", () => {
     session.dispose();
   }, 60_000);
 
+  it("generates arrays of booleans, and objects under reserved or non-word keys", async () => {
+    const G = generable("Root", {
+      flags: { type: "array", items: { type: "boolean" } },
+      string: { type: "object", properties: { v: { type: "string" } } },
+      "ship-to": {
+        type: "array",
+        items: { type: "object", properties: { city: { type: "string" } } },
+      },
+    });
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithSchema("Make one up.", G.schema);
+    const value = G.parse(content);
+    expect(value.flags.every((f) => typeof f === "boolean")).toBe(true);
+    expect(typeof value.string.v).toBe("string");
+    expect(Array.isArray(value["ship-to"])).toBe(true);
+    session.dispose();
+  }, 60_000);
+
   it("resolves $ref to $defs in a JSON schema", async () => {
     const session = new LanguageModelSession();
     const { content } = await session.respondWithJsonSchema("Make up a person and their pet.", {
