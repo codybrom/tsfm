@@ -17,13 +17,15 @@ Each run has these fields:
 | --- | --- |
 | `argv` | Arguments passed to `fm` |
 | `stdin` | `null` (`</dev/null`), `pipe` (`echo no \|`), or `tty` (a pty via `script(1)`) |
-| `exitCode` | Exit status (`124` = killed by the 10 s timeout) |
+| `exitCode` | Exit status (`124` = killed by the 10 s timeout, `128+N` = ended by signal N) |
+| `signal` | Signal that ended the run, only included when it wasn't the timeout |
 | `seconds` | Wall-clock time |
-| `stdout`, `stderr` | Output exactly as captured, ANSI escape codes included |
+| `stdout`, `stderr` | Output as captured after redaction (see below), ANSI escape codes included |
 | `tty` | Pty transcript, only included when it differs from `stdout` |
 
 Machine-specific details are redacted: temp paths, home directories, and the local date and time
-of the license agreement.
+of the license agreement. Apple's license terms (printed by `fm license`) are replaced with
+`<license terms omitted>`. The short notice that blocked commands print is kept.
 
 ## Recording
 
@@ -31,5 +33,7 @@ of the license agreement.
 npx tsx tests/fixtures/fm/probe.ts tests/fixtures/fm/licensed.json respond-null null -- respond "Say hi."
 ```
 
-A run with the same `name` replaces the old one. Never run the harness as root or with `sudo`:
+A run with the same `name` replaces the old one. The 10 s limit is enforced with SIGKILL on the
+whole process tree, and a command that can't be started (e.g. `fm` missing) exits 70 without
+writing anything. Never run the harness as root or with `sudo`:
 agreeing to the fm license applies to the whole machine.
