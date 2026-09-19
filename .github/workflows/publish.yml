@@ -78,9 +78,10 @@ jobs:
           npm pack --dry-run
 
       # A prerelease (1.0.0-beta.1) publishes under its identifier (beta) and
-      # never becomes latest. A release older than the current latest major,
-      # such as a 0.x patch after 1.0, publishes as legacy so it doesn't move
-      # latest backwards.
+      # never becomes latest. A release older than the current latest, such as
+      # a 0.x patch after 1.0 or 1.0.1 after 1.2.0, publishes as legacy so it
+      # doesn't move latest backwards. Compared as whole versions with the same
+      # semver rules npm uses, not by major alone.
       - name: Choose the npm dist-tag
         id: dist-tag
         run: |
@@ -91,11 +92,11 @@ jobs:
           else
             # Guessing here could move latest backwards, so a failed lookup
             # stops the publish instead.
-            if ! LATEST="$(npm view tsfm-sdk dist-tags.latest)" || [[ ! "$LATEST" =~ ^[0-9]+\. ]]; then
+            if ! LATEST="$(npm view tsfm-sdk dist-tags.latest)" || [[ ! "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "::error::Couldn't read tsfm-sdk's latest dist-tag from npm (got '$LATEST')"
               exit 1
             fi
-            if (( ${VERSION%%.*} < ${LATEST%%.*} )); then
+            if [[ "$(bash scripts/compare-versions.sh "$VERSION" "$LATEST")" == "older" ]]; then
               TAG="legacy"
             else
               TAG="latest"
