@@ -743,7 +743,7 @@ describe("generable", () => {
       },
       shipping_address: { type: "object", properties: {} },
     });
-    const names = mockFns.FMGenerationSchemaCreate.mock.calls.map((c) => c[0]);
+    const names = mockFns.FMGenerationSchemaCreate.mock.calls.map((c) => (c as unknown[])[0]);
     expect(names).toEqual([
       "Order",
       "address",
@@ -754,10 +754,30 @@ describe("generable", () => {
       "shipping_address_2",
     ]);
     // Each property is typed by its own reference schema.
-    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [c[0], c[2]]);
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
     expect(types).toContainEqual(["address", "shipping_address"]);
     expect(types).toContainEqual(["address", "billing_address"]);
     expect(types).toContainEqual(["shipping_address", "shipping_address_2"]);
+  });
+
+  it("keeps reference schema names out of the scalar type names and \\w", () => {
+    generable("Root", {
+      string: { type: "object", properties: {} },
+      bool: { type: "array", items: { type: "object", properties: {} } },
+      "ship-to": { type: "array", items: { type: "object", properties: {} } },
+    });
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
+    expect(types).toEqual([
+      ["string", "string_2"],
+      ["bool", "array<bool_2>"],
+      ["ship-to", "array<ship_to>"],
+    ]);
   });
 
   it("registers every nested reference schema on the root", () => {
@@ -774,7 +794,9 @@ describe("generable", () => {
         },
       });
       // The framework resolves references only from the schema a request uses.
-      const parents = mockFns.FMGenerationSchemaAddReferenceSchema.mock.calls.map((c) => c[0]);
+      const parents = mockFns.FMGenerationSchemaAddReferenceSchema.mock.calls.map(
+        (c) => (c as unknown[])[0],
+      );
       expect(parents).toEqual(["schema:Root", "schema:Root", "schema:Root", "schema:Root"]);
     } finally {
       mockFns.FMGenerationSchemaCreate.mockImplementation(original!);

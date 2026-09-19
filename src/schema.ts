@@ -355,13 +355,30 @@ interface SchemaBuildContext {
 }
 
 /**
+ * Type names the bridge reads as scalars. A reference schema with one of these
+ * names would be built as that scalar instead.
+ */
+const RESERVED_TYPE_NAMES = [
+  "string",
+  "number",
+  "float",
+  "double",
+  "integer",
+  "int",
+  "boolean",
+  "bool",
+];
+
+/**
  * The name for a nested object's reference schema: its property path joined
  * with "_" (`shipping_address`), so objects under the same key in different
- * places don't collide. The framework resolves references by name. A name that
- * is still taken gets a numeric suffix.
+ * places don't collide. The framework resolves references by name. Characters
+ * other than letters, digits and "_" become "_", because the bridge matches
+ * `array<Name>` with `\w+`. A name that is reserved or already taken gets a
+ * numeric suffix.
  */
 function referenceName(ctx: SchemaBuildContext, key: string): string {
-  const base = [...ctx.path, key].join("_");
+  const base = [...ctx.path, key].join("_").replace(/\W/g, "_") || "_";
   let name = base;
   for (let n = 2; ctx.usedNames.has(name); n++) name = `${base}_${n}`;
   ctx.usedNames.add(name);
@@ -369,11 +386,7 @@ function referenceName(ctx: SchemaBuildContext, key: string): string {
 }
 
 /** Builds a nested object's reference schema and registers it on the root. */
-function addReferenceSchema(
-  ctx: SchemaBuildContext,
-  key: string,
-  def: ObjectPropertyDef,
-): string {
+function addReferenceSchema(ctx: SchemaBuildContext, key: string, def: ObjectPropertyDef): string {
   const name = referenceName(ctx, key);
   const nested = new GenerationSchema(name, def.description);
   const inner = { ...ctx, path: [...ctx.path, key] };
@@ -452,7 +465,11 @@ export function generable<const T extends Record<string, PropertyDef>>(
   description?: string,
 ): Generable<T> {
   const schema = new GenerationSchema(name, description);
-  const ctx: SchemaBuildContext = { root: schema, usedNames: new Set([name]), path: [] };
+  const ctx: SchemaBuildContext = {
+    root: schema,
+    usedNames: new Set([name, ...RESERVED_TYPE_NAMES]),
+    path: [],
+  };
   for (const [key, def] of Object.entries(properties)) {
     addPropertyDef(schema, key, def, ctx);
   }
