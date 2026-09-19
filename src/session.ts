@@ -13,13 +13,21 @@ import { SystemLanguageModel } from "./core.js";
 import { PrivateCloudComputeLanguageModel } from "./pcc.js";
 import { Tool } from "./tool.js";
 import { ToolCallBudget } from "./tool-budget.js";
-import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
+import {
+  GenerationSchema,
+  GeneratedContent,
+  afmSchemaFormat,
+  jsonNestingDepth,
+  MAX_SCHEMA_DEPTH,
+  type JsonSchema,
+} from "./schema.js";
 import { GenerationOptions, serializeOptions, resolveMaximumToolCalls } from "./options.js";
 import {
   statusToError,
   FoundationModelsError,
   UnsupportedGuideError,
   UnsupportedCapabilityError,
+  InvalidGenerationSchemaError,
 } from "./errors.js";
 import { collectSchemaPatterns, findUnsupportedRegexConstruct } from "./regex-support.js";
 import { Transcript } from "./transcript.js";
@@ -74,6 +82,20 @@ function _installExitHandler(): void {
       _cleanupAllSessions();
       process.kill(process.pid, signal);
     });
+  }
+}
+
+/**
+ * A disposed model has no native pointer. Passing null to the PCC constructors
+ * would crash the host in Swift, and the on-device constructor would quietly
+ * fall back to the default model, dropping the disposed model's use case and
+ * guardrails.
+ */
+function assertModelNotDisposed(
+  model: SystemLanguageModel | PrivateCloudComputeLanguageModel | undefined,
+): void {
+  if (model && !model._nativeModel) {
+    throw new FoundationModelsError(`${model.constructor.name} has been disposed`);
   }
 }
 
@@ -137,12 +159,8 @@ export class LanguageModelSession {
     const toolPointers = tools.map((t) => t._nativeTool);
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
+    assertModelNotDisposed(opts.model);
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
-    // A disposed model has no native pointer; passing null to the PCC constructors
-    // would crash the host in Swift.
-    if (pcc && !pcc._nativeModel) {
-      throw new FoundationModelsError("PrivateCloudComputeLanguageModel has been disposed");
-    }
     // Each model type has its own native constructor; the pointers aren't interchangeable.
     const pointer = (
       pcc
@@ -182,12 +200,8 @@ export class LanguageModelSession {
     const toolPointers = tools.map((t) => t._nativeTool);
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
+    assertModelNotDisposed(opts.model);
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
-    // A disposed model has no native pointer; passing null to the PCC constructors
-    // would crash the host in Swift.
-    if (pcc && !pcc._nativeModel) {
-      throw new FoundationModelsError("PrivateCloudComputeLanguageModel has been disposed");
-    }
     const pointer = (
       pcc
         ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
@@ -394,6 +408,11 @@ export class LanguageModelSession {
     let keepAlive: ReturnType<typeof setInterval> | null = null;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let streamDone = false;
+    // Set when the consumer stops before the native stream ends. The native task
+    // always makes one final call (end, error or "cancelled"), so the callback
+    // must stay registered until then: native code calling an unregistered
+    // callback kills the host.
+    let draining = false;
     let composedPrompt: NativePointer | null = null;
 
     type QueueItem = { content: string } | { done: true; error?: Error };
@@ -407,6 +426,9 @@ export class LanguageModelSession {
       // Wait for requests queued before this stream. Starting early would
       // overlap them on the native session and mix their token usage.
       await previous;
+      // dispose() may have run while this stream waited in the queue; passing
+      // the released (null) session to native code would crash the host.
+      this._assertNotDisposed();
       this._assertOptionsSupported(opts.options);
       usageBefore = this._readUsage();
       budget = this._lendToolBudget(opts.options);
@@ -442,12 +464,10 @@ export class LanguageModelSession {
                   "Stream idle timeout: no callback received within 30s of the previous snapshot",
                 ),
               });
+              // The native stream may still call back, so drain instead of unregistering.
               streamDone = true;
+              draining = true;
               if (keepAlive) clearInterval(keepAlive);
-              if (callback) {
-                unregisterCallback(callback);
-                callback = null;
-              }
               const notify = notifyConsumer;
               notifyConsumer = null;
               notify?.();
@@ -458,6 +478,14 @@ export class LanguageModelSession {
 
       callback = koffi.register((...args: ResponseCbArgs) => {
         const [status, text] = args;
+        if (draining) {
+          // The consumer is gone; wait for the final call, then let go.
+          if ((status !== 0 || !text) && callback) {
+            unregisterCallback(callback);
+            callback = null;
+          }
+          return;
+        }
         // The `str` parameter of ResponseCallbackProto is marshalled by koffi
         // before the handler runs: a non-null char* arrives as a JS string and
         // the end-of-stream null pointer arrives as JS null. Calling
@@ -536,11 +564,11 @@ export class LanguageModelSession {
       this._cancelStream = null;
       if (keepAlive) clearInterval(keepAlive);
       if (idleTimer) clearTimeout(idleTimer);
-      if (callback) {
-        // Callback wasn't unregistered by the handler or idle timer —
-        // this means the consumer broke out early (e.g. break/return).
-        unregisterCallback(callback);
-        callback = null;
+      if (callback && !draining) {
+        // Still registered, so the consumer stopped early (break, return or
+        // cancel()) and the native stream will call back at least once more.
+        // Releasing the stream below cancels it, which makes that call prompt.
+        draining = true;
       }
       if (fn && !streamDone) {
         // Reset the session after an early break so subsequent calls
@@ -567,6 +595,8 @@ export class LanguageModelSession {
       _liveSessions.delete(this._weakRef);
       this._weakRef = null;
     }
+    // The transcript reads through the session's pointer, which is released below.
+    this._transcript?._detach();
     if (this._nativeSession) {
       _sessionRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeSession);
@@ -785,6 +815,12 @@ export class LanguageModelSession {
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
     this._assertOptionsSupported(options);
+    if (jsonNestingDepth(jsonSchema, MAX_SCHEMA_DEPTH) > MAX_SCHEMA_DEPTH) {
+      throw new InvalidGenerationSchemaError(
+        `The schema nests more than ${MAX_SCHEMA_DEPTH} levels of JSON deep. ` +
+          "Flatten it, or move nested shapes into $defs and refer to them with $ref.",
+      );
+    }
     this._assertRegexGuidesSupported(jsonSchema);
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
