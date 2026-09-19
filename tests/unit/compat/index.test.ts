@@ -838,6 +838,43 @@ describe("Chat API compat layer", () => {
   });
 
   describe("streaming — tools", () => {
+    it("reports the tokens a tool request used even when it ends in a mapped error", async () => {
+      // Usage reads return BEFORE until the structured request starts, then AFTER.
+      let reading = USAGE_BEFORE;
+      mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => "usage-pointer");
+      decodeAndFreeStringMock.mockImplementation((pointer: unknown) =>
+        pointer === "usage-pointer" ? reading : null,
+      );
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
+        (..._args: unknown[]) => {
+          reading = USAGE_AFTER;
+          // Status 1 = ExceededContextWindowSizeError
+          setTimeout(() => lastRegisteredCallback?.(1, null, null), 0);
+          return "mock-task-pointer";
+        },
+      );
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          tools: sampleTools,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
+        expect(chunks[chunks.length - 1].usage).toMatchObject({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+        });
+        client.close();
+      } finally {
+        mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+      }
+    });
+
     it("buffers tool call and emits as chunks", async () => {
       simulateStructuredSuccess({
         type: "tool_call",
