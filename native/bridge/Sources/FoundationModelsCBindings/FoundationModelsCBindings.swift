@@ -272,8 +272,11 @@ public func FMSystemLanguageModelTokenCountForSchema(
 ) -> FMTaskRef {
   let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
   let schemaBuilder = Unmanaged<GenerationSchemaBuilder>.fromOpaque(schema).takeUnretainedValue()
+  // tsfm: build on the calling (JS) thread, which is the only one that mutates
+  // the builder; the task only reads the result.
+  let schemaResult = Result { try schemaBuilder.buildSchema() }
   return performTokenCount(userInfo: userInfo, callback: callback) {
-    let schema = try schemaBuilder.buildSchema()
+    let schema = try schemaResult.get()
     guard #available(macOS 26.4, iOS 26.4, visionOS 26.4, *) else {
       throw RequiresNewerOS(feature: "Token counting", version: "26.4")
     }
@@ -1076,6 +1079,9 @@ public func FMLanguageModelSessionRespondWithSchema(
   let prompt = Unmanaged<ComposedPrompt>.fromOpaque(composedPrompt).takeUnretainedValue()
     .promptRepresentation
   let schemaBuilder = Unmanaged<GenerationSchemaBuilder>.fromOpaque(schema).takeUnretainedValue()
+  // tsfm: build on the calling (JS) thread, which is the only one that mutates
+  // the builder; the task only reads the result.
+  let schemaResult = Result { try schemaBuilder.buildSchema() }
   let optionsJSONString = optionsJSON.map(String.init(cString:))
   let unsafeSendableUserInfo = UnsafeSendableUserInfo(pointer: userInfo)
 
@@ -1084,8 +1090,7 @@ public func FMLanguageModelSessionRespondWithSchema(
       // Check cancellation at start
       try Task.checkCancellation()
 
-      // Build the final schema from the builder
-      let finalSchema = try schemaBuilder.buildSchema()
+      let finalSchema = try schemaResult.get()
 
       // Parse options if provided
       let options = try parseGenerationOptions(from: optionsJSONString)
