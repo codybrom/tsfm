@@ -1,8 +1,8 @@
 # Spike: Node-API instead of koffi
 
-**Status:** spike, kept for reference; not wired into the package or the
-npm tarball. **Recommendation:** adopt Node-API in 1.1 (see
-[Recommendation](#recommendation)).
+**Status:** adopted. tsfm 1.0 replaced koffi with a Node-API addon built on
+this design (`native/addon/tsfm_addon.c`). This directory is the original
+spike, kept for reference; it isn't wired into the package.
 
 The 1.0 plan kept koffi (Option B) and set a bar for replacing it with a
 Node-API addon (Option C): no crash under a fuzz suite, clean shutdown with

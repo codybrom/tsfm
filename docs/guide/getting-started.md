@@ -1,6 +1,6 @@
 # Getting Started
 
-TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a pre-compiled dynamic library [via FFI](https://koffi.dev/), allowing it the same access as native Swift and ObjC applications.
+TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a precompiled native library through [Node-API](https://nodejs.org/api/n-api.html), which gives it the same access as native Swift and Objective-C apps.
 
 TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26 or later with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
 
@@ -51,8 +51,6 @@ npx tsfm doctor
 It reports the macOS version, whether the native library loads, the on-device
 model's availability and variant, and Private Cloud Compute availability. It only
 reads; it doesn't change anything.
-
-npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
 
 ## Quick Start
 
