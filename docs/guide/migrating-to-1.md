@@ -109,6 +109,7 @@ entitlement; plain `node` can't use it. See
 ## Also new
 
 - `npx tsfm doctor` checks whether a machine can run tsfm.
+- `tsfm-sdk/openai` is an alias for `tsfm-sdk/chat`.
 - `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities`.
 - Transcripts can contain `reasoning` entries from Private Cloud Compute.
 

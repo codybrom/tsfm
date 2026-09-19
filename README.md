@@ -22,7 +22,7 @@
 - Structured output with typed schemas and generation guides
 - Tool calling
 - Transcript persistence
-- Chat-style and Responses-style APIs via `tsfm-sdk/chat`
+- Chat-style and Responses-style APIs via `tsfm-sdk/chat` (or its alias, `tsfm-sdk/openai`)
 
 ## Quick Start
 

@@ -1,6 +1,6 @@
 # Chat & Responses API Reference
 
-API reference for `tsfm-sdk/chat`. This module provides a compatibility layer with a Responses API and Chat Completions API backed by on-device Apple Intelligence.
+API reference for `tsfm-sdk/chat` (also available as `tsfm-sdk/openai`; both import paths load the same module). This module provides a compatibility layer with a Responses API and Chat Completions API backed by on-device Apple Intelligence.
 
 ```ts
 import Client, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/chat";
