@@ -1,4 +1,7 @@
 import type { JsonSchema, JsonObject } from "../schema.js";
+import type { Usage } from "../response.js";
+import type { CompletionUsage } from "./types.js";
+import type { ResponseUsage } from "./responses-types.js";
 
 /**
  * Reorder JSON keys to match the property order defined in a JSON schema.
@@ -106,4 +109,26 @@ export function formatToolResult(
   const repeated = allCalls.filter((c) => c.name === call.name).length > 1;
   const label = repeated ? `${call.name} ${call.arguments}` : call.name;
   return `[Tool result for ${label}]: ${content}`;
+}
+
+/** tsfm usage in OpenAI's Chat Completions shape. */
+export function toCompletionUsage(usage: Usage): CompletionUsage {
+  return {
+    prompt_tokens: usage.input.totalTokens,
+    completion_tokens: usage.output.totalTokens,
+    total_tokens: usage.input.totalTokens + usage.output.totalTokens,
+    prompt_tokens_details: { cached_tokens: usage.input.cachedTokens },
+    completion_tokens_details: { reasoning_tokens: usage.output.reasoningTokens },
+  };
+}
+
+/** tsfm usage in OpenAI's Responses shape. */
+export function toResponseUsage(usage: Usage): ResponseUsage {
+  return {
+    input_tokens: usage.input.totalTokens,
+    input_tokens_details: { cached_tokens: usage.input.cachedTokens },
+    output_tokens: usage.output.totalTokens,
+    output_tokens_details: { reasoning_tokens: usage.output.reasoningTokens },
+    total_tokens: usage.input.totalTokens + usage.output.totalTokens,
+  };
 }

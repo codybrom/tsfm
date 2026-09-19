@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMockFunctions } from "./helpers/mock-bindings.js";
 
 const { capturedSessionRegistryCallback } = vi.hoisted(() => {
@@ -61,6 +61,12 @@ beforeEach(() => {
   lastRegisteredCallback = null;
 });
 
+// A test that fails before restoring real timers would otherwise leave fake
+// timers installed and make every later setTimeout-based mock time out.
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("LanguageModelSession", () => {
   it("creates session with default options", () => {
     const session = new LanguageModelSession();
@@ -103,13 +109,17 @@ describe("LanguageModelSession", () => {
 
   describe('streaming a literal "null" response', () => {
     it("yields it instead of discarding it as an artifact", async () => {
+      // Fire the snapshots once the stream is actually started, as the native
+      // side does, rather than at an arbitrary tick after streamResponse().
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementationOnce(() => {
+        queueMicrotask(() => {
+          lastRegisteredCallback?.(0, "null", 4, null);
+          queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+        });
+      });
       const session = new LanguageModelSession();
       const chunks: string[] = [];
       const iterator = session.streamResponse("Reply with exactly: null");
-      queueMicrotask(() => {
-        lastRegisteredCallback?.(0, "null", 4, null);
-        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
-      });
       for await (const c of iterator) chunks.push(c);
       expect(chunks.join("")).toBe("null");
     });
@@ -243,7 +253,7 @@ describe("LanguageModelSession", () => {
 
       const session = new LanguageModelSession();
       const result = await session.respond("Hi");
-      expect(result).toBe("Hello world");
+      expect(result.content).toBe("Hello world");
     });
 
     it("resolves with empty string when content is null", async () => {
@@ -256,7 +266,7 @@ describe("LanguageModelSession", () => {
 
       const session = new LanguageModelSession();
       const result = await session.respond("Hi");
-      expect(result).toBe("");
+      expect(result.content).toBe("");
     });
 
     it("keepalive interval fires while waiting for callback", async () => {
@@ -273,7 +283,7 @@ describe("LanguageModelSession", () => {
       const promise = session.respond("Hi");
       await vi.advanceTimersByTimeAsync(15000);
       const result = await promise;
-      expect(result).toBe("delayed");
+      expect(result.content).toBe("delayed");
       vi.useRealTimers();
     });
 
@@ -406,7 +416,7 @@ describe("LanguageModelSession", () => {
       const promise = session.respondWithSchema("Describe", mockSchema as never);
       await vi.advanceTimersByTimeAsync(15000);
       const result = await promise;
-      expect(result._nativeContent).toBe("mock-content-ref");
+      expect(result.content._nativeContent).toBe("mock-content-ref");
       vi.useRealTimers();
     });
 
@@ -422,7 +432,7 @@ describe("LanguageModelSession", () => {
       const mockSchema = { _nativeSchema: "mock-schema-pointer" };
       const result = await session.respondWithSchema("Describe", mockSchema as never);
       expect(result).toBeDefined();
-      expect(result._nativeContent).toBe("mock-content-ref");
+      expect(result.content._nativeContent).toBe("mock-content-ref");
     });
 
     it("rejects with error on non-zero status", async () => {
@@ -492,7 +502,7 @@ describe("LanguageModelSession", () => {
       };
       const result = await session.respondWithJsonSchema("Extract info", jsonSchema);
       expect(result).toBeDefined();
-      expect(result._nativeContent).toBe("mock-content-ref");
+      expect(result.content._nativeContent).toBe("mock-content-ref");
     });
 
     it("applies afmSchemaFormat transformations", async () => {
@@ -919,8 +929,8 @@ describe("LanguageModelSession", () => {
       const session = new LanguageModelSession();
       const [r1, r2] = await Promise.all([session.respond("first"), session.respond("second")]);
 
-      expect(r1).toBe("Response 1");
-      expect(r2).toBe("Response 2");
+      expect(r1.content).toBe("Response 1");
+      expect(r2.content).toBe("Response 2");
       expect(callOrder).toEqual([1, 2]);
     });
   });
@@ -1157,7 +1167,7 @@ describe("LanguageModelSession", () => {
       );
 
       const result = await session.respond("Next prompt");
-      expect(result).toBe("response text");
+      expect(result.content).toBe("response text");
     });
   });
 

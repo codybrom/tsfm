@@ -22,6 +22,25 @@ const { decodeAndFreeStringMock } = vi.hoisted(() => {
 
 const mockFns = createMockFunctions();
 
+/** Feeds two cumulative usage readings (before, after) through the mocks. */
+function withUsageReadings(before: string, after: string): () => void {
+  const readings = [before, after];
+  const original = decodeAndFreeStringMock.getMockImplementation();
+  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => "usage-pointer");
+  decodeAndFreeStringMock.mockImplementation((pointer: unknown) =>
+    pointer === "usage-pointer" ? (readings.shift() ?? null) : (original?.(pointer) ?? null),
+  );
+  return () => {
+    mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+    if (original) decodeAndFreeStringMock.mockImplementation(original);
+  };
+}
+
+const USAGE_BEFORE =
+  '{"input":{"totalTokens":100,"cachedTokens":40},"output":{"totalTokens":20,"reasoningTokens":0}}';
+const USAGE_AFTER =
+  '{"input":{"totalTokens":162,"cachedTokens":64},"output":{"totalTokens":25,"reasoningTokens":0}}';
+
 let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
 
 vi.mock("koffi", () => ({
@@ -195,8 +214,32 @@ describe("Responses API compat layer", () => {
       expect(result.output_text).toBe("Hello from Apple Intelligence");
       expect(result.error).toBeNull();
       expect(result.incomplete_details).toBeNull();
-      expect(result.usage).toBeNull();
+      expect(result.usage).toEqual({
+        input_tokens: 0,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens: 0,
+        output_tokens_details: { reasoning_tokens: 0 },
+        total_tokens: 0,
+      });
       client.close();
+    });
+
+    it("reports the request's token usage in the Responses shape", async () => {
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const result = await client.responses.create({ input: "Hello" });
+        expect(result.usage).toEqual({
+          input_tokens: 62,
+          input_tokens_details: { cached_tokens: 24 },
+          output_tokens: 5,
+          output_tokens_details: { reasoning_tokens: 0 },
+          total_tokens: 67,
+        });
+        client.close();
+      } finally {
+        restore();
+      }
     });
   });
 
@@ -495,7 +538,13 @@ describe("Responses API compat layer", () => {
       expect(result.parallel_tool_calls).toBe(false);
       expect(result.text).toEqual({ format: { type: "text" } });
       expect(result.truncation).toBeNull();
-      expect(result.usage).toBeNull();
+      expect(result.usage).toEqual({
+        input_tokens: 0,
+        input_tokens_details: { cached_tokens: 0 },
+        output_tokens: 0,
+        output_tokens_details: { reasoning_tokens: 0 },
+        total_tokens: 0,
+      });
       expect(result.metadata).toBeNull();
       client.close();
     });

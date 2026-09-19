@@ -16,6 +16,14 @@ import { GenerationOptions, serializeOptions } from "./options.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
+import {
+  ResponseStream,
+  emptyUsage,
+  parseUsage,
+  usageBetween,
+  type Response,
+  type Usage,
+} from "./response.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
 const _FROM_POINTER = Symbol("fromPointer");
@@ -213,7 +221,8 @@ export class LanguageModelSession {
   }
 
   /**
-   * Send a prompt and return the model's plain-text response.
+   * Send a prompt and return the model's plain-text response with its token
+   * usage. Read the text from `.content`.
    *
    * Concurrent calls are serialized — they queue up and run one at a time
    * rather than racing over the same session. Throws a `GenerationError`
@@ -222,9 +231,9 @@ export class LanguageModelSession {
   async respond(
     prompt: string | PromptInput,
     opts: { options?: GenerationOptions } = {},
-  ): Promise<string> {
+  ): Promise<Response<string>> {
     this._assertNotDisposed();
-    return this._enqueue(() => this._respondText(prompt, opts.options));
+    return this._enqueue(() => this._withUsage(() => this._respondText(prompt, opts.options)));
   }
 
   /**
@@ -238,9 +247,11 @@ export class LanguageModelSession {
     prompt: string | PromptInput,
     schema: GenerationSchema,
     opts: { options?: GenerationOptions } = {},
-  ): Promise<GeneratedContent> {
+  ): Promise<Response<GeneratedContent>> {
     this._assertNotDisposed();
-    return this._enqueue(() => this._respondWithSchema(prompt, schema, opts.options));
+    return this._enqueue(() =>
+      this._withUsage(() => this._respondWithSchema(prompt, schema, opts.options)),
+    );
   }
 
   /**
@@ -256,17 +267,20 @@ export class LanguageModelSession {
     prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     opts: { options?: GenerationOptions } = {},
-  ): Promise<GeneratedContent> {
+  ): Promise<Response<GeneratedContent>> {
     this._assertNotDisposed();
-    return this._enqueue(() => this._respondWithJsonSchema(prompt, jsonSchema, opts.options));
+    return this._enqueue(() =>
+      this._withUsage(() => this._respondWithJsonSchema(prompt, jsonSchema, opts.options)),
+    );
   }
 
   /**
    * Stream the model's response one text delta at a time.
    *
-   * Yields string deltas as they arrive. The underlying stream delivers
-   * cumulative snapshots; this method diffs each snapshot against the
-   * previous to emit only the new suffix.
+   * Returns a `ResponseStream`: iterate it for string deltas, then read
+   * `.usage` once it finishes (or call `.collect()` for the full `Response`).
+   * The underlying stream delivers cumulative snapshots; each is diffed
+   * against the previous to emit only the new suffix.
    *
    * **Queue lock:** the session's request queue is held for the duration of
    * the stream. Concurrent `respond()` / `streamResponse()` calls will wait
@@ -282,9 +296,25 @@ export class LanguageModelSession {
    *
    * Throws a `GenerationError` subclass if the stream ends with an error.
    */
-  async *streamResponse(
+  streamResponse(
     prompt: string | PromptInput,
     opts: { options?: GenerationOptions } = {},
+  ): ResponseStream {
+    return new ResponseStream((onFinished) => this._streamDeltas(prompt, opts, onFinished));
+  }
+
+  /**
+   * Token usage accumulated over every response in this session. For one
+   * response's usage, use the `usage` on the value `respond()` returns.
+   */
+  get usage(): Usage {
+    return this._readUsage();
+  }
+
+  private async *_streamDeltas(
+    prompt: string | PromptInput,
+    opts: { options?: GenerationOptions },
+    onFinished: (usage: Usage) => void,
   ): AsyncGenerator<string> {
     this._assertNotDisposed();
     // streamResponse cannot use _enqueue: _enqueue expects a single Promise<T>
@@ -293,7 +323,8 @@ export class LanguageModelSession {
     // manually chain a lock-promise onto _queue and release it in `finally`.
     let release!: () => void;
     const lock = new Promise<void>((res) => (release = res));
-    this._queue = this._queue.then(() => lock);
+    const previous = this._queue;
+    this._queue = previous.then(() => lock);
 
     // All setup after the queue lock MUST be inside try/finally so that
     // release() is always called. If a native call or koffi.register throws
@@ -310,7 +341,13 @@ export class LanguageModelSession {
     const queue: QueueItem[] = [];
     let notifyConsumer: (() => void) | null = null;
 
+    let usageBefore: Usage | null = null;
+
     try {
+      // Wait for requests queued before this stream. Starting early would
+      // overlap them on the native session and mix their token usage.
+      await previous;
+      usageBefore = this._readUsage();
       fn = getFunctions();
       const optionsJson = serializeOptions(opts.options);
 
@@ -450,6 +487,7 @@ export class LanguageModelSession {
       }
       if (fn && streamPointer) fn.FMRelease(streamPointer);
       if (fn && composedPrompt) fn.FMRelease(composedPrompt);
+      if (usageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
       release();
     }
   }
@@ -475,6 +513,29 @@ export class LanguageModelSession {
   // -------------------------------------------------------------------------
   // Private implementation
   // -------------------------------------------------------------------------
+
+  /** Cumulative usage from the native session, or zeros once disposed. */
+  private _readUsage(): Usage {
+    if (!this._nativeSession) return emptyUsage();
+    return parseUsage(
+      decodeAndFreeString(
+        getFunctions().FMLanguageModelSessionGetUsageJSON(
+          this._nativeSession,
+        ) as NativePointer | null,
+      ),
+    );
+  }
+
+  /**
+   * Runs one request and pairs its result with the tokens it used: the change
+   * in the session's cumulative usage. Only called inside the request queue,
+   * so no other request can run in between.
+   */
+  private async _withUsage<T>(run: () => Promise<T>): Promise<Response<T>> {
+    const before = this._readUsage();
+    const content = await run();
+    return { content, usage: usageBetween(before, this._readUsage()) };
+  }
 
   // Enforces sequential execution: concurrent respond() calls are queued and
   // run one at a time rather than racing over the same native session.

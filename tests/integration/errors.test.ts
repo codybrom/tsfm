@@ -87,7 +87,7 @@ describeIfAvailable("error mapping (integration)", () => {
   it("keeps working after a failed request", async () => {
     const session = new LanguageModelSession();
     await expectTypedError(session.respond(OVERSIZED_PROMPT), ExceededContextWindowSizeError);
-    const reply = await session.respond("Say hello in one word.");
+    const { content: reply } = await session.respond("Say hello in one word.");
     expect(reply.length).toBeGreaterThan(0);
     session.dispose();
   }, 60_000);

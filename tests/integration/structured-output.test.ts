@@ -24,7 +24,7 @@ describeIfAvailable("structured output (integration)", () => {
       });
 
     const session = new LanguageModelSession();
-    const content = await session.respondWithSchema("Pick a color", schema);
+    const { content } = await session.respondWithSchema("Pick a color", schema);
     const name = content.value<string>("name");
     expect(["red", "blue", "green"]).toContain(name);
     const isPrimary = content.value<boolean>("isPrimary");
@@ -42,7 +42,7 @@ describeIfAvailable("structured output (integration)", () => {
     );
 
     const session = new LanguageModelSession();
-    const content = await session.respondWithJsonSchema("Is the sky blue?", schema.toDict());
+    const { content } = await session.respondWithJsonSchema("Is the sky blue?", schema.toDict());
     const obj = content.toObject();
     expect(obj).toHaveProperty("answer");
     expect(["yes", "no"]).toContain(obj.answer);

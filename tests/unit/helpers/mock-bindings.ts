@@ -88,6 +88,8 @@ export function createMockFunctions() {
     FMSystemLanguageModelSupportsLocale: vi.fn(() => true),
     FMSystemLanguageModelGetTokenCount: vi.fn(() => 10),
     FMLanguageModelSessionPrewarm: vi.fn(),
+    // null decodes to zero usage; tests that check usage override this.
+    FMLanguageModelSessionGetUsageJSON: vi.fn((): string | null => null),
 
     // Memory
     FMRelease: vi.fn(),

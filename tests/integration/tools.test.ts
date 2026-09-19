@@ -59,7 +59,7 @@ describeIfAvailable("tools (integration)", () => {
         });
 
         try {
-          const reply = await Promise.race([
+          const { content: reply } = await Promise.race([
             session.respond(
               'Use the lookup_secret tool to find the secret code for key "alpha". ' +
                 "Do not guess — call the tool.",
