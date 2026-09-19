@@ -1,0 +1,6 @@
+#!/usr/bin/perl
+# to <secs> cmd... : exec with alarm; exit 124 on timeout
+my $s = shift; my $pid = fork;
+if (!$pid) { exec @ARGV or exit 127 }
+$SIG{ALRM} = sub { kill 'TERM', $pid; sleep 1; kill 'KILL', $pid; exit 124 };
+alarm $s; waitpid $pid, 0; exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
