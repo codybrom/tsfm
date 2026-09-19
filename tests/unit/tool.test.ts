@@ -154,6 +154,16 @@ describe("Tool", () => {
     expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
   });
 
+  it("doesn't answer through a released handle when onCall disposes the tool", async () => {
+    const tool = new TestTool();
+    tool.onCall = () => tool.dispose();
+    tool._register();
+    shouldThrowOnConstruct.value = false;
+    capturedCallbacks[0]("ref", 3);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+  });
+
   describe("tool call handler", () => {
     it("calls FMBridgedToolFinishCall with the result on success", async () => {
       const tool = new TestTool();
