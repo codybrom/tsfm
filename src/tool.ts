@@ -45,6 +45,8 @@ export abstract class Tool {
 
   /** @internal Set during registration with a session. */
   _nativeTool: NativePointer | null = null;
+  /** Counts registrations, so a call is only answered on the tool that received it. */
+  private _registration = 0;
 
   /**
    * @internal Budgets of the requests currently using this tool. A call runs
@@ -71,13 +73,25 @@ export abstract class Tool {
     }
 
     const fn = getFunctions();
+    const registration = ++this._registration;
 
     // The callback is persistent: the model may call this tool many times, from
     // any session using it. Each call must be answered, by id, with
     // FMBridgedToolFinishCall or FMBridgedToolFailCall, or the response waits.
+    //
+    // The addon holds this callback until the native tool is freed, so it must
+    // not hold the Tool strongly: a Tool nobody references is collected, which
+    // releases its native tool. `current()` is the native tool that received the
+    // call, or null once it's disposed or replaced (the addon failed the call).
+    const self = new WeakRef(this);
+    const current = (): NativePointer | null => {
+      const tool = self.deref();
+      return tool && tool._registration === registration ? tool._nativeTool : null;
+    };
     const onCall = (contentRef: NativePointer | null, callId: number) => {
-      const tool = this._nativeTool;
-      if (!tool) return; // disposed: the addon already failed the call
+      const owner = self.deref();
+      const tool = current();
+      if (!owner || !tool) return;
       // The arguments are released once the call settles, on every path.
       let content: GeneratedContent | null = null;
       try {
@@ -85,7 +99,7 @@ export abstract class Tool {
         content = new GeneratedContent(contentRef);
         const args = content;
 
-        const budgets = [...this._budgets];
+        const budgets = [...owner._budgets];
         const spent = budgets.find((b) => b.used >= b.max);
         if (spent) {
           // Failing the call (rather than answering it) ends the response, which
@@ -97,7 +111,7 @@ export abstract class Tool {
             GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
             `The request reached its limit of ${spent.max} tool call${spent.max === 1 ? "" : "s"} ` +
               `(maximumToolCalls); ` +
-              `'${this.name}' was not run.`,
+              `'${owner.name}' was not run.`,
           );
           return;
         }
@@ -106,21 +120,22 @@ export abstract class Tool {
         // Fire onCall notification — informational only, must not block the
         // tool call even if it throws.
         try {
-          this.onCall?.(this.name, args.toObject() as Record<string, unknown>);
+          owner.onCall?.(owner.name, args.toObject() as Record<string, unknown>);
         } catch (err) {
-          console.warn(`[tsfm] Tool '${this.name}' onCall handler threw:`, err);
+          console.warn(`[tsfm] Tool '${owner.name}' onCall handler threw:`, err);
         }
-        this.call(args)
+        owner
+          .call(args)
           .then((result) => {
             // A disposed tool's pending calls were already failed.
-            if (this._nativeTool) fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
+            const answering = current();
+            if (answering) fn.FMBridgedToolFinishCall(answering, callId, result);
           })
           .catch((err: unknown) => {
             const cause = err instanceof Error ? err : new Error(String(err));
-            const toolErr = new ToolCallError(this.name, cause);
-            if (this._nativeTool) {
-              fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
-            }
+            const toolErr = new ToolCallError(owner.name, cause);
+            const answering = current();
+            if (answering) fn.FMBridgedToolFinishCall(answering, callId, toolErr.message);
           })
           .finally(() => args.dispose());
       } catch (err: unknown) {
@@ -129,8 +144,9 @@ export abstract class Tool {
         // the call must still be answered or the response waits forever.
         const msg = err instanceof Error ? err.message : String(err);
         // Disposed meanwhile (e.g. by onCall): the addon already failed the call.
-        if (this._nativeTool) {
-          fn.FMBridgedToolFinishCall(this._nativeTool, callId, `Tool callback error: ${msg}`);
+        const answering = current();
+        if (answering) {
+          fn.FMBridgedToolFinishCall(answering, callId, `Tool callback error: ${msg}`);
         }
       }
     };
