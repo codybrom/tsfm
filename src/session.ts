@@ -677,7 +677,10 @@ export class LanguageModelSession {
     }
   }
 
-  private _respondText(
+  // Each request method owns the composed prompt (+1) and releases it in a
+  // finally, whether starting the request throws or the request settles.
+
+  private async _respondText(
     prompt: string | PromptInput,
     options: GenerationOptions | undefined,
   ): Promise<string> {
@@ -686,12 +689,16 @@ export class LanguageModelSession {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const composedPrompt = composePrompt(fn, prompt);
-    return this._runText(() =>
-      fn.FMLanguageModelSessionRespond(this._nativeSession!, composedPrompt, optionsJson),
-    ).finally(() => fn.FMRelease(composedPrompt));
+    try {
+      return await this._runText(() =>
+        fn.FMLanguageModelSessionRespond(this._nativeSession!, composedPrompt, optionsJson),
+      );
+    } finally {
+      fn.FMRelease(composedPrompt);
+    }
   }
 
-  private _respondWithSchema(
+  private async _respondWithSchema(
     prompt: string | PromptInput,
     schema: GenerationSchema,
     options: GenerationOptions | undefined,
@@ -708,17 +715,21 @@ export class LanguageModelSession {
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const composedPrompt = composePrompt(fn, prompt);
-    return this._runStructured(() =>
-      fn.FMLanguageModelSessionRespondWithSchema(
-        this._nativeSession!,
-        composedPrompt,
-        schema._nativeSchema,
-        optionsJson,
-      ),
-    ).finally(() => fn.FMRelease(composedPrompt));
+    try {
+      return await this._runStructured(() =>
+        fn.FMLanguageModelSessionRespondWithSchema(
+          this._nativeSession!,
+          composedPrompt,
+          schema._nativeSchema,
+          optionsJson,
+        ),
+      );
+    } finally {
+      fn.FMRelease(composedPrompt);
+    }
   }
 
-  private _respondWithJsonSchema(
+  private async _respondWithJsonSchema(
     prompt: string | PromptInput,
     jsonSchema: JsonSchema,
     options: GenerationOptions | undefined,
@@ -736,13 +747,17 @@ export class LanguageModelSession {
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
     const composedPrompt = composePrompt(fn, prompt);
-    return this._runStructured(() =>
-      fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
-        this._nativeSession!,
-        composedPrompt,
-        schemaJson,
-        optionsJson,
-      ),
-    ).finally(() => fn.FMRelease(composedPrompt));
+    try {
+      return await this._runStructured(() =>
+        fn.FMLanguageModelSessionRespondWithSchemaFromJSON(
+          this._nativeSession!,
+          composedPrompt,
+          schemaJson,
+          optionsJson,
+        ),
+      );
+    } finally {
+      fn.FMRelease(composedPrompt);
+    }
   }
 }

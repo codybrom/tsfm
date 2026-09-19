@@ -81,7 +81,7 @@ import {
   UnsupportedCapabilityError,
   UnsupportedGuideError,
 } from "../../src/errors.js";
-import type { JsonSchema } from "../../src/schema.js";
+import { GenerationSchema, type JsonSchema } from "../../src/schema.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -260,14 +260,27 @@ describe("LanguageModelSession", () => {
   });
 
   describe("respond", () => {
-    it("releases the composed prompt when the native call throws while starting", async () => {
-      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(() => {
-        throw new TypeError("bad argument");
-      });
-      const session = new LanguageModelSession();
-      await expect(session.respond("Hi")).rejects.toThrow("bad argument");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
-    });
+    it.each([
+      ["respond", "FMLanguageModelSessionRespond"],
+      ["respondWithSchema", "FMLanguageModelSessionRespondWithSchema"],
+      ["respondWithJsonSchema", "FMLanguageModelSessionRespondWithSchemaFromJSON"],
+    ] as const)(
+      "%s releases the composed prompt when the native call throws while starting",
+      async (method, native) => {
+        mockFns[native].mockImplementationOnce(() => {
+          throw new TypeError("bad argument");
+        });
+        const session = new LanguageModelSession();
+        const run =
+          method === "respond"
+            ? session.respond("Hi")
+            : method === "respondWithSchema"
+              ? session.respondWithSchema("Hi", new GenerationSchema("S", "s"))
+              : session.respondWithJsonSchema("Hi", { type: "object", properties: {} });
+        await expect(run).rejects.toThrow("bad argument");
+        expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+      },
+    );
 
     it("releases the request handle once the response settles", async () => {
       mockFns.FMLanguageModelSessionRespond.mockReturnValueOnce([
