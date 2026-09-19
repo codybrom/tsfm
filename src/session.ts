@@ -11,8 +11,9 @@ import {
 } from "./bindings.js";
 import { SystemLanguageModel } from "./core.js";
 import { Tool } from "./tool.js";
+import { ToolCallBudget } from "./tool-budget.js";
 import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
-import { GenerationOptions, serializeOptions } from "./options.js";
+import { GenerationOptions, serializeOptions, resolveMaximumToolCalls } from "./options.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
@@ -94,10 +95,13 @@ export class LanguageModelSession {
 
   /** Set synchronously by dispose(); checked by _assertNotDisposed(). */
   private _disposed = false;
+  /** Tools the session was created with; each request lends them a call budget. */
+  private _tools: Tool[] = [];
 
   /** Shared initialization for both constructor and fromTranscript. */
-  private _init(pointer: NativePointer, transcript: Transcript): void {
+  private _init(pointer: NativePointer, transcript: Transcript, tools: Tool[]): void {
     this._nativeSession = pointer;
+    this._tools = tools;
     this._transcript = transcript;
     _sessionRegistry.register(this, pointer, this);
     this._weakRef = new WeakRef(this);
@@ -131,7 +135,7 @@ export class LanguageModelSession {
     ) as NativePointer | null;
 
     if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
-    this._init(pointer, new Transcript(pointer));
+    this._init(pointer, new Transcript(pointer), tools);
   }
 
   /**
@@ -161,7 +165,7 @@ export class LanguageModelSession {
     if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
     const session = new LanguageModelSession(_FROM_POINTER);
-    session._init(pointer, transcript);
+    session._init(pointer, transcript, tools);
     // Update the transcript's native session so future toJson() calls read
     // from the new session rather than the original deserialized transcript.
     transcript._updateNativeSession(pointer);
@@ -233,7 +237,11 @@ export class LanguageModelSession {
     opts: { options?: GenerationOptions } = {},
   ): Promise<Response<string>> {
     this._assertNotDisposed();
-    return this._enqueue(() => this._withUsage(() => this._respondText(prompt, opts.options)));
+    return this._enqueue(() =>
+      this._withUsage(() =>
+        this._withToolBudget(opts.options, () => this._respondText(prompt, opts.options)),
+      ),
+    );
   }
 
   /**
@@ -250,7 +258,11 @@ export class LanguageModelSession {
   ): Promise<Response<GeneratedContent>> {
     this._assertNotDisposed();
     return this._enqueue(() =>
-      this._withUsage(() => this._respondWithSchema(prompt, schema, opts.options)),
+      this._withUsage(() =>
+        this._withToolBudget(opts.options, () =>
+          this._respondWithSchema(prompt, schema, opts.options),
+        ),
+      ),
     );
   }
 
@@ -270,7 +282,11 @@ export class LanguageModelSession {
   ): Promise<Response<GeneratedContent>> {
     this._assertNotDisposed();
     return this._enqueue(() =>
-      this._withUsage(() => this._respondWithJsonSchema(prompt, jsonSchema, opts.options)),
+      this._withUsage(() =>
+        this._withToolBudget(opts.options, () =>
+          this._respondWithJsonSchema(prompt, jsonSchema, opts.options),
+        ),
+      ),
     );
   }
 
@@ -342,12 +358,14 @@ export class LanguageModelSession {
     let notifyConsumer: (() => void) | null = null;
 
     let usageBefore: Usage | null = null;
+    let budget: ToolCallBudget | null = null;
 
     try {
       // Wait for requests queued before this stream. Starting early would
       // overlap them on the native session and mix their token usage.
       await previous;
       usageBefore = this._readUsage();
+      budget = this._lendToolBudget(opts.options);
       fn = getFunctions();
       const optionsJson = serializeOptions(opts.options);
 
@@ -487,6 +505,7 @@ export class LanguageModelSession {
       }
       if (fn && streamPointer) fn.FMRelease(streamPointer);
       if (fn && composedPrompt) fn.FMRelease(composedPrompt);
+      if (budget) this._returnToolBudget(budget);
       try {
         if (usageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
       } finally {
@@ -529,6 +548,30 @@ export class LanguageModelSession {
         ) as NativePointer | null,
       ),
     );
+  }
+
+  /** Attaches a fresh tool-call budget for one request to the session's tools. */
+  private _lendToolBudget(options: GenerationOptions | undefined): ToolCallBudget {
+    const budget = new ToolCallBudget(resolveMaximumToolCalls(options));
+    for (const tool of this._tools) tool._budgets.add(budget);
+    return budget;
+  }
+
+  private _returnToolBudget(budget: ToolCallBudget): void {
+    for (const tool of this._tools) tool._budgets.delete(budget);
+  }
+
+  /** Runs one request with its own tool-call budget (maximumToolCalls). */
+  private async _withToolBudget<T>(
+    options: GenerationOptions | undefined,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const budget = this._lendToolBudget(options);
+    try {
+      return await run();
+    } finally {
+      this._returnToolBudget(budget);
+    }
   }
 
   /**

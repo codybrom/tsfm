@@ -134,6 +134,8 @@ FMTaskRef FMLanguageModelSessionRespondWithSchemaFromJSON(FMLanguageModelSession
 // Tool functions
 FMBridgedToolRef _Nullable FMBridgedToolCreate(const char *_Nonnull name, const char *_Nonnull description, FMGenerationSchemaRef _Nonnull parameters, void (*_Nonnull callable)(FMGeneratedContentRef _Nonnull, unsigned int), int *_Nullable outErrorCode, char *_Nullable *_Nullable outErrorDescription) __attribute__((swift_attr("@Sendable")));
 void FMBridgedToolFinishCall(FMBridgedToolRef _Nonnull tool, unsigned int callId, const char *_Nonnull output);
+// tsfm: fail a pending tool call, ending the response with status `code`.
+void FMBridgedToolFailCall(FMBridgedToolRef _Nonnull tool, unsigned int callId, int code, const char *_Nonnull message);
 
 // MARK: - Memory management
 

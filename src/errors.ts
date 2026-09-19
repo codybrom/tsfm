@@ -18,6 +18,7 @@ export enum GenerationErrorCode {
   TIMEOUT = 12,
   UNSUPPORTED_CAPABILITY = 13,
   UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
+  TOOL_CALL_LIMIT_EXCEEDED = 15,
   UNKNOWN_ERROR = 255,
 }
 
@@ -164,6 +165,18 @@ export class UnsupportedTranscriptContentError extends GenerationError {
 }
 
 /**
+ * A request reached its `maximumToolCalls` limit. The call past the limit wasn't
+ * run. With `toolCallingMode: "required"` the model keeps calling tools, so
+ * this is how such a request ends unless a tool throws first.
+ */
+export class ToolCallLimitExceededError extends GenerationError {
+  constructor(msg = "Tool call limit exceeded") {
+    super(msg);
+    this.name = "ToolCallLimitExceededError";
+  }
+}
+
+/**
  * The Apple Intelligence service (`generativeexperiencesd`) has crashed.
  * Detected in `statusToError()` when UNKNOWN_ERROR details contain
  * "SensitiveContentAnalysisML" or "ModelManagerError Code=1013".
@@ -219,6 +232,8 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new UnsupportedCapabilityError(`Unsupported capability${suffix}`);
     case GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT:
       return new UnsupportedTranscriptContentError(`Unsupported transcript content${suffix}`);
+    case GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED:
+      return new ToolCallLimitExceededError(`Tool call limit exceeded${suffix}`);
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
         if (

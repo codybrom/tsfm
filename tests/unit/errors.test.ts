@@ -16,6 +16,7 @@ import {
   TimeoutError,
   UnsupportedCapabilityError,
   UnsupportedTranscriptContentError,
+  ToolCallLimitExceededError,
   ServiceCrashedError,
   GenerationError,
   FoundationModelsError,
@@ -102,6 +103,11 @@ describe("statusToError", () => {
       GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT,
       UnsupportedTranscriptContentError,
       "Unsupported transcript content",
+    ],
+    [
+      GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
+      ToolCallLimitExceededError,
+      "Tool call limit exceeded",
     ],
   ])("maps code %i to its GenerationError subclass", (code, type, message) => {
     const err = statusToError(code);

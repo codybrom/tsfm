@@ -14,7 +14,8 @@ import {
   type NativePointer,
 } from "./bindings.js";
 import { GenerationSchema, GeneratedContent } from "./schema.js";
-import { statusToError, ToolCallError } from "./errors.js";
+import { statusToError, ToolCallError, GenerationErrorCode } from "./errors.js";
+import type { ToolCallBudget } from "./tool-budget.js";
 
 const _toolRegistry = new FinalizationRegistry(
   ({ pointer, callback }: { pointer: NativePointer; callback: KoffiCallback }) => {
@@ -65,6 +66,13 @@ export abstract class Tool {
 
   /** @internal Set during registration with a session. */
   _nativeTool: NativePointer | null = null;
+
+  /**
+   * @internal Budgets of the requests currently using this tool. A call runs
+   * only if every one has room, so a tool shared by sessions that respond at
+   * the same time can stop early but never exceeds a request's limit.
+   */
+  _budgets = new Set<ToolCallBudget>();
   private _callback: KoffiCallback | null = null;
 
   /**
@@ -92,6 +100,25 @@ export abstract class Tool {
     this._callback = koffi.register((contentRef: NativePointer, callId: number) => {
       try {
         const content = new GeneratedContent(contentRef);
+
+        const budgets = [...this._budgets];
+        const spent = budgets.find((b) => b.used >= b.max);
+        if (spent) {
+          // Failing the call (rather than answering it) ends the response, which
+          // is what stops a toolCallingMode "required" loop.
+          content.dispose();
+          fn.FMBridgedToolFailCall(
+            this._nativeTool,
+            callId,
+            GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
+            `The request reached its limit of ${spent.max} tool call${spent.max === 1 ? "" : "s"} ` +
+              `(maximumToolCalls); ` +
+              `'${this.name}' was not run.`,
+          );
+          return;
+        }
+        for (const b of budgets) b.used++;
+
         // Fire onCall notification — informational only, must not block the
         // tool call even if it throws (e.g. N-API issues in Electron).
         try {

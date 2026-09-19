@@ -38,10 +38,29 @@ export const SamplingMode = {
   },
 };
 
+/** How the model may use the session's tools for a request. */
+export type ToolCallingMode = "allowed" | "required" | "disallowed";
+
+/** The default for `maximumToolCalls`. */
+export const DEFAULT_MAXIMUM_TOOL_CALLS = 32;
+
 export interface GenerationOptions {
   sampling?: SamplingMode;
   temperature?: number;
   maximumResponseTokens?: number;
+  /**
+   * `"allowed"` (the default): the model may call tools. `"required"`: it must
+   * call at least one before answering. `"disallowed"`: it answers from what it
+   * knows. With `"required"` the model keeps calling tools, so the request ends
+   * with `ToolCallLimitExceededError` once `maximumToolCalls` is reached unless a
+   * tool throws first.
+   */
+  toolCallingMode?: ToolCallingMode;
+  /**
+   * The most tool calls one request may make (default 32). The call after the
+   * limit isn't run, and the request fails with `ToolCallLimitExceededError`.
+   */
+  maximumToolCalls?: number;
 }
 
 interface SerializedSampling {
@@ -55,6 +74,16 @@ interface SerializedOptions {
   temperature?: number;
   maximum_response_tokens?: number;
   sampling?: SerializedSampling | { mode: "greedy" };
+  tool_calling_mode?: ToolCallingMode;
+}
+
+/** The tool-call limit for a request, validated. */
+export function resolveMaximumToolCalls(options: GenerationOptions | undefined): number {
+  const max = options?.maximumToolCalls ?? DEFAULT_MAXIMUM_TOOL_CALLS;
+  if (!Number.isInteger(max) || max < 0) {
+    throw new Error("'maximumToolCalls' must be a non-negative integer");
+  }
+  return max;
 }
 
 export function serializeOptions(options: GenerationOptions | undefined): string | null {
@@ -88,6 +117,14 @@ export function serializeOptions(options: GenerationOptions | undefined): string
       obj.sampling = r;
     }
   }
+  if (options.toolCallingMode !== undefined) {
+    if (!["allowed", "required", "disallowed"].includes(options.toolCallingMode)) {
+      throw new Error("'toolCallingMode' must be 'allowed', 'required' or 'disallowed'");
+    }
+    obj.tool_calling_mode = options.toolCallingMode;
+  }
+  // maximumToolCalls isn't sent: the session enforces it (see Tool._budgets).
+  resolveMaximumToolCalls(options);
 
   return JSON.stringify(obj);
 }

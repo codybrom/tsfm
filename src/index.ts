@@ -36,7 +36,13 @@ export {
   type JsonObject,
 } from "./schema.js";
 
-export { SamplingMode, type SamplingModeType, type GenerationOptions } from "./options.js";
+export {
+  SamplingMode,
+  DEFAULT_MAXIMUM_TOOL_CALLS,
+  type SamplingModeType,
+  type GenerationOptions,
+  type ToolCallingMode,
+} from "./options.js";
 
 export { Tool } from "./tool.js";
 
@@ -58,6 +64,7 @@ export {
   TimeoutError,
   UnsupportedCapabilityError,
   UnsupportedTranscriptContentError,
+  ToolCallLimitExceededError,
   ServiceCrashedError,
   ToolCallError,
   PromptAttachmentError,

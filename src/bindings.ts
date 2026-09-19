@@ -258,6 +258,10 @@ function defineFunctions() {
     FMBridgedToolCreate: fn(
       "void * FMBridgedToolCreate(str name, str description, void * schema, ToolCallback * callable, _Out_ int * outErrorCode, void * outErrorDesc)",
     ),
+    // Fails a pending call instead of answering it, ending the response with `code`.
+    FMBridgedToolFailCall: fn(
+      "void FMBridgedToolFailCall(void * tool, uint callId, int code, str message)",
+    ),
     FMBridgedToolFinishCall: fn(
       "void FMBridgedToolFinishCall(void * tool, uint callId, str output)",
     ),

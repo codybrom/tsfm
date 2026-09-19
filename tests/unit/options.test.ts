@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { SamplingMode, serializeOptions } from "../../src/options.js";
+import {
+  SamplingMode,
+  serializeOptions,
+  resolveMaximumToolCalls,
+  DEFAULT_MAXIMUM_TOOL_CALLS,
+} from "../../src/options.js";
 
 describe("SamplingMode", () => {
   describe("greedy", () => {
@@ -121,5 +126,34 @@ describe("serializeOptions", () => {
     expect(result.temperature).toBe(0.8);
     expect(result.maximum_response_tokens).toBe(200);
     expect(result.sampling).toEqual({ mode: "random", top_k: 40, seed: 7 });
+  });
+});
+
+describe("tool-calling options", () => {
+  it("serializes toolCallingMode as tool_calling_mode", () => {
+    for (const mode of ["allowed", "required", "disallowed"] as const) {
+      expect(JSON.parse(serializeOptions({ toolCallingMode: mode })!)).toEqual({
+        tool_calling_mode: mode,
+      });
+    }
+  });
+
+  it("rejects an unknown toolCallingMode", () => {
+    expect(() => serializeOptions({ toolCallingMode: "always" as never })).toThrow(
+      /toolCallingMode/,
+    );
+  });
+
+  it("doesn't send maximumToolCalls to the bridge (the session enforces it)", () => {
+    expect(JSON.parse(serializeOptions({ maximumToolCalls: 3 })!)).toEqual({});
+  });
+
+  it("defaults maximumToolCalls to 32 and validates it", () => {
+    expect(resolveMaximumToolCalls(undefined)).toBe(DEFAULT_MAXIMUM_TOOL_CALLS);
+    expect(DEFAULT_MAXIMUM_TOOL_CALLS).toBe(32);
+    expect(resolveMaximumToolCalls({ maximumToolCalls: 0 })).toBe(0);
+    expect(() => resolveMaximumToolCalls({ maximumToolCalls: -1 })).toThrow(/maximumToolCalls/);
+    expect(() => resolveMaximumToolCalls({ maximumToolCalls: 1.5 })).toThrow(/maximumToolCalls/);
+    expect(() => serializeOptions({ maximumToolCalls: -1 })).toThrow(/maximumToolCalls/);
   });
 });
