@@ -117,6 +117,17 @@ describe("Tool", () => {
     expect(() => tool._register()).toThrow("argumentsSchema must be fully initialized");
   });
 
+  it("names the tool when creation fails", () => {
+    mockFns.FMBridgedToolCreate.mockReturnValueOnce({
+      value: null,
+      status: 10,
+      description: "undefined reference",
+    });
+    expect(() => new TestTool()._register()).toThrow(
+      "Failed to create tool 'test-tool': undefined reference",
+    );
+  });
+
   it("_register throws when C returns null", () => {
     mockFns.FMBridgedToolCreate.mockReturnValueOnce({
       value: null,
