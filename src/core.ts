@@ -8,6 +8,7 @@ import {
   type KoffiCallback,
 } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
+import { parseCapabilities, type ModelCapability } from "./capabilities.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
 import type { Tool } from "./tool.js";
 import type { GenerationSchema } from "./schema.js";
@@ -138,6 +139,28 @@ export class SystemLanguageModel {
    */
   get contextSize(): number {
     return getFunctions().FMSystemLanguageModelGetContextSize(this._nativeModel) as number;
+  }
+
+  /** The model variant, e.g. `"AFM 3 Core Advanced"`. */
+  get variant(): string {
+    return (
+      decodeAndFreeString(
+        getFunctions().FMSystemLanguageModelGetVariantName(
+          this._nativeModel,
+        ) as NativePointer | null,
+      ) ?? ""
+    );
+  }
+
+  /** What the model can do. The on-device model doesn't reason. */
+  get capabilities(): ModelCapability[] {
+    return parseCapabilities(
+      decodeAndFreeString(
+        getFunctions().FMSystemLanguageModelGetCapabilitiesJSON(
+          this._nativeModel,
+        ) as NativePointer | null,
+      ),
+    );
   }
 
   /**

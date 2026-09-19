@@ -10,3 +10,8 @@ void FMLanguageModelSessionPrewarm(FMLanguageModelSessionRef _Nonnull session, c
 
 // LanguageModelSession token usage (cumulative); free with FMFreeString
 char *_Nullable FMLanguageModelSessionGetUsageJSON(FMLanguageModelSessionRef _Nonnull session);
+
+// Model information; free the results with FMFreeString
+char *_Nullable FMSystemLanguageModelGetCapabilitiesJSON(FMSystemLanguageModelRef _Nonnull model);
+char *_Nullable FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(void *_Nonnull model);
+char *_Nullable FMSystemLanguageModelGetVariantName(FMSystemLanguageModelRef _Nonnull model);

@@ -2,7 +2,8 @@ import { getFunctions, decodeAndFreeString, type NativePointer } from "./binding
 import { statusToError, FoundationModelsError } from "./errors.js";
 import type { JsonSchema, JsonObject } from "./schema.js";
 
-export type TranscriptEntryRole = "instructions" | "user" | "response" | "tool";
+/** `"reasoning"` entries come from Private Cloud Compute requests with a `reasoningLevel`. */
+export type TranscriptEntryRole = "instructions" | "user" | "response" | "tool" | "reasoning";
 
 export interface TranscriptTextContent {
   type: "text";
@@ -33,12 +34,23 @@ export interface TranscriptEntry {
   // user-specific
   options?: JsonObject;
   responseFormat?: JsonSchema;
+  /** Context options the request used, e.g. `{ reasoningLevel: "deep" }`. */
+  contextOptions?: JsonObject;
   // response-specific
   toolCalls?: TranscriptToolCall[];
   assets?: string[];
   // tool-specific
   toolName?: string;
   toolCallID?: string;
+  // reasoning-specific (Private Cloud Compute)
+  reasoning?: {
+    /** The model's reasoning text, when it's shared. Often empty. */
+    contents: TranscriptContent[];
+    /** An opaque signature the model uses to continue from this reasoning. */
+    signature?: string;
+  };
+  /** Model and system details recorded with the entry. */
+  metadata?: JsonObject;
 }
 
 const _transcriptRegistry = new FinalizationRegistry((pointer: NativePointer) => {

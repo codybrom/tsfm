@@ -8,6 +8,7 @@ import {
   type KoffiCallback,
 } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
+import { parseCapabilities, type ModelCapability } from "./capabilities.js";
 
 const _pccRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
@@ -108,6 +109,17 @@ export class PrivateCloudComputeLanguageModel {
       if (Date.now() >= deadline) return result;
       await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
     }
+  }
+
+  /** What the model can do, including reasoning. */
+  get capabilities(): ModelCapability[] {
+    return parseCapabilities(
+      decodeAndFreeString(
+        getFunctions().FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
+          this._assertNotDisposed(),
+        ) as NativePointer | null,
+      ),
+    );
   }
 
   /** The user's daily quota. */

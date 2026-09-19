@@ -282,6 +282,17 @@ function defineFunctions() {
     FMLanguageModelSessionPrewarm: fn(
       "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
     ),
+    // --- Model information (tsfm); free the results with FMFreeString ---
+    FMSystemLanguageModelGetCapabilitiesJSON: fn(
+      "void * FMSystemLanguageModelGetCapabilitiesJSON(void * model)",
+    ),
+    FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON: fn(
+      "void * FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(void * model)",
+    ),
+    FMSystemLanguageModelGetVariantName: fn(
+      "void * FMSystemLanguageModelGetVariantName(void * model)",
+    ),
+
     // --- Private Cloud Compute (tsfm) ---
     FMPrivateCloudComputeLanguageModelCreate: fn(
       "void * FMPrivateCloudComputeLanguageModelCreate()",

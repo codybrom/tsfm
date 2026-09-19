@@ -91,6 +91,11 @@ export function createMockFunctions() {
     // null decodes to zero usage; tests that check usage override this.
     FMLanguageModelSessionGetUsageJSON: vi.fn((): string | null => null),
 
+    // Model information
+    FMSystemLanguageModelGetCapabilitiesJSON: vi.fn((): string | null => null),
+    FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON: vi.fn((): string | null => null),
+    FMSystemLanguageModelGetVariantName: vi.fn((): string | null => null),
+
     // Private Cloud Compute
     FMPrivateCloudComputeLanguageModelCreate: vi.fn(() => "mock-pcc-pointer"),
     FMPrivateCloudComputeLanguageModelIsAvailable: vi.fn(
