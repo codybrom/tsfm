@@ -1,7 +1,8 @@
 # Spike: Node-API instead of koffi
 
-**Status:** spike, not wired into the package. **Recommendation:** adopt Node-API
-in 1.1 (see [Recommendation](#recommendation)).
+**Status:** spike, kept for reference; not wired into the package or the
+npm tarball. **Recommendation:** adopt Node-API in 1.1 (see
+[Recommendation](#recommendation)).
 
 The 1.0 plan kept koffi (Option B) and set a bar for replacing it with a
 Node-API addon (Option C): no crash under a fuzz suite, clean shutdown with
@@ -61,7 +62,7 @@ Each scenario ran 5 times per binding, one process per run.
 | dispose during a stream | 5/5 | 5/5 |
 | break out of 25 streams, one after another | 5/5 | 5/5 |
 | streams abandoned to GC | 5/5 | 5/5 |
-| fuzz (use after dispose, wrong argument types) | **5/5** | **0/5, SIGSEGV** |
+| fuzz (use after dispose, wrong argument types) | **5/5** | **0/5, SIGSEGV** (5/5 since #35) |
 
 - **The timeouts aren't bugs.** Both came in the run right after "exit with 8
   streams in flight". Apple's model service keeps generating for the exited
@@ -69,7 +70,7 @@ Each scenario ran 5 times per binding, one process per run.
 - **The koffi segfault is real, and on `feat/v1` today.** koffi passes a number
   given for a string parameter as a raw pointer, so
   `session.respond(42 as never)`, `new GenerationSchema(42 as never)` and a
-  dozen similar calls crashed the process. Fixed separately in #33, which checks every string argument against the C
+  dozen similar calls crashed the process. Fixed separately in #35, which checks every string argument against the C
   header's nullability. The addon never had the bug.
 
 ### Cost
