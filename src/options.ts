@@ -61,7 +61,16 @@ export interface GenerationOptions {
    * limit isn't run, and the request fails with `ToolCallLimitExceededError`.
    */
   maximumToolCalls?: number;
+  /**
+   * How much the model reasons before answering. Only
+   * `PrivateCloudComputeLanguageModel` reasons; the on-device model rejects it
+   * with `UnsupportedCapabilityError`.
+   */
+  reasoningLevel?: ReasoningLevel;
 }
+
+/** Reasoning effort for `PrivateCloudComputeLanguageModel`. */
+export type ReasoningLevel = "light" | "moderate" | "deep";
 
 interface SerializedSampling {
   mode: string;
@@ -75,6 +84,7 @@ interface SerializedOptions {
   maximum_response_tokens?: number;
   sampling?: SerializedSampling | { mode: "greedy" };
   tool_calling_mode?: ToolCallingMode;
+  reasoning_level?: ReasoningLevel;
 }
 
 /** The tool-call limit for a request, validated. */
@@ -122,6 +132,12 @@ export function serializeOptions(options: GenerationOptions | undefined): string
       throw new Error("'toolCallingMode' must be 'allowed', 'required' or 'disallowed'");
     }
     obj.tool_calling_mode = options.toolCallingMode;
+  }
+  if (options.reasoningLevel !== undefined) {
+    if (!["light", "moderate", "deep"].includes(options.reasoningLevel)) {
+      throw new Error("'reasoningLevel' must be 'light', 'moderate' or 'deep'");
+    }
+    obj.reasoning_level = options.reasoningLevel;
   }
   // maximumToolCalls isn't sent: the session enforces it (see Tool._budgets).
   resolveMaximumToolCalls(options);

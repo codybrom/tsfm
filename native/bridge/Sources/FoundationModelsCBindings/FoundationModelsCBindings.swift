@@ -6,6 +6,7 @@ Copyright (C) 2026 Apple Inc. All Rights Reserved.
 import Foundation
 import FoundationModels
 import FoundationModelsCDeclarations
+import Security
 import Synchronization
 
 /// Builder class for a `Prompt`.
@@ -319,6 +320,135 @@ public func FMLanguageModelSessionCreateFromSystemLanguageModel(
   return FMLanguageModelSessionRef(Unmanaged.passRetained(session).toOpaque())
 }
 
+// MARK: - tsfm: Private Cloud Compute
+//
+// PrivateCloudComputeLanguageModel runs Apple's server model. It requires the
+// managed entitlement com.apple.developer.private-cloud-compute on the host
+// executable (from a provisioning profile), which a library can't carry. PCC
+// pointers get their own functions: passing one where a SystemLanguageModel is
+// expected would be a type confusion.
+
+private let pccEntitlement = "com.apple.developer.private-cloud-compute"
+
+/// Whether this process is signed with the PCC entitlement. The framework's own
+/// availability reports .available without it, and requests then fail opaquely.
+private func processHasPrivateCloudComputeEntitlement() -> Bool {
+  guard let task = SecTaskCreateFromSelf(nil) else { return false }
+  let value = SecTaskCopyValueForEntitlement(task, pccEntitlement as CFString, nil)
+  return (value as? Bool) == true
+}
+
+private func bridgedToolArray(
+  _ tools: UnsafeMutablePointer<FMBridgedToolRef>?, _ toolCount: Int32
+) -> [any Tool] {
+  guard let tools, toolCount > 0 else { return [] }
+  return (0..<Int(toolCount)).map { i in
+    Unmanaged<BridgedTool>.fromOpaque(tools[i]).takeUnretainedValue()
+  }
+}
+
+@_cdecl("FMPrivateCloudComputeLanguageModelCreate")
+public func FMPrivateCloudComputeLanguageModelCreate() -> UnsafeMutableRawPointer {
+  Unmanaged.passRetained(PrivateCloudComputeLanguageModel()).toOpaque()
+}
+
+/// Availability; on false, `unavailableReason` is 1 deviceNotEligible,
+/// 2 systemNotReady, 3 entitlementMissing, or 255 unknown.
+@_cdecl("FMPrivateCloudComputeLanguageModelIsAvailable")
+public func FMPrivateCloudComputeLanguageModelIsAvailable(
+  model: UnsafeMutableRawPointer,
+  unavailableReason: UnsafeMutablePointer<Int32>?
+) -> Bool {
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  guard processHasPrivateCloudComputeEntitlement() else {
+    unavailableReason?.pointee = 3
+    return false
+  }
+  switch model.availability {
+  case .available:
+    return true
+  case .unavailable(let reason):
+    switch reason {
+    case .deviceNotEligible: unavailableReason?.pointee = 1
+    case .systemNotReady: unavailableReason?.pointee = 2
+    @unknown default: unavailableReason?.pointee = 255
+    }
+    return false
+  }
+}
+
+/// The user's daily quota as JSON:
+/// {"limitReached":Bool,"approachingLimit":Bool,"resetDate":"<ISO 8601>"|null}.
+/// Free with FMFreeString.
+@_cdecl("FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON")
+public func FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
+  model: UnsafeMutableRawPointer
+) -> UnsafeMutablePointer<CChar>? {
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  let quota = model.quotaUsage
+  var approaching = false
+  var limitReached = false
+  switch quota.status {
+  case .belowLimit(let below): approaching = below.isApproachingLimit
+  case .limitReached: limitReached = true
+  @unknown default: break
+  }
+  let object: [String: Any] = [
+    "limitReached": limitReached,
+    "approachingLimit": approaching,
+    "resetDate": quota.resetDate.map { ISO8601DateFormatter().string(from: $0) } ?? NSNull(),
+  ]
+  guard let data = try? JSONSerialization.data(withJSONObject: object),
+    let json = String(data: data, encoding: .utf8)
+  else { return nil }
+  return strdup(json)
+}
+
+/// The model's context window size, delivered through a token-count callback
+/// (PCC's contextSize is asynchronous).
+@_cdecl("FMPrivateCloudComputeLanguageModelGetContextSize")
+public func FMPrivateCloudComputeLanguageModelGetContextSize(
+  model: UnsafeMutableRawPointer,
+  userInfo: UnsafeMutableRawPointer?,
+  callback: FMSystemLanguageModelTokenCountCallback
+) -> FMTaskRef {
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  return performTokenCount(userInfo: userInfo, callback: callback) {
+    try await model.contextSize
+  }
+}
+
+@_cdecl("FMLanguageModelSessionCreateFromPrivateCloudComputeModel")
+public func FMLanguageModelSessionCreateFromPrivateCloudComputeModel(
+  model: UnsafeMutableRawPointer,
+  instructions: UnsafePointer<CChar>?,
+  tools: UnsafeMutablePointer<FMBridgedToolRef>?,
+  toolCount: Int32
+) -> FMLanguageModelSessionRef {
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  let session = LanguageModelSession(
+    model: model,
+    tools: bridgedToolArray(tools, toolCount),
+    instructions: instructions.map(String.init(cString:))
+  )
+  return FMLanguageModelSessionRef(Unmanaged.passRetained(session).toOpaque())
+}
+
+@_cdecl("FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel")
+public func FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
+  transcriptSession: FMLanguageModelSessionRef,
+  model: UnsafeMutableRawPointer,
+  tools: UnsafeMutablePointer<FMBridgedToolRef>?,
+  toolCount: Int32
+) -> FMLanguageModelSessionRef {
+  let transcript = Unmanaged<LanguageModelSession>.fromOpaque(transcriptSession)
+    .takeUnretainedValue().transcript
+  let model = Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue()
+  let session = LanguageModelSession(
+    model: model, tools: bridgedToolArray(tools, toolCount), transcript: transcript)
+  return FMLanguageModelSessionRef(Unmanaged.passRetained(session).toOpaque())
+}
+
 // MARK: - Session management
 
 @_cdecl("FMLanguageModelSessionCreateFromTranscript")
@@ -415,6 +545,11 @@ private enum StatusCode: Int32 {
   case unsupportedTranscriptContent = 14
   // tsfm: a bridged tool was failed on purpose (see FMBridgedToolFailCall).
   case toolCallLimitExceeded = 15
+  // tsfm: PrivateCloudComputeLanguageModel.Error, and a missing entitlement.
+  case pccNetworkFailure = 16
+  case pccQuotaLimitReached = 17
+  case pccServiceUnavailable = 18
+  case pccEntitlementMissing = 19
   case unknownError = 255
 }
 
@@ -441,9 +576,8 @@ private func mapGenerationErrorToStatusCode(_ error: LanguageModelSession.Genera
   case .refusal:
     return StatusCode.refusal.rawValue
   @unknown default:
-    // Log unknown error types for debugging
-    print("Warning: Unknown GenerationError type encountered: \(error)")
-    print("  Error description: \(error.localizedDescription)")
+    // tsfm: upstream printed a warning here. A library must not write to its
+    // host's stdout; the description still reaches the caller with the status.
     return StatusCode.unknownError.rawValue
   }
 }
@@ -528,9 +662,34 @@ private func macOS27StatusCode(for error: Error) -> Int32? {
     }
   case is GeneratedContent.ParsingError:
     return StatusCode.decodingFailure.rawValue
+  case let error as PrivateCloudComputeLanguageModel.Error:
+    switch error {
+    case .networkFailure:
+      return StatusCode.pccNetworkFailure.rawValue
+    case .quotaLimitReached:
+      return StatusCode.pccQuotaLimitReached.rawValue
+    case .serviceUnavailable:
+      return StatusCode.pccServiceUnavailable.rawValue
+    @unknown default:
+      return nil
+    }
   default:
-    return nil
+    // tsfm: Without the managed entitlement, PCC fails with an opaque error
+    // wrapping ModelManagerError 1046 (verified on macOS 27.0).
+    return containsModelManagerError(error, code: 1046)
+      ? StatusCode.pccEntitlementMissing.rawValue : nil
   }
+}
+
+/// tsfm: Whether `error` or any error nested under it is ModelManagerError `code`.
+private func containsModelManagerError(_ error: Error, code: Int, depth: Int = 0) -> Bool {
+  guard depth < 8 else { return false }
+  let nsError = error as NSError
+  if nsError.domain.hasSuffix("ModelManagerError") && nsError.code == code { return true }
+  let underlying =
+    (nsError.userInfo[NSMultipleUnderlyingErrorsKey] as? [Error] ?? [])
+    + [nsError.userInfo[NSUnderlyingErrorKey] as? Error].compactMap { $0 }
+  return underlying.contains { containsModelManagerError($0, code: code, depth: depth + 1) }
 }
 
 // Helper function to create detailed error descriptions from generic errors
@@ -608,6 +767,28 @@ private func parseGenerationOptions(from jsonString: String?) throws -> Generati
   return options
 }
 
+/// tsfm: ContextOptions from the same options JSON: "reasoning_level" is
+/// "light", "moderate" or "deep" (Private Cloud Compute only). Schema requests
+/// pass includeSchemaInPrompt: true, the default of the overloads they used.
+private func parseContextOptions(
+  from jsonString: String?,
+  includeSchemaInPrompt: Bool? = nil
+) throws -> ContextOptions {
+  var context = ContextOptions(includeSchemaInPrompt: includeSchemaInPrompt)
+  guard let jsonString, !jsonString.isEmpty,
+    let json = try JSONSerialization.jsonObject(with: Data(jsonString.utf8)) as? [String: Any]
+  else {
+    return context
+  }
+  switch json["reasoning_level"] as? String {
+  case "light": context.reasoningLevel = .light
+  case "moderate": context.reasoningLevel = .moderate
+  case "deep": context.reasoningLevel = .deep
+  default: break
+  }
+  return context
+}
+
 @_cdecl("FMLanguageModelSessionRespond")
 public func FMLanguageModelSessionRespond(
   session: FMLanguageModelSessionRef,
@@ -633,7 +814,8 @@ public func FMLanguageModelSessionRespond(
       // Perform the expensive operation with options
       let response = try await session.respond(
         to: prompt,
-        options: options ?? GenerationOptions()
+        options: options ?? GenerationOptions(),
+        contextOptions: try parseContextOptions(from: optionsJSONString)
       )
 
       // Check cancellation before callback
@@ -711,7 +893,11 @@ public func FMLanguageModelSessionStreamResponse(
 
   do {
     let options = try parseGenerationOptions(from: optionsJSONString)
-    let stream = session.streamResponse(to: prompt, options: options ?? GenerationOptions())
+    let stream = session.streamResponse(
+      to: prompt,
+      options: options ?? GenerationOptions(),
+      contextOptions: try parseContextOptions(from: optionsJSONString)
+    )
     let box = UnsafeSendableResponseStreamBox<String>(stream: stream, session: session)
     return FMLanguageModelSessionResponseStreamRef(Unmanaged.passRetained(box).toOpaque())
   } catch {
@@ -828,7 +1014,9 @@ public func FMLanguageModelSessionRespondWithSchema(
       let response = try await session.respond(
         to: prompt,
         schema: finalSchema,
-        options: options ?? GenerationOptions()
+        options: options ?? GenerationOptions(),
+        contextOptions: try parseContextOptions(
+          from: optionsJSONString, includeSchemaInPrompt: true)
       )
 
       // Check cancellation before callback
@@ -903,7 +1091,9 @@ public func FMLanguageModelSessionRespondWithSchemaFromJSON(
       let response = try await session.respond(
         to: prompt,
         schema: schema,
-        options: options ?? GenerationOptions()
+        options: options ?? GenerationOptions(),
+        contextOptions: try parseContextOptions(
+          from: optionsJSONString, includeSchemaInPrompt: true)
       )
 
       // Check cancellation before callback

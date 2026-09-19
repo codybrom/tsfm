@@ -134,6 +134,13 @@ FMTaskRef FMLanguageModelSessionRespondWithSchemaFromJSON(FMLanguageModelSession
 // Tool functions
 FMBridgedToolRef _Nullable FMBridgedToolCreate(const char *_Nonnull name, const char *_Nonnull description, FMGenerationSchemaRef _Nonnull parameters, void (*_Nonnull callable)(FMGeneratedContentRef _Nonnull, unsigned int), int *_Nullable outErrorCode, char *_Nullable *_Nullable outErrorDescription) __attribute__((swift_attr("@Sendable")));
 void FMBridgedToolFinishCall(FMBridgedToolRef _Nonnull tool, unsigned int callId, const char *_Nonnull output);
+// tsfm: Private Cloud Compute (needs the managed PCC entitlement on the host executable)
+void *_Nonnull FMPrivateCloudComputeLanguageModelCreate(void);
+bool FMPrivateCloudComputeLanguageModelIsAvailable(void *_Nonnull model, int *_Nullable unavailableReason);
+char *_Nullable FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(void *_Nonnull model);
+FMTaskRef _Nonnull FMPrivateCloudComputeLanguageModelGetContextSize(void *_Nonnull model, void *_Nullable userInfo, FMSystemLanguageModelTokenCountCallback callback);
+FMLanguageModelSessionRef _Nonnull FMLanguageModelSessionCreateFromPrivateCloudComputeModel(void *_Nonnull model, const char *_Nullable instructions, FMBridgedToolRef _Nonnull *_Nullable tools, int toolCount);
+FMLanguageModelSessionRef _Nonnull FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(FMLanguageModelSessionRef _Nonnull transcriptSession, void *_Nonnull model, FMBridgedToolRef _Nonnull *_Nullable tools, int toolCount);
 // tsfm: fail a pending tool call, ending the response with status `code`.
 void FMBridgedToolFailCall(FMBridgedToolRef _Nonnull tool, unsigned int callId, int code, const char *_Nonnull message);
 

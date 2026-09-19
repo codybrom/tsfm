@@ -7,6 +7,12 @@ export {
 } from "./core.js";
 
 export { LanguageModelSession } from "./session.js";
+export {
+  PrivateCloudComputeLanguageModel,
+  PrivateCloudComputeUnavailableReason,
+  type PrivateCloudComputeAvailability,
+  type PrivateCloudComputeQuotaUsage,
+} from "./pcc.js";
 export { ResponseStream, type Response, type Usage } from "./response.js";
 export { type PromptInput, type PromptAttachment } from "./prompt.js";
 
@@ -42,6 +48,7 @@ export {
   type SamplingModeType,
   type GenerationOptions,
   type ToolCallingMode,
+  type ReasoningLevel,
 } from "./options.js";
 
 export { Tool } from "./tool.js";
@@ -65,6 +72,10 @@ export {
   UnsupportedCapabilityError,
   UnsupportedTranscriptContentError,
   ToolCallLimitExceededError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeEntitlementError,
   ServiceCrashedError,
   ToolCallError,
   PromptAttachmentError,

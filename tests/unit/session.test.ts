@@ -55,6 +55,8 @@ vi.mock("../../src/tool.js", () => ({
 }));
 
 import { LanguageModelSession } from "../../src/session.js";
+import { PrivateCloudComputeLanguageModel } from "../../src/pcc.js";
+import { UnsupportedCapabilityError, UnsupportedGuideError } from "../../src/errors.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -1218,5 +1220,47 @@ describe("LanguageModelSession", () => {
       session.prewarm("Hello");
       expect(mockFns.FMLanguageModelSessionPrewarm).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("Private Cloud Compute sessions", () => {
+  it("creates the session with the PCC constructor", () => {
+    const model = new PrivateCloudComputeLanguageModel();
+    const session = new LanguageModelSession({ model, instructions: "hi" });
+    expect(mockFns.FMLanguageModelSessionCreateFromPrivateCloudComputeModel).toHaveBeenCalledWith(
+      "mock-pcc-pointer",
+      "hi",
+      null,
+      0,
+    );
+    expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
+    expect(session._nativeSession).toBe("mock-pcc-session");
+  });
+
+  it("skips the on-device regex check", async () => {
+    mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementationOnce(() => {
+      setTimeout(() => lastRegisteredCallback?.(0, "mock-content-ref", null), 0);
+      return "mock-task";
+    });
+    const session = new LanguageModelSession({ model: new PrivateCloudComputeLanguageModel() });
+    const schema = { type: "object", properties: { v: { type: "string", pattern: "[a-z]+" } } };
+    await expect(session.respondWithJsonSchema("x", schema)).resolves.toBeDefined();
+  });
+
+  it("still runs the regex check on-device", async () => {
+    const session = new LanguageModelSession();
+    const schema = { type: "object", properties: { v: { type: "string", pattern: "[a-z]+" } } };
+    await expect(session.respondWithJsonSchema("x", schema)).rejects.toBeInstanceOf(
+      UnsupportedGuideError,
+    );
+    expect(mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON).not.toHaveBeenCalled();
+  });
+
+  it("rejects reasoningLevel on-device before the request", async () => {
+    const session = new LanguageModelSession();
+    await expect(
+      session.respond("x", { options: { reasoningLevel: "deep" } }),
+    ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
+    expect(mockFns.FMLanguageModelSessionRespond).not.toHaveBeenCalled();
   });
 });
