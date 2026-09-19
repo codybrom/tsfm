@@ -121,7 +121,7 @@ The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.appl
 | `GenerationGuide.range(min, max)` | Numeric range (inclusive) |
 | `GenerationGuide.minimum(n)` | Numeric lower bound |
 | `GenerationGuide.maximum(n)` | Numeric upper bound |
-| `GenerationGuide.regex(pattern)` | String pattern |
+| `GenerationGuide.regex(pattern)` | String pattern ([supported syntax](/api/generation-schema#regex-patterns)) |
 | `GenerationGuide.count(n)` | Exact array length |
 | `GenerationGuide.minItems(n)` | Minimum array length |
 | `GenerationGuide.maxItems(n)` | Maximum array length |

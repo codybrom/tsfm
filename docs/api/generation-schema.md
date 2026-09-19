@@ -51,8 +51,26 @@ Factory methods that create output constraints for schema properties.
 ```ts
 GenerationGuide.anyOf(values: string[])    // enumerated values
 GenerationGuide.constant(value: string)     // exact value
-GenerationGuide.regex(pattern: string)      // regex pattern
+GenerationGuide.regex(pattern: string)      // regex pattern (see supported syntax below)
 ```
+
+### Regex patterns
+
+The on-device model supports a subset of regex syntax in `regex` guides and JSON
+Schema `pattern`:
+
+| Supported | Not supported |
+| --- | --- |
+| Literals and `.` | Character classes `[a-z]`, `[^a]` (use `\d`, `\w`, `\s` or `(a\|b\|c)`) |
+| `\d`, `\w`, `\s` | Anchors `^`, `$` (patterns already match the whole value) |
+| Escaped punctuation: `\.`, `\-`, `\(`, `\[`, `\^`, `\$`, `\{` … | Other escapes: `\D`, `\W`, `\S`, `\b`, `\n`, `\t`, `\p{…}`, `\x41`, `\\` |
+| Groups `(…)`, nested and quantified, with `\|` | `(?…)` groups: non-capturing, lookaround, named |
+| `*`, `+`, `?`, `{m}`, `{m,n}` | Lazy or possessive quantifiers: `+?`, `*+`, `{2,3}?`; backreferences |
+
+`respondWithSchema()` and `respondWithJsonSchema()` check patterns before the
+request and throw `UnsupportedGuideError` naming the construct and where it is.
+Without that check, `(?:…)` makes the model generate until it fills the context
+window, and the others fail with an unhelpful error.
 
 ### Numeric Guides
 
