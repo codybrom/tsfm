@@ -14,7 +14,8 @@ import { Tool } from "./tool.js";
 import { ToolCallBudget } from "./tool-budget.js";
 import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
 import { GenerationOptions, serializeOptions, resolveMaximumToolCalls } from "./options.js";
-import { statusToError, FoundationModelsError } from "./errors.js";
+import { statusToError, FoundationModelsError, UnsupportedGuideError } from "./errors.js";
+import { collectSchemaPatterns, findUnsupportedRegexConstruct } from "./regex-support.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
 import {
@@ -550,6 +551,23 @@ export class LanguageModelSession {
     );
   }
 
+  /**
+   * Rejects regex guides the on-device model can't use, before the request.
+   * Unsupported patterns otherwise fail with an opaque error, or with (?:…)
+   * send the model into a response that fills the context window.
+   */
+  private _assertRegexGuidesSupported(jsonSchema: JsonSchema): void {
+    for (const { path, pattern } of collectSchemaPatterns(jsonSchema)) {
+      const construct = findUnsupportedRegexConstruct(pattern);
+      if (construct) {
+        throw new UnsupportedGuideError(
+          `The on-device model doesn't support ${construct}, in the regex guide ` +
+            `${JSON.stringify(pattern)} at ${path}.`,
+        );
+      }
+    }
+  }
+
   /** Attaches a fresh tool-call budget for one request to the session's tools. */
   private _lendToolBudget(options: GenerationOptions | undefined): ToolCallBudget {
     const budget = new ToolCallBudget(resolveMaximumToolCalls(options));
@@ -678,6 +696,13 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
+    let dict: JsonSchema | null = null;
+    try {
+      dict = schema.toDict();
+    } catch {
+      // Can't read the schema back; the model still rejects bad patterns itself.
+    }
+    if (dict) this._assertRegexGuidesSupported(dict);
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const composedPrompt = composePrompt(fn, prompt);
@@ -700,6 +725,7 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
+    this._assertRegexGuidesSupported(jsonSchema);
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
