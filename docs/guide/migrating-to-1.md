@@ -99,6 +99,9 @@ entitlement; plain `node` can't use it. See
   `FoundationModelsError`. It used to read freed memory and could crash.
 - Creating a session with a disposed `SystemLanguageModel` throws. It used to
   fall back to the default model silently.
+- Passing a non-string where tsfm expects one (a prompt, instructions, an
+  attachment path, a schema or property name, a guide value) throws `TypeError`.
+  A number there used to crash the process.
 - Nested objects in `generable()` work. They used to fail with an undefined
   reference.
 - `$ref` to `$defs` in JSON schemas resolves. Each definition's `title` is set
