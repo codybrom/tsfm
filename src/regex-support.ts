@@ -81,6 +81,8 @@ const SUBSCHEMA_MAP_KEYWORDS = [
   "patternProperties",
   "$defs",
   "definitions",
+  // Draft 4-7 "dependencies" maps names to schemas (or, harmlessly, to arrays of names).
+  "dependencies",
   "dependentSchemas",
 ];
 

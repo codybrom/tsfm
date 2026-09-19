@@ -112,6 +112,17 @@ describe("collectSchemaPatterns", () => {
     ).toEqual(["a", "b", "c", "d", "e"]);
   });
 
+  it("follows Draft 4-7 dependencies and 2019+ dependentSchemas", () => {
+    const schema = {
+      dependencies: { a: { properties: { x: { pattern: "(?:ab)" } } }, b: ["a"] },
+      dependentSchemas: { c: { pattern: "[0-9]" } },
+    };
+    expect(collectSchemaPatterns(schema)).toEqual([
+      { path: "$.dependencies.a.properties.x", pattern: "(?:ab)" },
+      { path: "$.dependentSchemas.c", pattern: "[0-9]" },
+    ]);
+  });
+
   it("ignores a property that happens to be named pattern", () => {
     expect(collectSchemaPatterns({ properties: { pattern: { type: "string" } } })).toEqual([]);
   });
