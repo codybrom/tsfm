@@ -4,7 +4,7 @@ Copyright (C) 2026 Cody Bromley
 This product includes software developed by Apple Inc.
 (<https://github.com/apple/python-apple-fm-sdk>)
 
-The Foundation Models C bindings (foundation-models-c/) and the
+The Foundation Models C bindings (native/foundation-models-c/) and the
 prebuilt libFoundationModels.dylib are derived from Apple's
 python-apple-fm-sdk, Copyright (C) 2026 Apple Inc.,
 licensed under the Apache License, Version 2.0.
