@@ -40,9 +40,8 @@ Release the C object backing a standalone transcript.
 dispose(): void
 ```
 
-Transcripts from `Transcript.fromJson()` / `fromDict()` are independent C
-objects that are not freed by disposing any session, so dispose them when you
-are done:
+Transcripts from `Transcript.fromJson()` / `fromDict()` own their own C object
+until a session takes it over, so dispose them when you are done:
 
 ```ts
 const transcript = Transcript.fromJson(savedJson);
@@ -61,10 +60,18 @@ using transcript = Transcript.fromJson(savedJson);
 
 Safe to call more than once, and a no-op on the transcript reached through
 `session.transcript` — the session owns that pointer and frees it in
-`session.dispose()`. A `FinalizationRegistry` releases anything you miss, but
-that runs at the garbage collector's discretion, so prefer disposing
-explicitly. Reading a disposed transcript throws rather than dereferencing
-freed memory.
+`session.dispose()`.
+
+Passing a transcript to `LanguageModelSession.fromTranscript()` hands it over:
+the instance releases its own C object and reads from the new session from then
+on (it is that session's `transcript`), and once that session is disposed the
+instance is detached and its methods throw `FoundationModelsError`. Export it
+first if you need the history afterwards, and don't reuse one instance for a
+second `fromTranscript()` call; create a fresh one from the saved JSON.
+
+Anything you miss is released when the handle is garbage collected, but that
+runs at the collector's discretion, so prefer disposing explicitly. Reading a
+disposed transcript throws rather than dereferencing freed memory.
 
 ## Static Methods
 

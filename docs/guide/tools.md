@@ -111,17 +111,25 @@ instance when requests run concurrently and the limit matters.
 
 ## Error Handling
 
-If `call()` throws, it's wrapped in a `ToolCallError`:
+If `call()` throws, the request does **not** fail. The error is wrapped in a
+`ToolCallError` and its message — the tool's name and the original error — is
+sent back to the model as the tool's result, so the model can explain the
+failure or try something else. The response you await is the model's, and it
+usually mentions that the tool failed.
 
 ```ts
-try {
-  await session.respond("...");
-} catch (e) {
-  if (e instanceof ToolCallError) {
-    console.log(e.message); // includes tool name and original error
+class WeatherTool extends Tool {
+  async call(args: GeneratedContent): Promise<string> {
+    const city = args.value("city") as string;
+    if (!city) throw new Error("no city given"); // the model sees this
+    return fetchWeather(city);
   }
 }
 ```
+
+To fail the whole request instead, catch the error in `call()` and decide
+there: return a message the model can act on, or dispose the tool, which fails
+its pending calls and ends the response.
 
 ## Cleanup
 

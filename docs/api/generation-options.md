@@ -62,9 +62,12 @@ static random(options?: {
 
 | Parameter | Description |
 | --- | --- |
-| `top` | Top-K: only consider the K most likely tokens |
-| `seed` | Random seed for reproducible output |
-| `probabilityThreshold` | Top-P / nucleus: cumulative probability threshold |
+| `top` | Top-K: only consider the K most likely tokens. A positive integer. |
+| `seed` | Random seed for reproducible output. A non-negative integer up to `Number.MAX_SAFE_INTEGER`. |
+| `probabilityThreshold` | Top-P / nucleus: cumulative probability threshold, from 0 to 1. |
+
+`top` and `probabilityThreshold` can't both be set. The same checks run when a
+request is sent, so a `sampling` object built by hand is validated too.
 
 ### `SamplingModeType`
 

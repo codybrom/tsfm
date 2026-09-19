@@ -74,7 +74,19 @@ const promise = session.respond("Tell me a long story");
 session.cancel();
 ```
 
-Cancellation is advisory — the response may still complete if the model finishes before the cancel is processed. After cancellation, the session resets to idle and is ready for new requests.
+`cancel()` asks the native task to stop. It returns immediately and the pending
+promise settles later. What to expect:
+
+- The response can still complete if the model finishes before the cancel is
+  processed. A request that was stopped rejects with `GenerationError` (code
+  255) whose message says the operation was cancelled.
+- A request waiting on a `Tool.call()` isn't interrupted: the native task can
+  only stop once the tool answers. If a tool never settles, only
+  `tool.dispose()` ends the request, by failing its pending calls.
+- Requests queued behind the cancelled one wait until it settles; `cancel()`
+  doesn't remove them from the queue.
+- For streams, the consumer loop exits on its next iteration; see
+  [Streaming](/guide/streaming#cancellation).
 
 ## Checking State
 

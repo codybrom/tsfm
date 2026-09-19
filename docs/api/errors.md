@@ -56,13 +56,13 @@ FoundationModelsError
 | `PrivateCloudComputeEntitlementError` | 19 | The host isn't signed with the PCC entitlement |
 | `ServiceCrashedError` | 255 | An Apple Intelligence system service crashed; wait for macOS to restart it, then retry with a new session |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
-| `ToolCallError` | — | Tool's `call()` threw |
+| `ToolCallError` | — | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
 
 ¹ Only reported when the host process (Node, Electron, your app) was built with the macOS 27 SDK.
 Older hosts receive the framework's legacy error type, which has no equivalent for these codes.
 
 ² When a macOS 27 feature is used on macOS 26, tsfm throws this before the request, on any host, and
-sets `requiredMacOS` to `27`:
+sets `requiredMacOS` to `27`. Token counting needs macOS 26.4, so on 26.0–26.3 `requiredMacOS` is `26.4`:
 
 ```ts
 try {
@@ -112,15 +112,12 @@ import {
   GenerationError,
   ExceededContextWindowSizeError,
   GuardrailViolationError,
-  ToolCallError,
 } from "tsfm-sdk";
 
 try {
   await session.respond("...");
 } catch (e) {
-  if (e instanceof ToolCallError) {
-    // Tool handler threw
-  } else if (e instanceof GenerationError) {
+  if (e instanceof GenerationError) {
     // Any generation error
   } else if (e instanceof FoundationModelsError) {
     // Any SDK error

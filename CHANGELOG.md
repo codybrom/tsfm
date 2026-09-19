@@ -24,6 +24,11 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - A schema the framework can't build, such as one with an undefined reference, throws `InvalidGenerationSchemaError` instead of `GenerationError` with code 255.
 - `generable()` names nested reference schemas by their property path, such as `shipping_address`, so objects under the same key in different places stay separate.
 - The Swift-to-C bridge is now tsfm's own code in `native/bridge`, forked from Apple's `foundation-models-c` (see `native/bridge/UPSTREAM.md`).
+- tsfm no longer installs SIGINT or SIGTERM handlers. A library shouldn't change how its host handles signals: a server draining on SIGTERM was killed by tsfm's re-raise, or ran its own handler twice. Sessions are still released on `exit`, and a process that dies from a signal is safe: the addon never lets a native callback reach JavaScript that's gone.
+- Chat and Responses APIs: `response.created` and `response.in_progress` events carry `status: "in_progress"`, as OpenAI's do.
+- A session rejects a tool listed twice, or two tools with one name, with `FoundationModelsError`.
+- `SamplingMode` objects built by hand are validated like `SamplingMode.random()` output when a request is sent: `top` must be a positive integer and `seed` a non-negative integer up to `Number.MAX_SAFE_INTEGER`; the bridge silently dropped values it couldn't read.
+- The stream idle timeout rejects with `GenerationError` instead of a plain `Error`.
 - JavaScript reaches the bridge through tsfm's own Node-API addon, `native/tsfm.node`, instead of koffi. tsfm has no runtime dependencies, so npm no longer warns about koffi's install script. Native objects are type-tagged handles: passing the wrong kind, a released one, or a non-string where a string belongs throws instead of reaching native code, and native callbacks can't reach JavaScript after a stream is dropped, a tool is disposed or the process exits. Node-API is ABI-stable, so the one bundled build works on every supported Node version.
 
 ### Added
@@ -64,6 +69,12 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `ServiceCrashedError` told you to restart the service with `launchctl kickstart`, which System Integrity Protection blocks on macOS 27. It now says to wait for macOS to restart it, or to log out or restart the Mac.
 - A `Tool` that was used by a session and never disposed was never garbage-collected, so it and its native tool leaked. Once nothing references it, it's collected and its native tool released.
 - A stream the native side couldn't start (for example with invalid options) passed a null stream on to native code. It now throws `FoundationModelsError`.
+- `UnsupportedCapabilityError.requiredMacOS` was `26` for token counting on macOS 26.0–26.3, which needs 26.4. It's now `26.4`.
+- Passing a disposed transcript, or one whose session was disposed, to `fromTranscript()` or `tokenCount()` throws `FoundationModelsError` instead of a bare `Error` from the addon.
+- A tool whose `call()` resolved with something other than a string reported the addon's `Expected a string for "output"`. The message now names the tool and the type, and the call is still answered.
+- Chat and Responses APIs: `reasoning_effort: "constructor"` (or another `Object.prototype` name) threw instead of being warned about and ignored.
+- Chat and Responses APIs release the transcript they built when the session can't be created, instead of leaving it to the garbage collector.
+- Publishing a release older than the current `latest` in the same major (1.0.1 after 1.2.0) would have moved `latest` backwards; versions are now compared in full.
 
 ## [0.5.1] - 2026-09-18
 

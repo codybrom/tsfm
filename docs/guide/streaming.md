@@ -95,7 +95,7 @@ for await (const chunk of session.streamResponse("Write a long essay")) {
 ```
 
 ::: tip
-If the stream stalls during a tool call (no new tokens for 30 seconds), an internal idle timeout terminates the stream with an error rather than hanging indefinitely.
+Once the first snapshot has arrived, a stream that goes 30 seconds without another one ends with a `GenerationError` ("Stream idle timeout") rather than hanging. The timer isn't armed before the first snapshot, so a slow tool call or a long wait for the model at the start doesn't trip it.
 :::
 
 ## Cleanup
