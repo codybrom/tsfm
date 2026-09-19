@@ -226,9 +226,13 @@ async function main() {
     "Check my inbox and triage each email. For each one, assess priority (1=urgent, 5=ignorable), " +
     "categorize it, suggest an action, and write a one-sentence summary.";
 
-  const triageContent = await session.respondWithJsonSchema(triagePrompt, triageSchema, {
-    options: { temperature: 0.2 },
-  });
+  const { content: triageContent } = await session.respondWithJsonSchema(
+    triagePrompt,
+    triageSchema,
+    {
+      options: { temperature: 0.2 },
+    },
+  );
   const triage = triageContent.toObject<{ results: TriageResult[] }>();
 
   console.log("--- Inbox Triage ---\n");
@@ -285,7 +289,7 @@ async function main() {
   }
 
   // Phase 3: Summary
-  const summary = await session.respond(
+  const { content: summary } = await session.respond(
     "Give a one-line summary of the triage: how many emails, how many need replies, " +
       "and how many can be archived.",
   );

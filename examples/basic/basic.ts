@@ -13,7 +13,7 @@ async function main() {
     instructions: "You are a concise assistant.",
   });
 
-  const reply = await session.respond("What is the capital of France?");
+  const { content: reply } = await session.respond("What is the capital of France?");
   console.log("Response:", reply);
 
   session.dispose();

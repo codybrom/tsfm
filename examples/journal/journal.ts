@@ -311,7 +311,7 @@ async function main() {
     model,
   });
 
-  const content = await analysisSession.respondWithSchema(
+  const { content } = await analysisSession.respondWithSchema(
     `Analyze this journal entry:\n\n${entryText}`,
     JournalAnalysis.schema,
   );
