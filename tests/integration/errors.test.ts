@@ -57,9 +57,10 @@ describeIfAvailable("error mapping (integration)", () => {
     session.dispose();
   }, 30_000);
 
-  // On-device, the macOS 27 model rejects regex character classes such as
-  // [a-z] (literals, \d and alternation still work). If an OS update starts
-  // accepting them, this test fails and the guide docs need updating.
+  // The on-device model rejects regex character classes such as [a-z]. tsfm now
+  // catches these before the request (see regex-support.ts), so these two cases
+  // check the error still reaches callers as UnsupportedGuideError; the bridge's
+  // own error mapping is covered by the context-overflow cases above.
   it("maps an unsupported regex guide from respondWithSchema()", async () => {
     const schema = new GenerationSchema("Code", "A code").property("value", "string", {
       guides: [GenerationGuide.regex("[a-z]+")],
