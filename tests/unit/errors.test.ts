@@ -135,13 +135,13 @@ describe("statusToError", () => {
     expect(err.message).toBe(message);
   });
 
-  it("keeps the point release in requiredMacOS, as token counting needs 26.4", () => {
+  it("keeps the point release in minimumRequiredMacOS, as token counting needs 26.4", () => {
     const err = statusToError(
       GenerationErrorCode.UNSUPPORTED_CAPABILITY,
       "Token counting requires macOS 26.4 or later.",
     );
     expect(err).toBeInstanceOf(UnsupportedCapabilityError);
-    expect((err as UnsupportedCapabilityError).requiredMacOS).toBe(26.4);
+    expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(26.4);
   });
 
   it("maps PCC_ENTITLEMENT_MISSING to an error naming the entitlement", () => {

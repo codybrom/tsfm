@@ -39,7 +39,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `reasoningLevel` in `GenerationOptions` (`"light"`, `"moderate"` or `"deep"`), for Private Cloud Compute. The on-device model throws `UnsupportedCapabilityError`.
 - New errors: `InvalidArgumentError`, `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`, `ToolCallLimitExceededError`, `PrivateCloudComputeNetworkError`, `PrivateCloudComputeQuotaExceededError`, `PrivateCloudComputeUnavailableError` and `PrivateCloudComputeEntitlementError`.
 - `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities` (macOS 27; `null` on macOS 26).
-- `UnsupportedCapabilityError.requiredMacOS`: `27` when a macOS 27 feature is used on macOS 26, so an app can fall back instead of crashing.
+- `UnsupportedCapabilityError.minimumRequiredMacOS`: `27` when a macOS 27 feature is used on macOS 26, so an app can fall back instead of crashing.
 - Transcripts support `reasoning` entries, plus the `contextOptions` and `metadata` fields.
 - `npx tsfm doctor` reports whether a machine can run tsfm and why not. It only reads, and never agrees to the `fm` CLI's license.
 - Chat and Responses APIs:
@@ -69,7 +69,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `ServiceCrashedError` told you to restart the service with `launchctl kickstart`, which System Integrity Protection blocks on macOS 27. It now says to wait for macOS to restart it, or to log out or restart the Mac.
 - A `Tool` that was used by a session and never disposed was never garbage-collected, so it and its native tool leaked. Once nothing references it, it's collected and its native tool released.
 - A stream the native side couldn't start (for example with invalid options) passed a null stream on to native code. It now throws `FoundationModelsError`.
-- `UnsupportedCapabilityError.requiredMacOS` was `26` for token counting on macOS 26.0–26.3, which needs 26.4. It's now `26.4`.
+- `UnsupportedCapabilityError.minimumRequiredMacOS` was `26` for token counting on macOS 26.0–26.3, which needs 26.4. It's now `26.4`.
 - Passing a disposed transcript, or one whose session was disposed, to `fromTranscript()` or `tokenCount()` throws `FoundationModelsError` instead of a bare `Error` from the addon.
 - A tool whose `call()` resolved with something other than a string reported the addon's `Expected a string for "output"`. The message now names the tool and the type, and the call is still answered.
 - Chat and Responses APIs: `reasoning_effort: "constructor"` (or another `Object.prototype` name) threw instead of being warned about and ignored.

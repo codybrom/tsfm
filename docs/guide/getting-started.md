@@ -20,11 +20,11 @@ reports a clear reason your app can check.
 | Feature | On macOS 26 |
 | --- | --- |
 | Token usage (`response.usage`, `session.usage`) | `null` |
-| `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `requiredMacOS: 27` |
+| `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27` |
 | [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`; using it throws `UnsupportedCapabilityError` |
 | [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
 | `model.variant`, `model.capabilities` | `null` |
-| `model.tokenCount()` (needs macOS 26.4) | On 26.0–26.3, rejects with `UnsupportedCapabilityError` with `requiredMacOS: 26.4` |
+| `model.tokenCount()` (needs macOS 26.4) | On 26.0–26.3, rejects with `UnsupportedCapabilityError` with `minimumRequiredMacOS: 26.4` |
 
 Everything else works on both, including text, streaming, structured output,
 tools, transcripts and the Chat and Responses APIs. Regex guides are checked

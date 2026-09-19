@@ -101,7 +101,8 @@ readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoni
 ### `tokenCount()`
 
 Counts the tokens an input consumes against the [context window](#contextsize).
-Asynchronous.
+Asynchronous. Needs macOS 26.4 or later. On macOS 26.0-26.3 it rejects with
+`UnsupportedCapabilityError` (`minimumRequiredMacOS: 26.4`).
 
 ```ts
 tokenCount(input: TokenCountInput): Promise<number>

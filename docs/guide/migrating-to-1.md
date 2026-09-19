@@ -143,5 +143,5 @@ doesn't change.
 - New error classes, all subclasses of `GenerationError`: `InvalidArgumentError`,
   `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`
   and `ToolCallLimitExceededError`. See [Errors](/api/errors).
-- `UnsupportedCapabilityError` has a `requiredMacOS` property. It's `27` when a
+- `UnsupportedCapabilityError` has a `minimumRequiredMacOS` property. It's `27` when a
   macOS 27 feature is used on macOS 26.

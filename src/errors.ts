@@ -149,8 +149,8 @@ export class TimeoutError extends GenerationError {
 /**
  * The request needs a capability this model or this Mac doesn't have: for
  * example `reasoningLevel` on the on-device model, or a macOS 27 feature such
- * as `toolCallingMode` on macOS 26. When the Mac is too old, `requiredMacOS` is
- * the macOS version the feature needs.
+ * as `toolCallingMode` on macOS 26. When the Mac is too old,
+ * `minimumRequiredMacOS` is the macOS version the feature needs.
  */
 export class UnsupportedCapabilityError extends GenerationError {
   /**
@@ -158,12 +158,13 @@ export class UnsupportedCapabilityError extends GenerationError {
    * `27` for macOS 27 features, or a point release such as `26.4` for token
    * counting.
    */
-  readonly requiredMacOS?: number;
+  readonly minimumRequiredMacOS?: number;
 
-  constructor(msg = "Unsupported capability", options: { requiredMacOS?: number } = {}) {
+  constructor(msg = "Unsupported capability", options: { minimumRequiredMacOS?: number } = {}) {
     super(msg);
     this.name = "UnsupportedCapabilityError";
-    if (options.requiredMacOS !== undefined) this.requiredMacOS = options.requiredMacOS;
+    if (options.minimumRequiredMacOS !== undefined)
+      this.minimumRequiredMacOS = options.minimumRequiredMacOS;
   }
 }
 
@@ -289,7 +290,7 @@ export function statusToError(status: number, detail?: string | null): Generatio
       const required = /requires macOS (\d+(?:\.\d+)?)/.exec(detail ?? "");
       return new UnsupportedCapabilityError(
         `Unsupported capability${suffix}`,
-        required ? { requiredMacOS: Number(required[1]) } : {},
+        required ? { minimumRequiredMacOS: Number(required[1]) } : {},
       );
     }
     case GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT:

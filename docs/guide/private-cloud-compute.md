@@ -12,7 +12,7 @@ read [Requirements](#requirements) first.
 
 PCC needs **macOS 27**. On macOS 26, `isAvailable()` reports
 `REQUIRES_NEWER_OS`, `capabilities` and `quotaUsage` are `null`, and creating a
-session with the model throws `UnsupportedCapabilityError` (`requiredMacOS: 27`).
+session with the model throws `UnsupportedCapabilityError` (`minimumRequiredMacOS: 27`).
 
 It also requires the managed entitlement
 `com.apple.developer.private-cloud-compute`, which Apple grants to eligible

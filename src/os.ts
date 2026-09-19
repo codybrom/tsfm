@@ -56,6 +56,6 @@ export function requireMacOS27(feature: string): void {
   if (hasMacOS27()) return;
   throw new UnsupportedCapabilityError(
     `${feature} requires macOS ${MACOS_27} or later; this Mac runs macOS ${runtimeMacOSMajor()}.`,
-    { requiredMacOS: MACOS_27 },
+    { minimumRequiredMacOS: MACOS_27 },
   );
 }

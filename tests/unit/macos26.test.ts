@@ -55,7 +55,7 @@ describe("on macOS 26", () => {
           session.respond("Hi", { options: { toolCallingMode: mode } }),
         );
         expect(err).toBeInstanceOf(UnsupportedCapabilityError);
-        expect((err as UnsupportedCapabilityError).requiredMacOS).toBe(27);
+        expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(27);
         expect((err as Error).message).toMatch(
           new RegExp(`toolCallingMode "${mode}" requires macOS 27.*this Mac runs macOS 26`),
         );
@@ -110,7 +110,7 @@ describe("on macOS 26", () => {
     it("rejects contextSize() with a typed reason", async () => {
       const err = await thrown(() => new PrivateCloudComputeLanguageModel().contextSize());
       expect(err).toBeInstanceOf(UnsupportedCapabilityError);
-      expect((err as UnsupportedCapabilityError).requiredMacOS).toBe(27);
+      expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(27);
     });
 
     it("refuses to start a session, naming macOS 27 rather than disposal", () => {
@@ -171,14 +171,14 @@ describe("Private Cloud Compute creation on macOS 27", () => {
 });
 
 describe("bridge errors for macOS 27 features", () => {
-  it("carry requiredMacOS from the bridge's message", () => {
+  it("carry minimumRequiredMacOS from the bridge's message", () => {
     const err = statusToError(13, "reasoningLevel requires macOS 27 or later.");
     expect(err).toBeInstanceOf(UnsupportedCapabilityError);
-    expect((err as UnsupportedCapabilityError).requiredMacOS).toBe(27);
+    expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(27);
   });
 
-  it("leave requiredMacOS unset for other unsupported capabilities", () => {
+  it("leave minimumRequiredMacOS unset for other unsupported capabilities", () => {
     const err = statusToError(13, "The model can't reason.");
-    expect((err as UnsupportedCapabilityError).requiredMacOS).toBeUndefined();
+    expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBeUndefined();
   });
 });

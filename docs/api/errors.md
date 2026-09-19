@@ -47,7 +47,7 @@ FoundationModelsError
 | `InvalidGenerationSchemaError` | 10 | Malformed schema, including an undefined `$ref` or a JSON schema nested more than 128 levels deep |
 | `InvalidArgumentError` | 11 | The native bridge rejected an argument, such as a null pointer |
 | `TimeoutError` | 12 | The model didn't finish in time¹ |
-| `UnsupportedCapabilityError` | 13 | The request needs a capability the model or this Mac doesn't have, such as a macOS 27 feature on macOS 26 (see `requiredMacOS`)² |
+| `UnsupportedCapabilityError` | 13 | The request needs a capability the model or this Mac doesn't have, such as a macOS 27 feature on macOS 26 (see `minimumRequiredMacOS`)² |
 | `UnsupportedTranscriptContentError` | 14 | The transcript has content the model can't accept¹ |
 | `ToolCallLimitExceededError` | 15 | A request reached `maximumToolCalls`; the extra call wasn't run |
 | `PrivateCloudComputeNetworkError` | 16 | [PCC](/guide/private-cloud-compute) couldn't be reached |
@@ -62,13 +62,13 @@ FoundationModelsError
 Older hosts receive the framework's legacy error type, which has no equivalent for these codes.
 
 ² When a macOS 27 feature is used on macOS 26, tsfm throws this before the request, on any host, and
-sets `requiredMacOS` to `27`. Token counting needs macOS 26.4, so on 26.0–26.3 `requiredMacOS` is `26.4`:
+sets `minimumRequiredMacOS` to `27`. Token counting needs macOS 26.4, so on 26.0–26.3 `minimumRequiredMacOS` is `26.4`:
 
 ```ts
 try {
   await session.respond(prompt, { options: { toolCallingMode: "required" } });
 } catch (err) {
-  if (err instanceof UnsupportedCapabilityError && err.requiredMacOS) {
+  if (err instanceof UnsupportedCapabilityError && err.minimumRequiredMacOS) {
     // Fall back, or tell the user this needs macOS 27.
   }
 }

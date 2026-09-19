@@ -68,7 +68,7 @@ request:
 | `"disallowed"` | The model answers without calling any tool. |
 
 `"required"` and `"disallowed"` need macOS 27. On macOS 26 they throw
-`UnsupportedCapabilityError` with `requiredMacOS: 27`, before the request is
+`UnsupportedCapabilityError` with `minimumRequiredMacOS: 27`, before the request is
 sent; `"allowed"` works on both.
 
 ```ts
