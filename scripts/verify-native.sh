@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Verifies native/libFoundationModels.dylib was built for tsfm 1.x: a macOS 26.0
-# deployment target, with the macOS 27 APIs compiled in but weak-linked, so the
-# library loads on macOS 26 and those features fail there with a typed error.
+# Verifies the native files were built for tsfm 1.x:
+# - native/libFoundationModels.dylib targets macOS 26.0 with the macOS 27 APIs
+#   compiled in but weak-linked, so it loads on macOS 26 and those features
+#   fail there with a typed error.
+# - native/tsfm.node (the Node-API addon) targets macOS 26.0 too, and loads the
+#   dylib from its own directory.
 #
 #   bash scripts/verify-native.sh
 
@@ -38,3 +41,20 @@ for api in Attachment LanguageModelError PrivateCloudComputeLanguageModel Contex
   fi
   echo "macOS 27 API $api: weak-linked ✓"
 done
+
+# The Node-API addon: same deployment target, and it loads the dylib from its
+# own directory (@rpath → @loader_path), as it's laid out in the package.
+ADDON="$(dirname "$DYLIB")/tsfm.node"
+[[ -f "$ADDON" ]] || { echo "error: $ADDON not found. Run npm run build."; exit 1; }
+ADDON_MINOS="$(otool -l "$ADDON" | awk '/LC_BUILD_VERSION/ { found = 1 } found && $1 == "minos" { print $2; exit }')"
+if [[ "$ADDON_MINOS" != "26.0" ]]; then
+  echo "error: tsfm.node's deployment target is macOS ${ADDON_MINOS:-unknown}, expected 26.0."
+  exit 1
+fi
+LINKS="$(otool -L "$ADDON")"
+RPATHS="$(otool -l "$ADDON" | awk '/LC_RPATH/ { found = 1 } found && $1 == "path" { print $2; found = 0 }')"
+if ! grep -q "@rpath/libFoundationModels.dylib" <<<"$LINKS" || ! grep -qx "@loader_path" <<<"$RPATHS"; then
+  echo "error: tsfm.node doesn't load libFoundationModels.dylib from its own directory."
+  exit 1
+fi
+echo "tsfm.node: macOS $ADDON_MINOS, loads the dylib beside it ✓"
