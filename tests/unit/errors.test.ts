@@ -180,7 +180,7 @@ describe("statusToError", () => {
     const err = statusToError(255, detail);
     expect(err).toBeInstanceOf(ServiceCrashedError);
     expect(err.message).toContain("Apple Intelligence service has crashed");
-    expect(err.message).toContain("launchctl kickstart");
+    expect(err.message).toContain("log out and back in");
     expect(err.message).toContain(detail);
   });
 
@@ -273,14 +273,15 @@ describe("error hierarchy", () => {
 
   it("ServiceCrashedError includes recovery instructions", () => {
     const err = new ServiceCrashedError();
-    expect(err.message).toContain("launchctl kickstart");
-    expect(err.message).toContain("com.apple.generativeexperiencesd");
+    expect(err.message).toContain("retry with a new session");
+    expect(err.message).toContain("log out and back in");
+    expect(err.message).not.toContain("launchctl");
   });
 
   it("ServiceCrashedError includes original error detail when provided", () => {
     const err = new ServiceCrashedError("SensitiveContentAnalysisML Code=15");
     expect(err.message).toContain("SensitiveContentAnalysisML Code=15");
-    expect(err.message).toContain("launchctl kickstart");
+    expect(err.message).toContain("log out and back in");
   });
 
   it("errors have default messages when constructed without arguments", () => {

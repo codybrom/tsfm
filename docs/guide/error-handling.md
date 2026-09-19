@@ -96,13 +96,9 @@ A JSON schema that nests more than 128 levels deep is rejected before the reques
 
 ### ServiceCrashedError
 
-The Apple Intelligence background service (`generativeexperiencesd`) has crashed. This is an OS-level issue, not an SDK bug. The error message includes the restart command:
+An Apple Intelligence system service has crashed: the model manager, or the safety classifier every request passes through. This is an OS-level issue, not an SDK bug, and it affects every app on the Mac, Apple's `fm` command included.
 
-```bash
-launchctl kickstart -k gui/$(id -u)/com.apple.generativeexperiencesd
-```
-
-After restarting the service, create a new session and retry.
+macOS restarts the service itself, usually within a few minutes. Wait, then create a new session and retry. If it keeps failing, log out and back in, or restart the Mac. The services are protected by System Integrity Protection, so `launchctl` can't restart them.
 
 ### ToolCallError
 
