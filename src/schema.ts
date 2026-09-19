@@ -499,20 +499,31 @@ export const MAX_SCHEMA_DEPTH = 128;
 /**
  * Returns how deeply `value` nests objects and arrays, counting up to `limit`
  * and stopping there. Iterative, so hostile input can't overflow the JS stack.
+ * An object that contains itself is infinitely deep, so a cycle returns
+ * `Infinity`; an object shared by several parents is not a cycle.
  *
  * @internal
  */
 export function jsonNestingDepth(value: unknown, limit = Infinity): number {
   let deepest = 0;
-  const stack: Array<[unknown, number]> = [[value, 1]];
+  // The objects on the path from the root to the current node.
+  const onPath = new Set<object>();
+  const stack: Array<{ node: unknown; depth: number; exit?: true }> = [{ node: value, depth: 1 }];
   while (stack.length > 0) {
-    const [node, depth] = stack.pop()!;
+    const { node, depth, exit } = stack.pop()!;
     if (node === null || typeof node !== "object") continue;
+    if (exit) {
+      onPath.delete(node);
+      continue;
+    }
+    if (onPath.has(node)) return Infinity;
     if (depth > deepest) {
       deepest = depth;
       if (deepest > limit) return deepest;
     }
-    for (const child of Object.values(node)) stack.push([child, depth + 1]);
+    onPath.add(node);
+    stack.push({ node, depth, exit: true });
+    for (const child of Object.values(node)) stack.push({ node: child, depth: depth + 1 });
   }
   return deepest;
 }

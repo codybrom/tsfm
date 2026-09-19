@@ -887,6 +887,18 @@ describe("jsonNestingDepth", () => {
     expect(jsonNestingDepth({ a: [{ b: {} }] })).toBe(4);
   });
 
+  it("reports a cycle as infinitely deep, even with no limit", () => {
+    const cyclic: Record<string, unknown> = { type: "object" };
+    cyclic.properties = { self: cyclic };
+    expect(jsonNestingDepth(cyclic)).toBe(Infinity);
+    expect(jsonNestingDepth([[cyclic]])).toBe(Infinity);
+  });
+
+  it("doesn't mistake an object shared by several parents for a cycle", () => {
+    const shared = { type: "string" };
+    expect(jsonNestingDepth({ a: shared, b: [shared], c: { d: shared } })).toBe(3);
+  });
+
   it("stops counting past the limit, without recursing", () => {
     let deep: unknown = {};
     for (let i = 0; i < 100_000; i++) deep = { a: deep };
