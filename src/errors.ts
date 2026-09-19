@@ -247,10 +247,98 @@ export class CancelledError extends GenerationError {
 }
 
 /**
+ * The session's transcript was changed while it was responding. Only reported
+ * by hosts built with the macOS 27 SDK.
+ */
+export class TranscriptMutationWhileRespondingError extends GenerationError {
+  constructor(msg = "The transcript was changed while the session was responding") {
+    super(msg);
+    this.name = "TranscriptMutationWhileRespondingError";
+  }
+}
+
+/**
+ * Throw this from a tool's `call()` to fail the whole request instead of
+ * reporting the problem to the model. The request then rejects with
+ * `RequestFailedByToolError`, which names the tool and carries this error as
+ * its `cause`. Any other error a tool throws is sent back to the model as the
+ * tool's output and generation continues.
+ *
+ * ```ts
+ * async call(args) {
+ *   const row = await db.find(args.value<string>("id"));
+ *   if (!row) throw new FailRequestError("No such record", { cause: notFound });
+ *   return row.summary;
+ * }
+ * ```
+ */
+export class FailRequestError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "FailRequestError";
+  }
+}
+
+/**
+ * A tool failed the request by throwing `FailRequestError`. `toolName` and
+ * `cause` (the `FailRequestError`) are set for requests made through a
+ * session; with `toolCallingMode: "required"`, this is how a tool ends the
+ * request.
+ */
+export class RequestFailedByToolError extends GenerationError {
+  /** The tool that failed the request, once known. */
+  toolName: string | null = null;
+  /** The `FailRequestError` the tool threw, once known. */
+  declare cause?: Error;
+
+  constructor(msg = "A tool failed the request") {
+    super(msg);
+    this.name = "RequestFailedByToolError";
+  }
+
+  /** @internal Fills in what only the JavaScript side of the tool call knows. */
+  _attach(toolName: string, cause: Error): void {
+    this.toolName = toolName;
+    this.cause = cause;
+    this.message = `Tool '${toolName}' failed the request: ${cause.message}`;
+  }
+}
+
+/**
+ * The model manager refused the request because of the machine's state, most
+ * often memory pressure: "Not executed due to current system state
+ * ["CriticalMemoryPressure"], try again later". The model is installed and
+ * `isAvailable()` still reports available; only running it is refused.
+ *
+ * Recorded behaviour while this lasts is in tests/fixtures/service-pressure/.
+ */
+export class SystemPressureError extends GenerationError {
+  /** The state the model manager named, such as `CriticalMemoryPressure`. */
+  readonly state?: string;
+
+  constructor(state?: string, detail?: string) {
+    const cause =
+      state === "CriticalMemoryPressure"
+        ? "the Mac is low on memory"
+        : state === "Preempted"
+          ? "another request took priority"
+          : undefined;
+    const message =
+      `The system can't run the model right now` +
+      (state ? ` (${state}${cause ? `: ${cause}` : ""})` : "") +
+      ". It usually recovers on its own within a few minutes; retry then, " +
+      "and free memory if it persists.";
+    super(detail ? `${message}\n\nOriginal error: ${detail}` : message);
+    this.name = "SystemPressureError";
+    if (state) this.state = state;
+  }
+}
+
+/**
  * An Apple Intelligence system service (the model manager or its safety
- * classifier) failed.
- * Detected in `statusToError()` when UNKNOWN_ERROR details contain
- * "SensitiveContentAnalysisML" or "ModelManagerError Code=1013".
+ * classifier) failed for a reason that isn't the machine's state.
+ * Detected in `statusToError()` when UNKNOWN_ERROR details name
+ * "SensitiveContentAnalysisML" without a model-manager system-state code.
  */
 export class ServiceCrashedError extends GenerationError {
   constructor(detail?: string) {
@@ -341,11 +429,28 @@ export function statusToError(status: number, detail?: string | null): Generatio
       );
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
-        if (
-          detail.includes("SensitiveContentAnalysisML") ||
-          detail.includes("ModelManagerError Code=1013")
-        ) {
+        // 1013 is "not executed due to current system state". It reaches us
+        // formatted two ways -- "ModelManagerError Code=1013" nested under the
+        // safety classifier, and "ModelManagerError:1013" from a tool call --
+        // so match the code rather than one spelling.
+        if (/ModelManagerError[:\s](?:Code=)?1013/.test(detail)) {
+          return new SystemPressureError(/\["([^"]+)"\]/.exec(detail)?.[1], detail);
+        }
+        if (detail.includes("SensitiveContentAnalysisML")) {
           return new ServiceCrashedError(detail);
+        }
+        // The model manager's other refusals, from its own message table (see
+        // tests/fixtures/service-pressure/pressure.md). Each is transient and
+        // arrives as an unmapped 255, so recognise it rather than reporting
+        // "unknown error" for something the caller can act on.
+        if (/rate limit exceeded/i.test(detail)) {
+          return new RateLimitedError(`Rate limited${suffix}`);
+        }
+        if (/Canceled due to preemption/i.test(detail)) {
+          return new SystemPressureError("Preempted", detail);
+        }
+        if (/(not available in|not found in) Model Catalog/i.test(detail)) {
+          return new AssetsUnavailableError(`Assets unavailable${suffix}`);
         }
         if (detail.includes("ModelManagerError Code=1041")) {
           return new InvalidGenerationSchemaError(

@@ -1,0 +1,127 @@
+{
+  "description": "tsfm API behaviour while the model manager refuses work (ModelManagerError 1013). See pressure.md.",
+  "capturedOn": "2026-09-19",
+  "os": "macOS 27.0",
+  "systemState": "CriticalMemoryPressure",
+  "swapAtCapture": "total = 15360.00M  used = 14188.94M  free = 1171.06M  (encrypted)",
+  "runs": [
+    {
+      "name": "model.isAvailable",
+      "outcome": "resolved",
+      "seconds": 0.001,
+      "value": "{\"available\":true}"
+    },
+    {
+      "name": "model.waitUntilAvailable(2s)",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "{\"available\":true}"
+    },
+    {
+      "name": "model.contextSize",
+      "outcome": "resolved",
+      "seconds": 0.008,
+      "value": "0"
+    },
+    {
+      "name": "model.variant",
+      "outcome": "resolved",
+      "seconds": 0.001,
+      "value": "AFM 3 Core"
+    },
+    {
+      "name": "model.capabilities",
+      "outcome": "resolved",
+      "seconds": 0.001,
+      "value": "[\"vision\",\"toolCalling\",\"guidedGeneration\"]"
+    },
+    {
+      "name": "model.supportedLanguages",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "[\"pt\",\"ja\",\"nb\",\"zh\",\"zh-TW\",\"zh-HK\",\"tr\",\"en\",\"nl\",\"da\",\"de\",\"sv\",\"en-AU\",\"ko\",\"en-IN\",\"en-GB\",\"vi\",\"pt-PT\",\"fr\",\"fr-CA\",\"es\",\"es-419\",\"it\",\"es-US\"]"
+    },
+    {
+      "name": "tokenCount(prompt)",
+      "outcome": "threw",
+      "seconds": 0.005,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: Error FoundationModels.LanguageModelError:-1 - The operation couldn\u2019t be completed. (ModelManager"
+    },
+    {
+      "name": "respond",
+      "outcome": "threw",
+      "seconds": 0.022,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn\u2019t be comple"
+    },
+    {
+      "name": "respond again (same session)",
+      "outcome": "threw",
+      "seconds": 0.01,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn\u2019t be comple"
+    },
+    {
+      "name": "streamResponse",
+      "outcome": "threw",
+      "seconds": 0.009,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn\u2019t be comple"
+    },
+    {
+      "name": "respondWithSchema",
+      "outcome": "threw",
+      "seconds": 0.01,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: \"Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn\u2019t be compl"
+    },
+    {
+      "name": "respondWithJsonSchema",
+      "outcome": "threw",
+      "seconds": 0.011,
+      "error": "ServiceCrashedError",
+      "message": "The Apple Intelligence service has crashed. macOS restarts it, usually within a few minutes; retry with a new session then. If it keeps failing, log out and back in, or restart the Mac.\n\nOriginal error: \"Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn\u2019t be compl"
+    },
+    {
+      "name": "session.usage",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "{\"input\":{\"totalTokens\":0,\"cachedTokens\":0},\"output\":{\"totalTokens\":0,\"reasoningTokens\":0}}"
+    },
+    {
+      "name": "session.transcript.toJson",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "{\"transcript\":{\"entries\":[]},\"version\":\"1.1\",\"type\":\"FoundationModels.Transcript"
+    },
+    {
+      "name": "prewarm",
+      "outcome": "resolved",
+      "seconds": 0
+    },
+    {
+      "name": "respond with a tool",
+      "outcome": "threw",
+      "seconds": 0.027,
+      "error": "GenerationError",
+      "message": "Unknown error (code 255): Error ModelManagerServices.ModelManagerError:1013 - Not executed due to current system state [\"CriticalMemoryPressure\"], try again later"
+    },
+    {
+      "name": "tool was called",
+      "outcome": "false"
+    },
+    {
+      "name": "pcc.isAvailable",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "{\"available\":false,\"reason\":3}"
+    },
+    {
+      "name": "pcc.quotaUsage",
+      "outcome": "resolved",
+      "seconds": 0,
+      "value": "{\"limitReached\":false,\"approachingLimit\":false,\"resetDate\":null}"
+    }
+  ]
+}

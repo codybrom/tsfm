@@ -22,7 +22,11 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeEntitlementError,
   ServiceCrashedError,
+  SystemPressureError,
   CancelledError,
+  TranscriptMutationWhileRespondingError,
+  FailRequestError,
+  RequestFailedByToolError,
   GenerationError,
   FoundationModelsError,
   ToolCallError,
@@ -136,6 +140,86 @@ describe("statusToError", () => {
     expect(err.message).toBe(message);
   });
 
+  it("maps TRANSCRIPT_MUTATION_WHILE_RESPONDING to its error, a GenerationError", () => {
+    const err = statusToError(GenerationErrorCode.TRANSCRIPT_MUTATION_WHILE_RESPONDING, "edited");
+    expect(err).toBeInstanceOf(TranscriptMutationWhileRespondingError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe("The transcript was changed while the session was responding: edited");
+    expect(GenerationErrorCode.TRANSCRIPT_MUTATION_WHILE_RESPONDING).toBe(21);
+  });
+
+  it("maps REQUEST_FAILED_BY_TOOL to RequestFailedByToolError, with no tool yet", () => {
+    const err = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, "no such record");
+    expect(err).toBeInstanceOf(RequestFailedByToolError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe("A tool failed the request: no such record");
+    expect((err as RequestFailedByToolError).toolName).toBeNull();
+    expect(GenerationErrorCode.REQUEST_FAILED_BY_TOOL).toBe(22);
+  });
+
+  it("RequestFailedByToolError names the tool and carries the cause once attached", () => {
+    const cause = new FailRequestError("no such record", { cause: new Error("404") });
+    expect(cause.name).toBe("FailRequestError");
+    expect((cause.cause as Error).message).toBe("404");
+    const err = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, "no such record");
+    (err as RequestFailedByToolError)._attach("lookup", cause);
+    expect((err as RequestFailedByToolError).toolName).toBe("lookup");
+    expect(err.cause).toBe(cause);
+    expect(err.message).toBe("Tool 'lookup' failed the request: no such record");
+  });
+
+  it.each([
+    [
+      "a tool call",
+      'Error ModelManagerServices.ModelManagerError:1013 - Not executed due to current system state ["CriticalMemoryPressure"], try again later',
+      "CriticalMemoryPressure",
+    ],
+    [
+      "the safety classifier",
+      'Error Domain=com.apple.SensitiveContentAnalysisML Code=15 UserInfo={NSMultipleUnderlyingErrorsKey=("Error Domain=ModelManagerServices.ModelManagerError Code=1013")}',
+      undefined,
+    ],
+  ])("maps the model manager's 1013 from %s to SystemPressureError", (_name, detail, state) => {
+    // The same refusal reaches us formatted two ways; see
+    // tests/fixtures/service-pressure/.
+    const err = statusToError(GenerationErrorCode.UNKNOWN_ERROR, detail);
+    expect(err).toBeInstanceOf(SystemPressureError);
+    expect((err as SystemPressureError).state).toBe(state);
+    expect(err.message).toContain("can't run the model right now");
+    expect(err.message).toContain(detail);
+  });
+
+  // Messages taken verbatim from ModelManagerServices' own table; see
+  // tests/fixtures/service-pressure/pressure.md.
+  it.each([
+    ["Client rate limit exceeded, try again later", RateLimitedError],
+    ["Canceled due to preemption, try again", SystemPressureError],
+    ["Asset com.apple.fm.language is not available in Model Catalog", AssetsUnavailableError],
+    ["Asset com.apple.fm.language not found in Model Catalog", AssetsUnavailableError],
+  ])("recognises the model manager's %j instead of reporting an unknown error", (detail, type) => {
+    const err = statusToError(GenerationErrorCode.UNKNOWN_ERROR, detail);
+    expect(err).toBeInstanceOf(type);
+    expect(err.message).not.toContain("Unknown error");
+  });
+
+  it("names preemption as the state when the model manager yields to another request", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNKNOWN_ERROR,
+      "Canceled due to preemption, try again",
+    );
+    expect((err as SystemPressureError).state).toBe("Preempted");
+    expect(err.message).toContain("another request took priority");
+  });
+
+  it("still reports a classifier failure with no system state as a crash", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNKNOWN_ERROR,
+      'Error Domain=com.apple.SensitiveContentAnalysisML Code=15 "(null)"',
+    );
+    expect(err).toBeInstanceOf(ServiceCrashedError);
+    expect(err).not.toBeInstanceOf(SystemPressureError);
+  });
+
   it("maps CANCELLED to CancelledError, a GenerationError", () => {
     const err = statusToError(GenerationErrorCode.CANCELLED, "Operation cancelled");
     expect(err).toBeInstanceOf(CancelledError);
@@ -208,10 +292,10 @@ describe("statusToError", () => {
     expect(err.message).toContain(detail);
   });
 
-  it("maps code 255 with ModelManagerError Code=1013 to ServiceCrashedError", () => {
+  it("maps code 255 with ModelManagerError Code=1013 to SystemPressureError", () => {
     const detail = "ModelManagerServices.ModelManagerError Code=1013";
     const err = statusToError(255, detail);
-    expect(err).toBeInstanceOf(ServiceCrashedError);
+    expect(err).toBeInstanceOf(SystemPressureError);
   });
 
   it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
