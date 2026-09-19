@@ -62,6 +62,22 @@ type GuideData =
   | { type: GuideType.RANGE; value: [number, number] }
   | { type: GuideType.REGEX; value: string };
 
+/** Throws a RangeError unless `value` is a finite number. */
+function finite(value: number, what: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new RangeError(`${what} must be a finite number, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** Throws a RangeError unless `value` is a non-negative safe integer. */
+function itemCount(value: number, what: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${what} must be a non-negative integer, got ${String(value)}`);
+  }
+  return value;
+}
+
 export class GenerationGuide {
   private readonly data: GuideData;
 
@@ -81,7 +97,7 @@ export class GenerationGuide {
 
   /** Require exactly `count` items in an array. */
   static count(count: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.COUNT, value: count });
+    return new GenerationGuide({ type: GuideType.COUNT, value: itemCount(count, "count") });
   }
 
   /** Apply a guide to each element of an array. */
@@ -91,26 +107,31 @@ export class GenerationGuide {
 
   /** Maximum number of items in an array. */
   static maxItems(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MAX_ITEMS, value });
+    return new GenerationGuide({ type: GuideType.MAX_ITEMS, value: itemCount(value, "maxItems") });
   }
 
   /** Maximum numeric value. */
   static maximum(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MAXIMUM, value });
+    return new GenerationGuide({ type: GuideType.MAXIMUM, value: finite(value, "maximum") });
   }
 
   /** Minimum number of items in an array. */
   static minItems(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MIN_ITEMS, value });
+    return new GenerationGuide({ type: GuideType.MIN_ITEMS, value: itemCount(value, "minItems") });
   }
 
   /** Minimum numeric value. */
   static minimum(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MINIMUM, value });
+    return new GenerationGuide({ type: GuideType.MINIMUM, value: finite(value, "minimum") });
   }
 
   /** Constrain numeric value to [min, max]. */
   static range(min: number, max: number): GenerationGuide {
+    finite(min, "range minimum");
+    finite(max, "range maximum");
+    if (min > max) {
+      throw new RangeError(`range minimum ${min} is above its maximum ${max}`);
+    }
     return new GenerationGuide({ type: GuideType.RANGE, value: [min, max] });
   }
 

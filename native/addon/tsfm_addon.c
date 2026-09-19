@@ -135,13 +135,22 @@ static bool get_number(napi_env env, napi_value v, const char *name, double *out
   return true;
 }
 
+/// Reads an int32. napi_get_value_int32 would wrap large values and read NaN or
+/// infinity as 0, so read a double and reject anything that isn't an int32.
 static bool get_int(napi_env env, napi_value v, const char *name, int32_t *out) {
-  if (napi_get_value_int32(env, v, out) != napi_ok) {
-    char message[160];
+  double value;
+  char message[160];
+  if (napi_get_value_double(env, v, &value) != napi_ok) {
     snprintf(message, sizeof message, "Expected an integer for \"%s\"", name);
     napi_throw_type_error(env, NULL, message);
     return false;
   }
+  if (!(value >= INT32_MIN && value <= INT32_MAX) || value != (double)(int32_t)value) {
+    snprintf(message, sizeof message, "\"%s\" must be a 32-bit integer", name);
+    napi_throw_range_error(env, NULL, message);
+    return false;
+  }
+  *out = (int32_t)value;
   return true;
 }
 

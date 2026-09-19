@@ -50,6 +50,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
   - Breaking out of a stream early let the cancelled native stream call a callback that had already been released.
   - A JSON schema nested about 200 levels deep overflowed the framework's stack. Schemas deeper than 128 levels now throw `InvalidGenerationSchemaError`.
   - Reading a session's transcript after `dispose()` read freed memory. It now throws `FoundationModelsError`.
+  - A guide whose bounds the framework can't represent, such as `range(5, 1)`, a `NaN` or infinite bound, or `maximum(1e20)` on an integer, trapped in Swift. `GenerationGuide` now throws `RangeError` for a bound that isn't a finite number, a range whose minimum is above its maximum, or a count that isn't a non-negative integer, and the bridge rejects any that get past it with `UnsupportedGuideError`.
 - Nested object properties in `generable()` failed with an undefined reference. Arrays of objects were unaffected. Keys shared by objects in different places, keys named like a scalar type such as `string`, and keys with characters like `-` also produced wrong or failing schemas.
 - `$ref` to `$defs` in JSON schemas never resolved, because the framework looks up a definition by its title. Each definition's `title` is now set to its key.
 - A session created with a disposed `SystemLanguageModel` silently used the default model. It now throws.
