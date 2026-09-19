@@ -14,7 +14,8 @@ export type PropertyType = "string" | "integer" | "number" | "boolean" | "array"
  * Compound type names used by the C bridge. Includes scalar types plus
  * array variants like `"array<string>"`, `"array<integer>"`, etc.
  */
-export type NativeTypeName = PropertyType | `array<${string}>`;
+/** A scalar type, `array<T>`, or the name of a reference schema. */
+export type NativeTypeName = PropertyType | `array<${string}>` | (string & {});
 
 type JsonPrimitive = string | number | boolean | null | undefined;
 
@@ -343,15 +344,32 @@ function arrayElementTypeName(def: PropertyDef): string {
   return def.type; // "string" | "integer" | "number" | "boolean"
 }
 
-/** Recursively adds a property definition to a GenerationSchema. */
-function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef): void {
+/**
+ * Recursively adds a property definition to a GenerationSchema. Every nested
+ * object becomes a reference schema on `root`: the framework resolves
+ * references only from the schema passed to the request, not from the
+ * reference schemas themselves.
+ */
+function addPropertyDef(
+  schema: GenerationSchema,
+  name: string,
+  def: PropertyDef,
+  root: GenerationSchema = schema,
+): void {
   if (def.type === "object") {
     const nested = new GenerationSchema(name, def.description);
     for (const [key, nestedDef] of Object.entries(def.properties)) {
-      addPropertyDef(nested, key, nestedDef);
+      addPropertyDef(nested, key, nestedDef, root);
     }
-    schema.addReferenceSchema(nested);
-    schema.addProperty(new GenerationSchemaProperty(name, "object", { optional: def.optional }));
+    root.addReferenceSchema(nested);
+    // The property's type is the reference schema's name, as for arrays of
+    // objects below. Typing it "object" leaves an undefined reference.
+    schema.addProperty(
+      new GenerationSchemaProperty(name, name, {
+        description: def.description,
+        optional: def.optional,
+      }),
+    );
   } else if (def.type === "array") {
     // Build compound type name like "array<string>" or "array<Name>" to match
     // the convention expected by Apple's C bridge (see python-apple-fm-sdk).
@@ -360,9 +378,9 @@ function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef
     if (def.items.type === "object") {
       const itemSchema = new GenerationSchema(name, def.items.description);
       for (const [key, nestedDef] of Object.entries(def.items.properties)) {
-        addPropertyDef(itemSchema, key, nestedDef);
+        addPropertyDef(itemSchema, key, nestedDef, root);
       }
-      schema.addReferenceSchema(itemSchema);
+      root.addReferenceSchema(itemSchema);
     }
     schema.addProperty(
       new GenerationSchemaProperty(name, typeName, {
@@ -423,6 +441,37 @@ export function generable<const T extends Record<string, PropertyDef>>(
 // ---------------------------------------------------------------------------
 
 /**
+ * The deepest JSON nesting a schema may have. Apple's framework decodes a
+ * schema recursively on a background thread with a small stack, and a schema
+ * nested a few hundred levels deep overflows it, which kills the process
+ * (Swift can't catch a stack overflow). Real schemas are nowhere near this.
+ *
+ * @internal
+ */
+export const MAX_SCHEMA_DEPTH = 128;
+
+/**
+ * Returns how deeply `value` nests objects and arrays, counting up to `limit`
+ * and stopping there. Iterative, so hostile input can't overflow the JS stack.
+ *
+ * @internal
+ */
+export function jsonNestingDepth(value: unknown, limit = Infinity): number {
+  let deepest = 0;
+  const stack: Array<[unknown, number]> = [[value, 1]];
+  while (stack.length > 0) {
+    const [node, depth] = stack.pop()!;
+    if (node === null || typeof node !== "object") continue;
+    if (depth > deepest) {
+      deepest = depth;
+      if (deepest > limit) return deepest;
+    }
+    for (const child of Object.values(node)) stack.push([child, depth + 1]);
+  }
+  return deepest;
+}
+
+/**
  * Normalize a JSON Schema object for the Foundation Models C API.
  *
  * The AFM schema parser requires every `object` node to have `title`,
@@ -440,7 +489,12 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
     const defs = result.$defs as Record<string, JsonSchema>;
     const normalized: Record<string, JsonSchema> = {};
     for (const [key, value] of Object.entries(defs)) {
-      normalized[key] = value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+      // Apple resolves "#/$defs/<key>" by the definition's title, so the title
+      // must be its key; otherwise every $ref is an undefined reference.
+      normalized[key] =
+        value && typeof value === "object"
+          ? afmSchemaFormat({ ...value, title: key }, false)
+          : value;
     }
     result.$defs = normalized;
   }
