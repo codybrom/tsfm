@@ -1,0 +1,1 @@
+fm serve --socket /private/tmp/claude-501/-Users-codybromley-Dev-tsfm/70860fd9-6c07-49a1-8c58-e394445111ae/scratchpad/fm.sock

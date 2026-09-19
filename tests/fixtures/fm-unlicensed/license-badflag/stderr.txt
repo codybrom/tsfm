@@ -1,0 +1,5 @@
+Error: Unknown option '--nope'
+Usage: fm license
+       fm license --status
+       fm license --show
+  See 'fm license --help' for more information.
