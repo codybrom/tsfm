@@ -32,6 +32,7 @@ beforeAll(() => {
     path.join(root, "native/libFoundationModels.dylib"),
     path.join(install, "native/libFoundationModels.dylib"),
   );
+  symlinkSync(path.join(root, "native/tsfm.node"), path.join(install, "native/tsfm.node"));
   symlinkSync(path.join(root, "node_modules"), path.join(install, "node_modules"));
   chmodSync(path.join(install, "dist/cli/doctor.js"), 0o755);
   mkdirSync(path.join(install, "bin"));

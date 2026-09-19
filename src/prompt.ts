@@ -28,19 +28,17 @@ export function composePrompt(
   fn: ReturnType<typeof getFunctions>,
   prompt: string | PromptInput,
 ): NativePointer {
-  const composed = fn.FMComposedPromptInitialize() as NativePointer;
+  const composed = fn.FMComposedPromptInitialize();
   try {
     fn.FMComposedPromptAddText(composed, typeof prompt === "string" ? prompt : prompt.text);
     if (typeof prompt !== "string") {
       for (const attachment of prompt.attachments ?? []) {
-        const outError = [0];
-        const added = fn.FMComposedPromptAddAttachment(
+        const error = fn.FMComposedPromptAddAttachment(
           composed,
           attachment.path,
           attachment.label ?? null,
-          outError,
-        ) as boolean;
-        if (!added) throw attachmentError(outError[0], attachment.path);
+        );
+        if (error !== 0) throw attachmentError(error, attachment.path);
       }
     }
   } catch (err) {

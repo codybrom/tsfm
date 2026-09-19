@@ -5,7 +5,7 @@
  * This mirrors the Python SDK's GenerationSchema / GenerationSchemaProperty / GenerationGuide.
  */
 
-import { getFunctions, decodeAndFreeString, type NativePointer } from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { statusToError } from "./errors.js";
 
 export type PropertyType = "string" | "integer" | "number" | "boolean" | "array" | "object";
@@ -131,17 +131,11 @@ export class GenerationGuide {
 
     switch (type) {
       case GuideType.ANY_OF: {
-        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, value, value.length, wrapped);
+        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, value, wrapped);
         break;
       }
       case GuideType.CONSTANT: {
-        const choices = [value];
-        fn.FMGenerationSchemaPropertyAddAnyOfGuide(
-          propertyPointer,
-          choices,
-          choices.length,
-          wrapped,
-        );
+        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, [value], wrapped);
         break;
       }
       case GuideType.COUNT:
@@ -194,7 +188,7 @@ export class GenerationSchemaProperty {
       opts.description ?? null,
       type,
       opts.optional ?? false,
-    ) as NativePointer;
+    );
 
     for (const guide of opts.guides ?? []) {
       guide._applyToProperty(this._nativeProperty);
@@ -212,7 +206,7 @@ export class GenerationSchema {
 
   constructor(name: string, description?: string) {
     const fn = getFunctions();
-    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null) as NativePointer;
+    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null);
   }
 
   addProperty(property: GenerationSchemaProperty): this {
@@ -248,14 +242,10 @@ export class GenerationSchema {
 
   /** Serialize the schema to a plain object (mirrors Python's GenerationSchema.to_dict()). */
   toDict(): JsonSchema {
-    const errorCode = [0];
-    const pointer = getFunctions().FMGenerationSchemaGetJSONString(
+    const { value: json, status } = getFunctions().FMGenerationSchemaGetJSONString(
       this._nativeSchema,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    const json = decodeAndFreeString(pointer);
-    if (!json) throw statusToError(errorCode[0], "Failed to serialize GenerationSchema");
+    );
+    if (!json) throw statusToError(status, "Failed to serialize GenerationSchema");
     return JSON.parse(json);
   }
 }
@@ -588,14 +578,6 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
 // GeneratedContent
 // ---------------------------------------------------------------------------
 
-const _contentRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] GeneratedContent cleanup via FinalizationRegistry failed:", err);
-  }
-});
-
 /**
  * The structured content returned from guided-generation requests.
  *
@@ -610,21 +592,15 @@ export class GeneratedContent {
 
   /** @internal */
   constructor(pointer: NativePointer) {
+    // The handle releases the native object when it's garbage collected.
     this._nativeContent = pointer;
-    _contentRegistry.register(this, pointer, this);
   }
 
   /** Create GeneratedContent from a JSON string (mirrors Python's GeneratedContent.from_json()). */
   static fromJson(jsonString: string): GeneratedContent {
-    const fn = getFunctions();
-    const errorCode = [0];
-    const pointer = fn.FMGeneratedContentCreateFromJSON(
-      jsonString,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    if (!pointer) throw statusToError(errorCode[0], "Failed to create GeneratedContent from JSON");
-    return new GeneratedContent(pointer);
+    const { value, status } = getFunctions().FMGeneratedContentCreateFromJSON(jsonString);
+    if (!value) throw statusToError(status, "Failed to create GeneratedContent from JSON");
+    return new GeneratedContent(value);
   }
 
   /** @internal Throws if the content has been disposed. */
@@ -636,16 +612,13 @@ export class GeneratedContent {
 
   get isComplete(): boolean {
     this._assertNotDisposed();
-    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent!) as boolean;
+    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent!);
   }
 
   /** Returns the raw JSON string of the generated content. */
   toJson(): string {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMGeneratedContentGetJSONString(
-      this._nativeContent!,
-    ) as NativePointer | null;
-    return decodeAndFreeString(pointer) ?? "{}";
+    return getFunctions().FMGeneratedContentGetJSONString(this._nativeContent!) ?? "{}";
   }
 
   /**
@@ -687,13 +660,10 @@ export class GeneratedContent {
    */
   value<T = unknown>(propertyName: string): T {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMGeneratedContentGetPropertyValue(
+    const raw = getFunctions().FMGeneratedContentGetPropertyValue(
       this._nativeContent!,
       propertyName,
-      null,
-      null,
-    ) as NativePointer | null;
-    const raw = decodeAndFreeString(pointer);
+    ).value;
     if (raw !== null) {
       try {
         return JSON.parse(raw);
@@ -712,7 +682,6 @@ export class GeneratedContent {
   /** Release the underlying C content object. Safe to call multiple times. */
   dispose(): void {
     if (this._nativeContent) {
-      _contentRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeContent);
       this._nativeContent = null;
     }

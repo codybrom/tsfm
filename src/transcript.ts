@@ -1,4 +1,4 @@
-import { getFunctions, decodeAndFreeString, type NativePointer } from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 import type { JsonSchema, JsonObject } from "./schema.js";
 
@@ -53,14 +53,6 @@ export interface TranscriptEntry {
   metadata?: JsonObject;
 }
 
-const _transcriptRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] Transcript cleanup via FinalizationRegistry failed:", err);
-  }
-});
-
 export class Transcript {
   /** @internal raw session pointer — backs the live session's native handle */
   _nativeSession: NativePointer;
@@ -82,8 +74,8 @@ export class Transcript {
   /** @internal */
   constructor(sessionPointer: NativePointer, owned = false) {
     this._nativeSession = sessionPointer;
+    // An owned handle is also released when it's garbage collected.
     this._owned = owned;
-    if (owned) _transcriptRegistry.register(this, sessionPointer, this);
   }
 
   private _assertNotDisposed(): void {
@@ -109,7 +101,6 @@ export class Transcript {
   /** @internal Release the C object this instance owns, if any. */
   private _releaseIfOwned(): void {
     if (!this._owned) return;
-    _transcriptRegistry.unregister(this);
     getFunctions().FMRelease(this._nativeSession);
     this._owned = false;
   }
@@ -152,12 +143,9 @@ export class Transcript {
    */
   toJson(): string {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(
+    const json = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(
       this._nativeSession,
-      null,
-      null,
-    ) as NativePointer | null;
-    const json = decodeAndFreeString(pointer);
+    ).value;
     if (!json) throw new FoundationModelsError("Failed to export transcript");
     return json;
   }
@@ -181,17 +169,9 @@ export class Transcript {
 
   /** Deserialize a previously exported transcript JSON string. */
   static fromJson(json: string): Transcript {
-    const fn = getFunctions();
-    const errorCode = [0];
-    const pointer = fn.FMTranscriptCreateFromJSONString(
-      json,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    if (!pointer) {
-      throw statusToError(errorCode[0], "Failed to deserialize transcript");
-    }
-    return new Transcript(pointer, true);
+    const { value, status } = getFunctions().FMTranscriptCreateFromJSONString(json);
+    if (!value) throw statusToError(status, "Failed to deserialize transcript");
+    return new Transcript(value, true);
   }
 
   /** Deserialize a transcript from a dictionary (mirrors Python's Transcript.from_dict()). */

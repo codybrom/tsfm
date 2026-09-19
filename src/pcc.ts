@@ -1,23 +1,7 @@
-import koffi from "koffi";
-import {
-  decodeAndFreeString,
-  getFunctions,
-  unregisterCallback,
-  TokenCountCallbackProto,
-  type NativePointer,
-  type KoffiCallback,
-} from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
 import { parseCapabilities, type ModelCapability } from "./capabilities.js";
 import { hasMacOS27, requireMacOS27, runtimeMacOSMajor } from "./os.js";
-
-const _pccRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] PCC model cleanup via FinalizationRegistry failed:", err);
-  }
-});
 
 export enum PrivateCloudComputeUnavailableReason {
   DEVICE_NOT_ELIGIBLE = 1,
@@ -81,8 +65,8 @@ export class PrivateCloudComputeLanguageModel {
       this._requiresNewerOS = true;
       return;
     }
-    this._nativeModel =
-      getFunctions().FMPrivateCloudComputeLanguageModelCreate() as NativePointer | null;
+    // The handle releases the native model when it's garbage collected.
+    this._nativeModel = getFunctions().FMPrivateCloudComputeLanguageModelCreate();
     if (!this._nativeModel) {
       // The bridge returns NULL before macOS 27. When the version couldn't be
       // read, that's the explanation; on a known macOS 27 it's a real failure.
@@ -93,7 +77,6 @@ export class PrivateCloudComputeLanguageModel {
       return;
     }
     this._requiresNewerOS = false;
-    _pccRegistry.register(this, this._nativeModel, this);
   }
 
   private _assertNotDisposed(): NativePointer {
@@ -110,13 +93,9 @@ export class PrivateCloudComputeLanguageModel {
     if (this._requiresNewerOS && !this._disposed) {
       return { available: false, reason: PrivateCloudComputeUnavailableReason.REQUIRES_NEWER_OS };
     }
-    const reasonOut = [0];
-    const available = getFunctions().FMPrivateCloudComputeLanguageModelIsAvailable(
-      this._assertNotDisposed(),
-      reasonOut,
-    ) as boolean;
-    if (available) return { available: true };
-    const code = reasonOut[0];
+    const { available, reason: code } =
+      getFunctions().FMPrivateCloudComputeLanguageModelIsAvailable(this._assertNotDisposed());
+    if (available || code === null) return { available: true };
     const reason = Object.values(PrivateCloudComputeUnavailableReason).includes(code)
       ? (code as PrivateCloudComputeUnavailableReason)
       : PrivateCloudComputeUnavailableReason.UNKNOWN;
@@ -142,10 +121,8 @@ export class PrivateCloudComputeLanguageModel {
   get capabilities(): ModelCapability[] | null {
     if (this._requiresNewerOS && !this._disposed) return null;
     return parseCapabilities(
-      decodeAndFreeString(
-        getFunctions().FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
-          this._assertNotDisposed(),
-        ) as NativePointer | null,
+      getFunctions().FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
+        this._assertNotDisposed(),
       ),
     );
   }
@@ -153,10 +130,8 @@ export class PrivateCloudComputeLanguageModel {
   /** The user's daily quota, or `null` on macOS 26. */
   get quotaUsage(): PrivateCloudComputeQuotaUsage | null {
     if (this._requiresNewerOS && !this._disposed) return null;
-    const json = decodeAndFreeString(
-      getFunctions().FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
-        this._assertNotDisposed(),
-      ) as NativePointer | null,
+    const json = getFunctions().FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
+      this._assertNotDisposed(),
     );
     const raw = json ? (JSON.parse(json) as Record<string, unknown>) : {};
     return {
@@ -174,49 +149,16 @@ export class PrivateCloudComputeLanguageModel {
     } catch (err) {
       return Promise.reject(err);
     }
-    const fn = getFunctions();
-    const keepAlive = setInterval(() => {}, 10000);
-    return new Promise<number>((resolve, reject) => {
-      const handle: { task: NativePointer | null; callback: KoffiCallback | null } = {
-        task: null,
-        callback: null,
-      };
-      const finish = () => {
-        clearInterval(keepAlive);
-        if (handle.callback) {
-          unregisterCallback(handle.callback);
-          handle.callback = null;
-        }
-        if (handle.task) {
-          fn.FMRelease(handle.task);
-          handle.task = null;
-        }
-      };
-      handle.callback = koffi.register(
-        (status: number, size: number, errorDescription: string | null) => {
-          finish();
-          if (status !== 0) reject(statusToError(status, errorDescription ?? undefined));
-          else resolve(size);
-        },
-        koffi.pointer(TokenCountCallbackProto),
-      );
-      try {
-        handle.task = fn.FMPrivateCloudComputeLanguageModelGetContextSize(
-          model,
-          null,
-          handle.callback,
-        ) as NativePointer;
-      } catch (err) {
-        finish();
-        reject(err);
-      }
+    const [result] = getFunctions().FMPrivateCloudComputeLanguageModelGetContextSize(model);
+    return result.then(({ status, count, message }) => {
+      if (status !== 0) throw statusToError(status, message ?? undefined);
+      return count;
     });
   }
 
   dispose(): void {
     this._disposed = true;
     if (this._nativeModel) {
-      _pccRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeModel);
       this._nativeModel = null;
     }
