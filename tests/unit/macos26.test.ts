@@ -173,6 +173,25 @@ describe("on macOS 26", () => {
   });
 });
 
+describe("Private Cloud Compute creation on macOS 27", () => {
+  it("throws a real error if the native model can't be created", () => {
+    _setRuntimeMacOSMajorForTesting(27);
+    mockFns.FMPrivateCloudComputeLanguageModelCreate.mockReturnValueOnce(null as never);
+    expect(() => new PrivateCloudComputeLanguageModel()).toThrow(
+      "Failed to create PrivateCloudComputeLanguageModel",
+    );
+  });
+
+  it("reads NULL as an older macOS only when the version is unknown", () => {
+    _setRuntimeMacOSMajorForTesting(null);
+    mockFns.FMPrivateCloudComputeLanguageModelCreate.mockReturnValueOnce(null as never);
+    expect(new PrivateCloudComputeLanguageModel().isAvailable()).toEqual({
+      available: false,
+      reason: PrivateCloudComputeUnavailableReason.REQUIRES_NEWER_OS,
+    });
+  });
+});
+
 describe("bridge errors for macOS 27 features", () => {
   it("carry requiredMacOS from the bridge's message", () => {
     const err = statusToError(13, "reasoningLevel requires macOS 27 or later.");
