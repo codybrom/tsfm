@@ -49,29 +49,37 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
       `A prompt must be ${SHAPES}, got ${prompt === null ? "null" : typeof prompt}`,
     );
   }
-  let parts: Array<string | PromptAttachment>;
-  if ("content" in prompt) {
-    if (!Array.isArray(prompt.content)) {
+  // Read through a plain record: hasOwn, not `in`, so a polluted
+  // Object.prototype.content can't make a { text } prompt read as a content
+  // array, and every value is checked before it's trusted.
+  const own = prompt as unknown as Record<string, unknown>;
+  let parts: unknown[];
+  if (Object.hasOwn(own, "content")) {
+    if (!Array.isArray(own.content)) {
       throw new TypeError(`A prompt's "content" must be an array of text and attachments`);
     }
-    parts = prompt.content;
+    parts = own.content;
   } else {
-    if (typeof prompt.text !== "string") {
+    if (typeof own.text !== "string") {
       throw new TypeError(`A prompt must be ${SHAPES}; this one has no "text"`);
     }
-    const attachments = prompt.attachments ?? [];
+    const attachments = Object.hasOwn(own, "attachments") ? own.attachments : [];
     if (!Array.isArray(attachments)) {
       throw new TypeError(`A prompt's "attachments" must be an array`);
     }
-    parts = [prompt.text, ...attachments];
+    parts = [own.text, ...attachments];
   }
   for (const part of parts) {
     if (typeof part === "string") continue;
-    if (part === null || typeof part !== "object" || typeof part.path !== "string") {
+    if (
+      part === null ||
+      typeof part !== "object" ||
+      typeof (part as Record<string, unknown>).path !== "string"
+    ) {
       throw new TypeError(`Every prompt part must be text or an attachment with a "path"`);
     }
   }
-  return parts;
+  return parts as Array<string | PromptAttachment>;
 }
 
 /**

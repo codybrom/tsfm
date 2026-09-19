@@ -152,4 +152,12 @@ describe("composePrompt", () => {
     expect(() => composePrompt(fn, prompt as never)).toThrow(message as string);
     expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
   });
+
+  it("reads the shape from the prompt's own properties, not the prototype", () => {
+    const polluted = Object.create({ content: [{ path: "/nope.png" }] }) as { text: string };
+    polluted.text = "Hello";
+    composePrompt(fn, polluted);
+    expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+    expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
+  });
 });
