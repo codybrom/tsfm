@@ -37,7 +37,14 @@ function fmLicenseStatus(): string {
   });
   if (result.error) return "fm CLI not found (not needed by tsfm)";
   if (result.status === 0) return "installed, license agreed";
-  if (result.status === 69) return "installed, license not agreed (not needed by tsfm)";
+  // 69 is what `fm license --status` exits with before the license is agreed,
+  // in every stdin mode; see tests/fixtures/fm/unlicensed.json, recorded on
+  // macOS 27.0 before this machine agreed. Its stderr is also where the
+  // remediation comes from: agreeing is the user's decision, and `fm license`
+  // records it for every user on the machine, hence sudo.
+  if (result.status === 69) {
+    return "installed, license not agreed (not needed by tsfm - to agree, run: sudo fm license)";
+  }
   return `installed, license status unknown (exit ${result.status})`;
 }
 

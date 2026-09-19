@@ -75,8 +75,10 @@ typedef enum {
 } FMComposedPromptAddImageError;
 
 void FMComposedPromptAddText(FMComposedPrompt _Nonnull composedPrompt, const char *_Nonnull text);
-bool FMComposedPromptAddImage(FMComposedPrompt _Nonnull composedPrompt, const char *_Nonnull imagePath, FMComposedPromptAddImageError * _Nullable error);
-bool FMComposedPromptAddIdentifiedImage(FMComposedPrompt _Nonnull composedPrompt, const char *_Nonnull imagePath, const char *_Nonnull imageIdentifier, FMComposedPromptAddImageError * _Nullable error);
+// tsfm: upstream also declared FMComposedPromptAddImage and
+// FMComposedPromptAddIdentifiedImage here, but neither has an implementation
+// (the dylib exports only Initialize, AddText and AddAttachment), so the
+// declarations are gone rather than inviting a call that can't link.
 bool FMComposedPromptAddAttachment(FMComposedPrompt _Nonnull composedPrompt, const char *_Nonnull imagePath, const char *_Nullable label, FMComposedPromptAddImageError * _Nullable error);
 
 // MARK: - Token counting

@@ -37,6 +37,11 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
 - `PrivateCloudComputeLanguageModel` for Apple's server model: a 32K context, reasoning, and a daily quota. It's opt-in, needs macOS 27, and needs a host signed with Apple's PCC entitlement. Includes availability (with missing-entitlement and requires-newer-OS reasons), `waitUntilAvailable()`, `quotaUsage`, `contextSize()` and `capabilities`. Sessions and `fromTranscript()` accept it as their `model`.
 - `reasoningLevel` in `GenerationOptions` (`"light"`, `"moderate"` or `"deep"`), for Private Cloud Compute. The on-device model throws `UnsupportedCapabilityError`.
+- `CancelledError` (code 20): a request stopped by `session.cancel()`, or a dropped stream, rejects with it instead of `GenerationError` with code 255.
+- Prompts can interleave text and images: `{ content: [image, "What is this?", image] }` composes in that order, and an image alone sends no text. `{ text, attachments }` works as before.
+- An attachment path that isn't an existing file throws `PromptAttachmentError` with `reason: "not-found"` before anything reaches the native library.
+- Chat and Responses APIs accept `"system"` and `"pcc"`, the model ids Apple's `fm serve` uses, as aliases of `"SystemLanguageModel"` and `"PrivateCloudComputeLanguageModel"`. `"pcc"` used to fall back silently to the on-device model.
+- `tsfm doctor` says how to agree to the `fm` CLI's license (`sudo fm license`) when it isn't agreed. It still never agrees on your behalf.
 - New errors: `InvalidArgumentError`, `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`, `ToolCallLimitExceededError`, `PrivateCloudComputeNetworkError`, `PrivateCloudComputeQuotaExceededError`, `PrivateCloudComputeUnavailableError` and `PrivateCloudComputeEntitlementError`.
 - `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities` (macOS 27; `null` on macOS 26).
 - `UnsupportedCapabilityError.minimumRequiredMacOS`: `27` when a macOS 27 feature is used on macOS 26, so an app can fall back instead of crashing.
