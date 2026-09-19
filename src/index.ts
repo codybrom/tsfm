@@ -7,6 +7,7 @@ export {
 } from "./core.js";
 
 export { LanguageModelSession } from "./session.js";
+export { type ModelCapability } from "./capabilities.js";
 export {
   PrivateCloudComputeLanguageModel,
   PrivateCloudComputeUnavailableReason,

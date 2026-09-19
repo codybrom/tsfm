@@ -83,3 +83,44 @@ public func FMLanguageModelSessionGetUsageJSON(
     return UnsafeMutablePointer(strdup(cString))
   }
 }
+
+// MARK: - Model information
+
+private func capabilitiesJSON(_ capabilities: LanguageModelCapabilities) -> UnsafeMutablePointer<CChar>? {
+  let known: [(String, LanguageModelCapabilities.Capability)] = [
+    ("vision", .vision),
+    ("toolCalling", .toolCalling),
+    ("guidedGeneration", .guidedGeneration),
+    ("reasoning", .reasoning),
+  ]
+  let names = known.filter { capabilities.contains($0.1) }.map { $0.0 }
+  guard let data = try? JSONSerialization.data(withJSONObject: names),
+    let json = String(data: data, encoding: .utf8)
+  else { return nil }
+  return strdup(json)
+}
+
+/// The on-device model's capabilities as a JSON array of names; free with FMFreeString.
+@_cdecl("FMSystemLanguageModelGetCapabilitiesJSON")
+public func FMSystemLanguageModelGetCapabilitiesJSON(
+  model: FMSystemLanguageModelRef
+) -> UnsafeMutablePointer<CChar>? {
+  capabilitiesJSON(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().capabilities)
+}
+
+/// Private Cloud Compute's capabilities as a JSON array of names; free with FMFreeString.
+@_cdecl("FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON")
+public func FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
+  model: UnsafeMutableRawPointer
+) -> UnsafeMutablePointer<CChar>? {
+  capabilitiesJSON(
+    Unmanaged<PrivateCloudComputeLanguageModel>.fromOpaque(model).takeUnretainedValue().capabilities)
+}
+
+/// The on-device model's variant, e.g. "AFM 3 Core Advanced"; free with FMFreeString.
+@_cdecl("FMSystemLanguageModelGetVariantName")
+public func FMSystemLanguageModelGetVariantName(
+  model: FMSystemLanguageModelRef
+) -> UnsafeMutablePointer<CChar>? {
+  strdup(Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue().variant.displayName)
+}

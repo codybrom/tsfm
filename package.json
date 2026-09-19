@@ -14,6 +14,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "tsfm": "./dist/cli/doctor.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",

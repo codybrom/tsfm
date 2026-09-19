@@ -131,6 +131,38 @@ describe("Transcript", () => {
       });
     });
 
+    it("returns Private Cloud Compute reasoning entries", () => {
+      // The shape a PCC request with reasoningLevel "deep" produces on macOS 27.
+      const json = JSON.stringify({
+        version: 1,
+        type: "FoundationModels.Transcript",
+        transcript: {
+          entries: [
+            {
+              id: "u1",
+              role: "user",
+              contents: [{ type: "text", text: "Is 1001 prime?", id: "c1" }],
+              options: {},
+              contextOptions: { reasoningLevel: "deep" },
+            },
+            { id: "r1", role: "reasoning", reasoning: { contents: [], signature: "opaque" } },
+            {
+              id: "r1",
+              role: "response",
+              contents: [{ type: "text", text: "No.", id: "c2" }],
+              metadata: { systemVersion: "x" },
+            },
+          ],
+        },
+      });
+      mockDecodeAndFreeString.mockReturnValueOnce(json);
+      const entries = new Transcript(mockPointer("mock-session")).entries();
+
+      expect(entries.map((e) => e.role)).toEqual(["user", "reasoning", "response"]);
+      expect(entries[0].contextOptions).toEqual({ reasoningLevel: "deep" });
+      expect(entries[1].reasoning).toEqual({ contents: [], signature: "opaque" });
+    });
+
     it("returns entries with tool calls and tool output", () => {
       const json = JSON.stringify({
         type: "FoundationModels.Transcript",

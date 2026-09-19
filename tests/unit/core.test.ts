@@ -297,3 +297,19 @@ describe("SystemLanguageModel.tokenCount", () => {
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
   });
 });
+
+describe("model information", () => {
+  it("reads the variant name", () => {
+    mockDecodeAndFreeString.mockReturnValueOnce("AFM 3 Core Advanced");
+    expect(new SystemLanguageModel().variant).toBe("AFM 3 Core Advanced");
+  });
+
+  it("reads the capabilities", () => {
+    mockDecodeAndFreeString.mockReturnValueOnce('["vision","toolCalling","guidedGeneration"]');
+    expect(new SystemLanguageModel().capabilities).toEqual([
+      "vision",
+      "toolCalling",
+      "guidedGeneration",
+    ]);
+  });
+});
