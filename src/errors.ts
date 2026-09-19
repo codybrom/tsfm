@@ -1,4 +1,8 @@
-export const enum GenerationErrorCode {
+/**
+ * Status codes from the native bridge. A regular enum, not a `const enum`, so it
+ * exists at runtime and callers don't compile the numbers into their own code.
+ */
+export enum GenerationErrorCode {
   SUCCESS = 0,
   EXCEEDED_CONTEXT_WINDOW_SIZE = 1,
   ASSETS_UNAVAILABLE = 2,

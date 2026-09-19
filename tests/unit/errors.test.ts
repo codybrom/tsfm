@@ -172,6 +172,15 @@ describe("statusToError", () => {
   });
 });
 
+describe("GenerationErrorCode", () => {
+  it("exists at runtime, with reverse mappings", () => {
+    // A const enum would be erased at compile time and leave nothing here.
+    expect(GenerationErrorCode.TIMEOUT).toBe(12);
+    expect(GenerationErrorCode[12]).toBe("TIMEOUT");
+    expect(Object.keys(GenerationErrorCode)).toContain("UNSUPPORTED_TRANSCRIPT_CONTENT");
+  });
+});
+
 describe("error hierarchy", () => {
   it("GenerationError extends FoundationModelsError", () => {
     const err = new GenerationError("test");
