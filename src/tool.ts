@@ -142,7 +142,10 @@ export abstract class Tool {
       onCall,
     );
     if (!value) {
-      throw statusToError(status, description ?? `Failed to create tool '${this.name}'`);
+      throw statusToError(
+        status,
+        `Failed to create tool '${this.name}'${description ? `: ${description}` : ""}`,
+      );
     }
     // The handle releases the tool when it's garbage collected.
     this._nativeTool = value;

@@ -260,6 +260,15 @@ describe("LanguageModelSession", () => {
   });
 
   describe("respond", () => {
+    it("releases the composed prompt when the native call throws while starting", async () => {
+      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(() => {
+        throw new TypeError("bad argument");
+      });
+      const session = new LanguageModelSession();
+      await expect(session.respond("Hi")).rejects.toThrow("bad argument");
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+    });
+
     it("releases the request handle once the response settles", async () => {
       mockFns.FMLanguageModelSessionRespond.mockReturnValueOnce([
         Promise.resolve({ status: 0, text: "hi" }),
