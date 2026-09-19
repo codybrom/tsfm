@@ -1,0 +1,20 @@
+
+  [38;2;55;195;160m[1mfm chat[0m
+  [38;2;153;153;153mStart an interactive chat session.[0m
+
+  [38;2;55;195;160m[1mUSAGE[0m
+    [38;2;153;153;153m%[0m fm chat
+    [38;2;153;153;153m%[0m fm chat --resume my-session
+    [38;2;153;153;153m%[0m fm chat --instructions 'You are a helpful coding assistant'
+
+  [38;2;55;195;160m[1mOPTIONS[0m
+    [1m--continue               [0mContinue the most recent chat session
+    [1m-h, --help               [0mShow help information
+    [1m-i, --instructions <t>   [0mInstructions for the model
+    [1m-m, --model <model>      [0mModel to use (system)
+    [1m-r, --resume <name>      [0mResume a saved chat session
+    [1m--set-default-model <m>  [0mPersist default model (system)
+    [1m--tool <name>            [0mBuilt-in tool to enable (barcode, ocr; repeatable)
+
+  [3m[38;2;153;153;153mSessions are saved to ~/.fm/sessions/ and can be resumed with --resume.[0m
+

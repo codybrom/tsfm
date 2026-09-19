@@ -1,0 +1,20 @@
+{
+  "additionalProperties" : false,
+  "properties" : {
+    "name" : {
+      "type" : "string"
+    },
+    "age" : {
+      "type" : "integer"
+    }
+  },
+  "x-order" : [
+    "name",
+    "age"
+  ],
+  "required" : [
+    "name"
+  ],
+  "type" : "object",
+  "title" : "P"
+}

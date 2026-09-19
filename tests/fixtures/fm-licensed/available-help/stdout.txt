@@ -1,0 +1,12 @@
+
+  [38;2;55;195;160m[1mfm available[0m
+  [38;2;153;153;153mCheck model availability.[0m
+
+  [38;2;55;195;160m[1mUSAGE[0m
+    [38;2;153;153;153m%[0m fm available
+    [38;2;153;153;153m%[0m fm available --model system
+
+  [38;2;55;195;160m[1mOPTIONS[0m
+    [1m-h, --help           [0mShow help information
+    [1m-m, --model <model>  [0mModel to check (system); checks all if omitted
+

@@ -1,0 +1,25 @@
+
+  [38;2;55;195;160m[1mfm count-tokens[0m
+  [38;2;153;153;153mCount the tokens in a prompt, instructions, or transcript.[0m
+
+  [38;2;55;195;160m[1mUSAGE[0m
+    [38;2;153;153;153m%[0m fm count-tokens 'What is Swift?'
+    [38;2;153;153;153m%[0m fm count-tokens -i 'You are a helpful assistant' 'What is Swift?'
+    [38;2;153;153;153m%[0m fm count-tokens -i 'Answer concisely'
+    [38;2;153;153;153m%[0m fm count-tokens --image photo.jpg --text 'Describe this image'
+    [38;2;153;153;153m%[0m echo 'What is Swift?' | fm count-tokens
+    [38;2;153;153;153m%[0m fm count-tokens --transcript session.json
+
+  [38;2;55;195;160m[1mARGUMENTS[0m
+    [1m<prompt>                [0mPrompt to count tokens for
+
+  [38;2;55;195;160m[1mOPTIONS[0m
+    [1m-h, --help              [0mShow help information
+    [1m--image <path>          [0mImage to include in the prompt (repeatable)
+    [1m-i, --instructions <t>  [0mInstructions to include in the count
+    [1m-q, --quiet             [0mPrint only the integer count
+    [1m--text <t>              [0mAdditional text segment to include (repeatable)
+    [1m--transcript <f>        [0mSaved transcript to count as a framed conversation
+
+  [3m[38;2;153;153;153mOnly works with the on-device system model. Output is 'Token count: N' in a terminal and a bare integer when piped; use --quiet to force the bare form.[0m
+

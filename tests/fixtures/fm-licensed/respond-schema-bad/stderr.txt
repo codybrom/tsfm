@@ -1,0 +1,1 @@
+Error: [38;2;255;107;128mInvalid schema at '<inline JSON>': The data couldn’t be read because it isn’t in the correct format.[0m

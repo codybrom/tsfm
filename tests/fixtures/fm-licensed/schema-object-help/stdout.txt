@@ -1,0 +1,33 @@
+
+  [38;2;55;195;160m[1mfm schema object[0m
+  [38;2;153;153;153mGenerate a structured output schema for an object type.[0m
+
+  [38;2;55;195;160m[1mUSAGE[0m
+    [38;2;153;153;153m%[0m fm schema object --name Person --string name --int age --description 'Age in years'
+    [38;2;153;153;153m%[0m fm schema object --name Restaurant --string name --string address.street --string address.zip
+    [38;2;153;153;153m%[0m fm schema object --name Restaurant --string title \
+      --nested address --schema "$(fm schema object --name Address --string zipcode)"
+    [38;2;153;153;153m%[0m fm schema object --name SearchResult --anyOf \
+      --schema "$(fm schema object --name Found --string name)" \
+      --schema "$(fm schema object --name NotFound --string reason)"
+
+  [38;2;55;195;160m[1mOPTIONS[0m
+    [1m-h, --help            [0mShow help information
+    [1m--name <name>         [0mName of the root object type (required)
+
+  [38;2;55;195;160m[1mPROPERTY DECLARATIONS[0m
+    [1m--anyOf               [0mBuild an anyOf union; subsequent --schema args become choices
+    [1m--boolean <name>      [0mDeclare a boolean property
+    [1m--double <name>       [0mDeclare a floating-point property
+    [1m--integer <name>      [0mDeclare an integer property
+    [1m--object <name>       [0mDeclare a nested object property (follow with --schema)
+    [1m--schema <json>       [0mProvide a structured output schema (after --object or --anyOf)
+    [1m--string <name>       [0mDeclare a string property
+
+  [38;2;55;195;160m[1mPROPERTY MODIFIERS[0m
+    [1m--array               [0mMark the preceding property as an array of that type
+    [1m--description <text>  [0mSet a description on the preceding property
+    [1m--optional            [0mMark the preceding property as optional
+
+  [3m[38;2;153;153;153mUse dot notation in property names (e.g. 'address.street') to create nested objects.[0m
+

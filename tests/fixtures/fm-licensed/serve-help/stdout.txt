@@ -1,0 +1,26 @@
+
+  [38;2;55;195;160m[1mfm serve[0m
+  [38;2;153;153;153mStart a Chat Completions API server for Foundation Models.[0m
+
+  [38;2;55;195;160m[1mUSAGE[0m
+    [38;2;153;153;153m%[0m fm serve
+    [38;2;153;153;153m%[0m fm serve --port 1976
+    [38;2;153;153;153m%[0m fm serve --host 0.0.0.0 --port 1976
+    [38;2;153;153;153m%[0m fm serve --socket /tmp/fm.sock
+
+  [38;2;55;195;160m[1mOPTIONS[0m
+    [1m-h, --help                 [0mShow help information
+    [1m--host <host>              [0mHost address to bind to (TCP mode)
+    [1m--port <port>              [0mPort to listen on, 1–65535 (TCP mode)
+    [1m--socket <path>            [0mUnix domain socket path (socket mode)
+
+  [38;2;55;195;160m[1mENDPOINTS[0m
+    [1mGET  /health               [0mHealth check
+    [1mGET  /v1/models            [0mList available models
+    [1mPOST /v1/chat/completions  [0mChat completions (streaming & non-streaming)
+
+  [38;2;55;195;160m[1mMODELS[0m
+    [1msystem                     [0mOn-device Apple Foundation Model [38;2;153;153;153m(default)[0m
+
+  [3m[38;2;153;153;153mUse --socket for Unix domain socket transport (recommended for local Python bindings).[0m
+

@@ -1,0 +1,13 @@
+
+  [38;2;55;195;160m[1mfm schema[0m
+  [38;2;153;153;153mGenerate a structured output generation schema.[0m
+
+  [38;2;55;195;160m[1mSUBCOMMANDS[0m
+    [1mobject  [0mGenerate a structured output schema for an object type
+
+  [38;2;55;195;160m[1mEXAMPLES[0m
+    [38;2;153;153;153m%[0m fm schema object --name Person --string name --int age
+    [38;2;153;153;153m%[0m fm schema object --name Dog --string breed --boolean friendly
+
+  [3m[38;2;153;153;153mRun 'fm schema object --help' for detailed property declaration syntax.[0m
+

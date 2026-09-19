@@ -1,0 +1,5 @@
+Error: Unexpected argument 'world'
+Usage: fm count-tokens 'What is Swift?'
+       fm count-tokens -i 'You are a helpful assistant' 'What is Swift?'
+       echo 'What is Swift?' | fm count-tokens
+  See 'fm count-tokens --help' for more information.

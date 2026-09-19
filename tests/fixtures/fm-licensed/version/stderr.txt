@@ -1,0 +1,5 @@
+Error: Unknown option '--version'
+Usage: fm <command> [options]
+       fm respond 'What is Swift?'
+       fm chat
+  See 'fm --help' for more information.

@@ -1,0 +1,6 @@
+Error: Unknown option '--nope'. Did you mean '--model'?
+Usage: fm respond 'What is Swift?'
+       fm respond --image photo.jpg --text 'What is in this image?'
+       fm respond --use-case content-tagging 'Analyze this text'
+       echo 'What is Swift?' | fm respond
+  See 'fm respond --help' for more information.
