@@ -88,17 +88,17 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
  * would fail later with an error that doesn't name the file.
  */
 function assertAttachmentExists(attachment: PromptAttachment): void {
-  let isFile = false;
+  let problem: string | null = null;
   try {
-    isFile = statSync(attachment.path).isFile();
-  } catch {
-    // Missing, or a path we can't read: reported below.
+    if (!statSync(attachment.path).isFile()) problem = "it isn't a file";
+  } catch (err) {
+    problem =
+      (err as NodeJS.ErrnoException).code === "ENOENT"
+        ? "it doesn't exist"
+        : `it can't be read (${(err as NodeJS.ErrnoException).code ?? "unknown error"})`;
   }
-  if (!isFile) {
-    throw new PromptAttachmentError(
-      `Cannot attach ${attachment.path}: the file doesn't exist.`,
-      "not-found",
-    );
+  if (problem) {
+    throw new PromptAttachmentError(`Cannot attach ${attachment.path}: ${problem}.`, "not-found");
   }
 }
 

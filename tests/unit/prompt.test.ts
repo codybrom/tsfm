@@ -114,7 +114,7 @@ describe("composePrompt", () => {
     it("treats a directory as not found", () => {
       expect(() =>
         composePrompt(fn, { content: [{ path: path.join(dir, "folder.png") }] }),
-      ).toThrow(PromptAttachmentError);
+      ).toThrow(/isn't a file/);
       expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
     });
 

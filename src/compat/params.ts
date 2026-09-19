@@ -38,11 +38,20 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
 export function mapParams(params: Partial<ChatCompletionCreateParams>): GenerationOptions {
   const options: GenerationOptions = {};
 
-  warnOnUnknownModel(params.model);
+  // The two fields that pick a model and its reasoning are read as own
+  // properties: these params come from a caller's JSON, and a polluted
+  // Object.prototype would otherwise choose the model for them.
+  const own = <K extends keyof ChatCompletionCreateParams>(
+    key: K,
+  ): ChatCompletionCreateParams[K] | undefined =>
+    Object.hasOwn(params, key) ? params[key] : undefined;
+  const model = own("model");
+
+  warnOnUnknownModel(model);
 
   const reasoningLevel = mapReasoningEffort(
-    params.reasoning_effort,
-    compatModelName(params.model),
+    own("reasoning_effort"),
+    compatModelName(model),
     "reasoning_effort",
   );
   if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;

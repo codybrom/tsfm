@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mapParams } from "../../../src/compat/params.js";
+import type { ChatCompletionCreateParams } from "../../../src/compat/types.js";
 import { SamplingMode } from "../../../src/options.js";
 
 describe("mapParams", () => {
@@ -153,5 +154,19 @@ describe("mapParams", () => {
     expect(console.warn).toHaveBeenCalledWith(
       expect.stringContaining("stream_options.include_obfuscation"),
     );
+  });
+
+  it("takes the model from the params' own properties, not the prototype", () => {
+    // A polluted prototype must not pick Private Cloud Compute for a caller.
+    const polluted = Object.create({
+      model: "PrivateCloudComputeLanguageModel",
+      reasoning_effort: "high",
+    }) as Partial<ChatCompletionCreateParams>;
+    polluted.temperature = 0.5;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const options = mapParams(polluted);
+    expect(options.reasoningLevel).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
