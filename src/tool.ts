@@ -28,7 +28,8 @@ export abstract class Tool {
    * effects.
    *
    * `args` contains the structured arguments the model supplied, shaped
-   * according to `argumentsSchema`.
+   * according to `argumentsSchema`. It's released once `call()` settles, so
+   * read what you need from it before then (e.g. `args.toObject()`).
    */
   abstract call(args: GeneratedContent): Promise<string>;
 
@@ -77,16 +78,19 @@ export abstract class Tool {
     const onCall = (contentRef: NativePointer | null, callId: number) => {
       const tool = this._nativeTool;
       if (!tool) return; // disposed: the addon already failed the call
+      // The arguments are released once the call settles, on every path.
+      let content: GeneratedContent | null = null;
       try {
         if (!contentRef) throw new Error("the tool call arrived without arguments");
-        const content = new GeneratedContent(contentRef);
+        content = new GeneratedContent(contentRef);
+        const args = content;
 
         const budgets = [...this._budgets];
         const spent = budgets.find((b) => b.used >= b.max);
         if (spent) {
           // Failing the call (rather than answering it) ends the response, which
           // is what stops a toolCallingMode "required" loop.
-          content.dispose();
+          args.dispose();
           fn.FMBridgedToolFailCall(
             tool,
             callId,
@@ -102,11 +106,11 @@ export abstract class Tool {
         // Fire onCall notification — informational only, must not block the
         // tool call even if it throws.
         try {
-          this.onCall?.(this.name, content.toObject() as Record<string, unknown>);
+          this.onCall?.(this.name, args.toObject() as Record<string, unknown>);
         } catch (err) {
           console.warn(`[tsfm] Tool '${this.name}' onCall handler threw:`, err);
         }
-        this.call(content)
+        this.call(args)
           .then((result) => {
             // A disposed tool's pending calls were already failed.
             if (this._nativeTool) fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
@@ -117,8 +121,10 @@ export abstract class Tool {
             if (this._nativeTool) {
               fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
             }
-          });
+          })
+          .finally(() => args.dispose());
       } catch (err: unknown) {
+        content?.dispose();
         // If anything throws synchronously (e.g. GeneratedContent construction),
         // the call must still be answered or the response waits forever.
         const msg = err instanceof Error ? err.message : String(err);

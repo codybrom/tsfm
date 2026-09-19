@@ -20,7 +20,7 @@ abstract class Tool {
 | `name` | `string` | Unique tool identifier |
 | `description` | `string` | What the tool does (visible to the model) |
 | `argumentsSchema` | `GenerationSchema` | Schema defining the tool's arguments |
-| `call(args)` | `async (GeneratedContent) => string` | Handler invoked when the model calls this tool |
+| `call(args)` | `async (GeneratedContent) => string` | Handler invoked when the model calls this tool. `args` is released once `call()` settles, so read what you need from it before then. |
 
 ## Properties
 

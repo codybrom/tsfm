@@ -148,7 +148,7 @@ export class Transcript {
       status,
       description,
     } = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(this._nativeSession);
-    if (json) return json;
+    if (json !== null) return json;
     if (status !== 0) {
       throw statusToError(
         status,
