@@ -22,6 +22,10 @@ FoundationModelsError
 │   ├── UnsupportedCapabilityError
 │   ├── UnsupportedTranscriptContentError
 │   ├── ToolCallLimitExceededError
+│   ├── PrivateCloudComputeNetworkError
+│   ├── PrivateCloudComputeQuotaExceededError
+│   ├── PrivateCloudComputeUnavailableError
+│   ├── PrivateCloudComputeEntitlementError
 │   └── ServiceCrashedError
 ├── PromptAttachmentError
 └── ToolCallError
@@ -46,6 +50,10 @@ FoundationModelsError
 | `UnsupportedCapabilityError` | 13 | The request needs a capability the model doesn't have¹ |
 | `UnsupportedTranscriptContentError` | 14 | The transcript has content the model can't accept¹ |
 | `ToolCallLimitExceededError` | 15 | A request reached `maximumToolCalls`; the extra call wasn't run |
+| `PrivateCloudComputeNetworkError` | 16 | [PCC](/guide/private-cloud-compute) couldn't be reached |
+| `PrivateCloudComputeQuotaExceededError` | 17 | The user's daily PCC quota is used up |
+| `PrivateCloudComputeUnavailableError` | 18 | PCC is temporarily unavailable |
+| `PrivateCloudComputeEntitlementError` | 19 | The host isn't signed with the PCC entitlement |
 | `ServiceCrashedError` | 255 | The Apple Intelligence service crashed; the message says how to restart it |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw |
@@ -75,6 +83,10 @@ enum GenerationErrorCode {
   UNSUPPORTED_CAPABILITY = 13,
   UNSUPPORTED_TRANSCRIPT_CONTENT = 14,
   TOOL_CALL_LIMIT_EXCEEDED = 15,
+  PCC_NETWORK_FAILURE = 16,
+  PCC_QUOTA_LIMIT_REACHED = 17,
+  PCC_SERVICE_UNAVAILABLE = 18,
+  PCC_ENTITLEMENT_MISSING = 19,
   UNKNOWN_ERROR = 255,
 }
 ```
