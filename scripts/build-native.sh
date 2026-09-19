@@ -48,11 +48,42 @@ if [[ -d "$CLONE_DIR" ]]; then
   fi
 fi
 
-# --- Skip if already built ---
+# --- Select the toolchain ---
+#
+# A beta is preferred when present: it is how you get an SDK newer than the
+# released Xcode, which is what prompt attachments need (macOS 27 SDK). This
+# has to happen before the SDK check and the version check below, or they
+# validate the selected Xcode while swift build uses the beta.
 
-if [[ -f "$NATIVE_DIR/libFoundationModels.dylib" ]]; then
-  log "Native dylib already present, skipping build. Delete native/libFoundationModels.dylib to force rebuild."
-  exit 0
+XCODE_BETA="/Applications/Xcode-beta.app"
+if [[ -d "$XCODE_BETA" ]]; then
+  export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
+  log "Preferring Xcode beta at $XCODE_BETA"
+fi
+
+# Prompt attachments compile only when FM_HAS_MACOS_27_SDK is defined, which
+# upstream's build_backend.py sets for a macOS 27+ SDK. The deployment target
+# stays at macOS 26 (Package.swift), and the bridge gates attachments behind
+# #available(macOS 27), so one dylib loads on 26 and supports attachments on 27.
+SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
+SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
+HAS_MACOS_27_SDK=false
+[[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]] && HAS_MACOS_27_SDK=true
+
+# --- Skip if already built ---
+#
+# Unless the dylib predates the macOS 27 SDK: one built against the 26 SDK has
+# no attachment support, and skipping would keep it after switching to Xcode 27.
+
+DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
+if [[ -f "$DYLIB" ]]; then
+  if $HAS_MACOS_27_SDK && ! nm -m "$DYLIB" 2>/dev/null | grep 'Attachment.*from FoundationModels' >/dev/null; then
+    log "Native dylib was built without prompt attachments, but the macOS $SDK_VERSION SDK is active. Rebuilding."
+    rm -f "$DYLIB"
+  else
+    log "Native dylib already present, skipping build. Delete native/libFoundationModels.dylib to force rebuild."
+    exit 0
+  fi
 fi
 
 # --- Check prerequisites ---
@@ -75,20 +106,9 @@ if ! command -v swift &>/dev/null; then
   exit 1
 fi
 
-# --- Select the toolchain, then validate the one that was selected ---
-#
-# A beta is preferred when present: it is how you get an SDK newer than the
-# released Xcode, which is what prompt attachments need (macOS 27 SDK). This
-# has to happen before the version check below, or the check validates the
-# selected Xcode while swift build uses the beta.
+# --- Validate the selected toolchain ---
 
-XCODE_BETA="/Applications/Xcode-beta.app"
-if [[ -d "$XCODE_BETA" ]]; then
-  export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
-  log "Preferring Xcode beta at $XCODE_BETA"
-fi
-
-# Reads whatever DEVELOPER_DIR now points at.
+# Reads whatever DEVELOPER_DIR points at (see toolchain selection above).
 XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
 XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
@@ -156,14 +176,8 @@ fi
 
 # --- Build (redirect verbose Swift output to log file) ---
 
-# Prompt attachments compile only when FM_HAS_MACOS_27_SDK is defined, which
-# upstream's build_backend.py sets for a macOS 27+ SDK. The deployment target
-# stays at macOS 26 (Package.swift), and the bridge gates attachments behind
-# #available(macOS 27), so one dylib loads on 26 and supports attachments on 27.
 SWIFT_ARGS=()
-SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
-SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
-if [[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]]; then
+if $HAS_MACOS_27_SDK; then
   SWIFT_ARGS+=(-Xswiftc -DFM_HAS_MACOS_27_SDK)
   log "macOS SDK $SDK_VERSION: prompt attachments enabled"
 else

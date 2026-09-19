@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Building from source with the macOS 27 SDK did not enable prompt attachments. `scripts/build-native.sh` never defined `FM_HAS_MACOS_27_SDK`, so the bridge compiled attachments out and every attachment was rejected with `unsupported-sdk`. The script now defines it when the active SDK is macOS 27 or later, as upstream's build does.
+- Building from source with the macOS 27 SDK did not enable prompt attachments. `scripts/build-native.sh` never defined `FM_HAS_MACOS_27_SDK`, so the bridge compiled attachments out and every attachment was rejected with `unsupported-sdk`. The script now defines it when the active SDK is macOS 27 or later, as upstream's build does, and rebuilds an existing dylib that lacks attachment support instead of skipping it.
 
 ### Changed
 
