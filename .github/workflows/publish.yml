@@ -77,6 +77,43 @@ jobs:
           bash scripts/verify-native.sh
           npm pack --dry-run
 
+      # A prerelease (1.0.0-beta.1) publishes under its identifier (beta) and
+      # never becomes latest. A release older than the current latest major,
+      # such as a 0.x patch after 1.0, publishes as legacy so it doesn't move
+      # latest backwards.
+      - name: Choose the npm dist-tag
+        id: dist-tag
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+          else
+            LATEST="$(npm view tsfm-sdk dist-tags.latest 2>/dev/null || echo 0.0.0)"
+            if (( ${VERSION%%.*} < ${LATEST%%.*} )); then
+              TAG="legacy"
+            else
+              TAG="latest"
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publishing $VERSION with dist-tag $TAG"
+
+      - name: Verify the GitHub release's prerelease flag matches the version
+        if: github.event_name == 'release'
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* && "$PRERELEASE" != "true" ]]; then
+            echo "::error::$VERSION is a prerelease; publish it from a GitHub pre-release"
+            exit 1
+          fi
+          if [[ "$VERSION" != *-* && "$PRERELEASE" == "true" ]]; then
+            echo "::error::$VERSION isn't a prerelease, but the GitHub release is marked pre-release"
+            exit 1
+          fi
+
       - name: Publish to npm
         if: github.event_name == 'release' || inputs.dry-run == false
-        run: npm publish
+        run: npm publish --tag "${{ steps.dist-tag.outputs.tag }}"
