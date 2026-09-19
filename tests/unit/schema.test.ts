@@ -550,6 +550,20 @@ describe("GeneratedContent", () => {
     expect(result).toBe("test");
   });
 
+  it("value reports the native failure when the property isn't found either way", () => {
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(failed(6, "no such key"));
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    expect(() => content.value("nonexistent")).toThrow(
+      /Property 'nonexistent' not found.*no such key/,
+    );
+  });
+
+  it("value still falls back to the JSON when the native read fails", () => {
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(failed(6, "no such key"));
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    expect(content.value<string>("name")).toBe("test");
+  });
+
   it("value throws when property not found anywhere", () => {
     const content = new GeneratedContent(mockPointer("mock-content"));
     expect(() => content.value("nonexistent")).toThrow(

@@ -36,6 +36,14 @@ describe("Transcript", () => {
       );
     });
 
+    it("throws the typed error for the native status when export fails", () => {
+      mockFns.FMLanguageModelSessionGetTranscriptJSONString.mockReturnValueOnce(
+        failed(6, "bad transcript"),
+      );
+      const transcript = new Transcript(mockPointer("mock-session"));
+      expect(() => transcript.toJson()).toThrow(/Decoding failure.*bad transcript/);
+    });
+
     it("throws when C API returns null", () => {
       transcriptJson.mockReturnValueOnce(null);
       const transcript = new Transcript(mockPointer("mock-session"));

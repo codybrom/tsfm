@@ -143,11 +143,19 @@ export class Transcript {
    */
   toJson(): string {
     this._assertNotDisposed();
-    const json = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(
-      this._nativeSession,
-    ).value;
-    if (!json) throw new FoundationModelsError("Failed to export transcript");
-    return json;
+    const {
+      value: json,
+      status,
+      description,
+    } = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(this._nativeSession);
+    if (json) return json;
+    if (status !== 0) {
+      throw statusToError(
+        status,
+        `Failed to export transcript${description ? `: ${description}` : ""}`,
+      );
+    }
+    throw new FoundationModelsError("Failed to export transcript");
   }
 
   /** Export the transcript as a parsed dictionary (mirrors Python's Transcript.to_dict()). */
