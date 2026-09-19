@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - Unreleased
+
+tsfm 1.0 targets macOS 27. It adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework. It also makes the native layer much harder to crash. macOS 26 stays supported on the 0.x line. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
+
+### Changed
+
+- **Breaking:** requires macOS 27 on Apple silicon. The native library targets macOS 27.0, and building it from source needs Xcode 27. On macOS 26, use `tsfm-sdk@0.x`.
+- **Breaking:** `respond()`, `respondWithSchema()` and `respondWithJsonSchema()` return a `Response` whose `.content` is the old return value and whose `.usage` is the request's token usage.
+- **Breaking:** `streamResponse()` returns a `ResponseStream`. It iterates text deltas as before, can be iterated once, and adds `.usage` once finished and a `collect()` method.
+- **Breaking:** a request may make at most 32 tool calls by default. Past `maximumToolCalls` it fails with `ToolCallLimitExceededError` instead of calling another tool.
+- **Breaking:** `GenerationErrorCode` is a regular `enum` instead of a `const enum`. Comparisons still work; it now exists at runtime.
+- **Breaking:** regex guides are checked against what the on-device model supports before a request is sent. Unsupported syntax, such as character classes like `[a-z]`, throws `UnsupportedGuideError` naming the construct and, where there is one, a replacement. Private Cloud Compute requests aren't checked, because PCC supports more.
+- Errors from the macOS 27 framework map to typed errors instead of `GenerationError` with code 255.
+- A schema the framework can't build, such as one with an undefined reference, throws `InvalidGenerationSchemaError` instead of `GenerationError` with code 255.
+- `PromptAttachmentError` no longer reports `unsupported-os` or `unsupported-sdk`, because attachments always work on macOS 27.
+- `generable()` names nested reference schemas by their property path, such as `shipping_address`, so objects under the same key in different places stay separate.
+- The Swift-to-C bridge is now tsfm's own code in `native/bridge`, forked from Apple's `foundation-models-c` (see `native/bridge/UPSTREAM.md`).
+
+### Added
+
+- Token usage: `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts.
+- `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`) and `maximumToolCalls` in `GenerationOptions`.
+- `PrivateCloudComputeLanguageModel` for Apple's server model: a 32K context, reasoning, and a daily quota. It's opt-in and needs a host signed with Apple's PCC entitlement. Includes availability (with a missing-entitlement reason), `waitUntilAvailable()`, `quotaUsage`, `contextSize()` and `capabilities`. Sessions and `fromTranscript()` accept it as their `model`.
+- `reasoningLevel` in `GenerationOptions` (`"light"`, `"moderate"` or `"deep"`), for Private Cloud Compute. The on-device model throws `UnsupportedCapabilityError`.
+- New errors: `InvalidArgumentError`, `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`, `ToolCallLimitExceededError`, `PrivateCloudComputeNetworkError`, `PrivateCloudComputeQuotaExceededError`, `PrivateCloudComputeUnavailableError` and `PrivateCloudComputeEntitlementError`.
+- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities`.
+- Transcripts support `reasoning` entries, plus the `contextOptions` and `metadata` fields.
+- `npx tsfm doctor` reports whether a machine can run tsfm and why not. It only reads, and never agrees to the `fm` CLI's license.
+- Chat and Responses APIs:
+  - They fill in `usage`, and a Chat Completions stream reports it in a final chunk with `stream_options: { include_usage: true }`.
+  - `model: "PrivateCloudComputeLanguageModel"` sends a request to Private Cloud Compute, and `reasoning_effort` / `reasoning.effort` map to `reasoningLevel`.
+  - Responses report the model that served them.
+- `tsfm-sdk/openai`, an alias of `tsfm-sdk/chat`.
+- Arrays of booleans in `generable()` and `GenerationSchema`.
+
+### Fixed
+
+- Several ways to crash the host process:
+  - A number where a string was expected (a prompt, instructions, an attachment path, a schema or property name, a guide value) was passed to native code as a pointer. It now throws `TypeError`.
+  - A stream queued behind another request, when the session was disposed in between, passed a released session to native code.
+  - Breaking out of a stream early let the cancelled native stream call a callback that had already been released.
+  - A JSON schema nested about 200 levels deep overflowed the framework's stack. Schemas deeper than 128 levels now throw `InvalidGenerationSchemaError`.
+  - Reading a session's transcript after `dispose()` read freed memory. It now throws `FoundationModelsError`.
+- Nested object properties in `generable()` failed with an undefined reference. Arrays of objects were unaffected. Keys shared by objects in different places, keys named like a scalar type such as `string`, and keys with characters like `-` also produced wrong or failing schemas.
+- `$ref` to `$defs` in JSON schemas never resolved, because the framework looks up a definition by its title. Each definition's `title` is now set to its key.
+- A session created with a disposed `SystemLanguageModel` silently used the default model. It now throws.
+- A tool call could hang when the tool answered before the bridge was ready to receive the answer.
+- A stream always releases the session's request lock, even if reading its usage fails.
+- The native library's load-failure hint reads the macOS version from `SystemVersion.plist` instead of guessing from the Darwin version.
+- Chat Completions: a streamed tool request that ended in a mapped error reported zero usage.
+
 ## [0.5.1] - 2026-09-18
 
 ### Fixed
