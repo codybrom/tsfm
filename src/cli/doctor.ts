@@ -50,7 +50,7 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
   checks.push({ label: "Node.js", ok: null, detail: `${process.version} (${process.arch})` });
   checks.push({
     label: "macOS",
-    ok: process.platform === "darwin" && macOS !== null && macOS >= 27,
+    ok: process.platform === "darwin" && macOS !== null && macOS >= 26,
     detail:
       process.platform !== "darwin"
         ? `${process.platform} — tsfm needs macOS`
@@ -58,7 +58,10 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
           ? "version unknown"
           : macOS >= 27
             ? `macOS ${macOS}`
-            : `macOS ${macOS} — tsfm 1.x needs macOS 27; use tsfm-sdk@0.x`,
+            : macOS === 26
+              ? "macOS 26 — supported; token usage, toolCallingMode, Private Cloud Compute, " +
+                "attachments and model info need macOS 27"
+              : `macOS ${macOS} — tsfm needs macOS 26 or later`,
   });
   if (process.platform === "darwin") {
     checks.push({
@@ -82,8 +85,13 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
       label: "On-device model",
       ok: availability.available,
       detail: availability.available
-        ? `${model.variant}, ${model.contextSize}-token context, ` +
-          `capabilities: ${model.capabilities.join(", ")}`
+        ? [
+            model.variant,
+            `${model.contextSize}-token context`,
+            model.capabilities && `capabilities: ${model.capabilities.join(", ")}`,
+          ]
+            .filter(Boolean)
+            .join(", ")
         : `unavailable: ${core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff]}`,
     });
     model.dispose();
@@ -98,7 +106,9 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
         : `not available: ${core.PrivateCloudComputeUnavailableReason[pccAvailability.reason ?? 0xff]}` +
           (pccAvailability.reason === core.PrivateCloudComputeUnavailableReason.ENTITLEMENT_MISSING
             ? " (expected for plain node; PCC is optional)"
-            : ""),
+            : pccAvailability.reason === core.PrivateCloudComputeUnavailableReason.REQUIRES_NEWER_OS
+              ? " (needs macOS 27; PCC is optional)"
+              : ""),
     });
     pcc.dispose();
   } catch (err) {

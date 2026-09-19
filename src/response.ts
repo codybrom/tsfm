@@ -20,7 +20,8 @@ export interface Usage {
 /** A model response: its content plus the tokens it used. */
 export interface Response<T> {
   readonly content: T;
-  readonly usage: Usage;
+  /** The tokens the request used, or `null` on macOS 26, which doesn't report usage. */
+  readonly usage: Usage | null;
 }
 
 /** @internal A usage of all zeros. */
@@ -36,13 +37,14 @@ let _warnedMalformedUsage = false;
 /**
  * @internal Parses the bridge's usage JSON.
  *
- * `null` means no usage to report (e.g. a disposed session) and reads as zeros.
- * Malformed or incomplete JSON can only come from a bridge bug: it also reads as
- * zeros, so a response that succeeded isn't lost over its telemetry, but it
+ * `null` means usage isn't available (macOS 26 has no usage API, or the
+ * session is disposed) and stays `null`, so callers can tell it from zero
+ * tokens. Malformed or incomplete JSON can only come from a bridge bug: it reads
+ * as zeros, so a response that succeeded isn't lost over its telemetry, but it
  * warns once so the bug doesn't hide behind plausible-looking numbers.
  */
-export function parseUsage(json: string | null): Usage {
-  if (json === null) return emptyUsage();
+export function parseUsage(json: string | null): Usage | null {
+  if (json === null) return null;
   const count = (v: unknown): number | null =>
     typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
   let raw: Partial<Usage> | null = null;
@@ -76,9 +78,11 @@ export function parseUsage(json: string | null): Usage {
 /**
  * @internal The usage between two cumulative readings. A session's total is
  * the sum of its responses, so `after - before` is what one request used.
- * Clamped at zero in case the session was reset in between.
+ * Clamped at zero in case the session was reset in between. `null` if either
+ * reading is unavailable.
  */
-export function usageBetween(before: Usage, after: Usage): Usage {
+export function usageBetween(before: Usage | null, after: Usage | null): Usage | null {
+  if (!before || !after) return null;
   const d = (a: number, b: number) => Math.max(0, a - b);
   return {
     input: {
@@ -103,16 +107,19 @@ export function usageBetween(before: Usage, after: Usage): Usage {
  * ```
  */
 export class ResponseStream implements AsyncIterable<string> {
-  private _usage: Usage | undefined;
+  private _usage: Usage | null | undefined;
   private _started = false;
 
   /** @internal */
   constructor(
-    private readonly _open: (onFinished: (usage: Usage) => void) => AsyncGenerator<string>,
+    private readonly _open: (onFinished: (usage: Usage | null) => void) => AsyncGenerator<string>,
   ) {}
 
-  /** Token usage for the whole response. `undefined` until the stream finishes. */
-  get usage(): Usage | undefined {
+  /**
+   * Token usage for the whole response: `undefined` until the stream finishes,
+   * then the usage, or `null` on macOS 26, which doesn't report usage.
+   */
+  get usage(): Usage | null | undefined {
     return this._usage;
   }
 
@@ -130,6 +137,6 @@ export class ResponseStream implements AsyncIterable<string> {
   async collect(): Promise<Response<string>> {
     let content = "";
     for await (const delta of this) content += delta;
-    return { content, usage: this._usage ?? emptyUsage() };
+    return { content, usage: this._usage ?? null };
   }
 }

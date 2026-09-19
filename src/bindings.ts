@@ -6,7 +6,10 @@
 import koffi from "koffi";
 import { fileURLToPath } from "url";
 import path from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
+import { macOSMajorVersion } from "./os.js";
+
+export { macOSMajorVersion };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -28,32 +31,16 @@ function findDylib(): string {
 }
 
 /**
- * The macOS version (e.g. 27) from SystemVersion.plist, or null if unreadable.
- * Read directly because Darwin kernel numbers don't map to macOS versions by a
- * fixed offset, so os.release() can't answer this reliably.
- */
-export function macOSMajorVersion(
-  plist = "/System/Library/CoreServices/SystemVersion.plist",
-): number | null {
-  try {
-    const match = /<key>ProductVersion<\/key>\s*<string>(\d+)/.exec(readFileSync(plist, "utf8"));
-    return match ? Number(match[1]) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * A hint for a failed load. tsfm 1.x's library targets macOS 27, and dyld
- * refuses it on older systems with an error that doesn't say so. It only
- * explains a failure and never blocks a load.
+ * A hint for a failed load. tsfm's library targets macOS 26, and dyld refuses
+ * it on older systems with an error that doesn't say so. It only explains a
+ * failure and never blocks a load.
  */
 export function unsupportedOSHint(macOSMajor = macOSMajorVersion()): string {
   if (process.platform !== "darwin") {
     return "Apple Foundation Models only runs on macOS.\n";
   }
-  if (macOSMajor !== null && macOSMajor < 27) {
-    return `tsfm 1.x requires macOS 27 (this is macOS ${macOSMajor}). Use tsfm-sdk@0.x instead.\n`;
+  if (macOSMajor !== null && macOSMajor < 26) {
+    return `tsfm requires macOS 26 or later (this is macOS ${macOSMajor}).\n`;
   }
   return "";
 }

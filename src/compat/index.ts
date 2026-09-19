@@ -5,7 +5,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
-import { emptyUsage, usageBetween, type ResponseStream, type Usage } from "../response.js";
+import { usageBetween, type ResponseStream, type Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -246,7 +246,7 @@ class Completions {
 
     // The request's usage, once known. A text stream sets it even when it
     // ends with an error that maps to a finish_reason.
-    let usage: Usage | undefined;
+    let usage: Usage | null | undefined;
 
     async function* generate(): AsyncGenerator<ChatCompletionChunk> {
       yield* generateChoices();
@@ -254,7 +254,8 @@ class Completions {
         yield {
           ...chunk({}, null),
           choices: [],
-          usage: toCompletionUsage(usage ?? emptyUsage()),
+          // null on macOS 26, which doesn't report usage.
+          usage: usage ? toCompletionUsage(usage) : null,
         };
       }
     }
@@ -263,7 +264,7 @@ class Completions {
       let stream: ResponseStream | undefined;
       // A buffered (tool) request that throws returns no Response, so its usage
       // is the change in the session's cumulative usage around it.
-      let bufferedUsageBefore: Usage | undefined;
+      let bufferedUsageBefore: Usage | null | undefined;
       try {
         // First chunk: role announcement
         yield chunk({ role: "assistant", content: "" }, null);
@@ -314,7 +315,9 @@ class Completions {
       } catch (err) {
         usage =
           stream?.usage ??
-          (bufferedUsageBefore ? usageBetween(bufferedUsageBefore, session.usage) : undefined);
+          (bufferedUsageBefore !== undefined
+            ? usageBetween(bufferedUsageBefore, session.usage)
+            : undefined);
         // Map errors to finish_reason chunks
         if (err instanceof ExceededContextWindowSizeError) {
           yield chunk({}, "length");
@@ -405,7 +408,7 @@ function buildCompletion(
   content: string | null,
   finishReason: "stop" | "length" | "tool_calls" | "content_filter",
   toolCalls?: ChatCompletion["choices"][0]["message"]["tool_calls"],
-  usage?: Usage,
+  usage?: Usage | null,
 ): ChatCompletion {
   return {
     id: makeId(),

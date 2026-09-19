@@ -9,6 +9,7 @@ import {
 } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
 import { parseCapabilities, type ModelCapability } from "./capabilities.js";
+import { hasMacOS27, requireMacOS27 } from "./os.js";
 
 const _pccRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
@@ -28,6 +29,8 @@ export enum PrivateCloudComputeUnavailableReason {
    * includes the entitlement.
    */
   ENTITLEMENT_MISSING = 3,
+  /** This Mac runs macOS 26; Private Cloud Compute needs macOS 27 or later. */
+  REQUIRES_NEWER_OS = 4,
   UNKNOWN = 0xff,
 }
 
@@ -49,10 +52,11 @@ export interface PrivateCloudComputeQuotaUsage {
  * Apple's server model, run on Private Cloud Compute: a 32K-token context and
  * reasoning (`GenerationOptions.reasoningLevel`), with a daily per-user quota.
  *
- * Opt-in, and only usable from a host process signed with the managed
- * entitlement `com.apple.developer.private-cloud-compute`. Check `isAvailable()`:
- * without the entitlement it reports `ENTITLEMENT_MISSING`, and requests fail
- * with `PrivateCloudComputeEntitlementError`.
+ * Opt-in, and only usable on macOS 27 or later from a host process signed with
+ * the managed entitlement `com.apple.developer.private-cloud-compute`. Check
+ * `isAvailable()`: without the entitlement it reports `ENTITLEMENT_MISSING`, and
+ * requests fail with `PrivateCloudComputeEntitlementError`. On macOS 26 it
+ * reports `REQUIRES_NEWER_OS`, and using it throws `UnsupportedCapabilityError`.
  *
  * ```ts
  * const model = new PrivateCloudComputeLanguageModel();
@@ -67,22 +71,33 @@ export interface PrivateCloudComputeQuotaUsage {
 export class PrivateCloudComputeLanguageModel {
   /** @internal */
   _nativeModel: NativePointer | null;
+  /** @internal True on macOS 26, where there's no native model to create. */
+  readonly _requiresNewerOS: boolean;
+  private _disposed = false;
 
   constructor() {
-    this._nativeModel = getFunctions().FMPrivateCloudComputeLanguageModelCreate() as NativePointer;
-    if (!this._nativeModel) {
-      throw new FoundationModelsError("Failed to create PrivateCloudComputeLanguageModel");
-    }
-    _pccRegistry.register(this, this._nativeModel, this);
+    // The bridge returns NULL before macOS 27 too; checking first avoids the call.
+    this._nativeModel = hasMacOS27()
+      ? (getFunctions().FMPrivateCloudComputeLanguageModelCreate() as NativePointer | null)
+      : null;
+    this._requiresNewerOS = this._nativeModel === null;
+    if (this._nativeModel) _pccRegistry.register(this, this._nativeModel, this);
   }
 
   private _assertNotDisposed(): NativePointer {
-    if (!this._nativeModel) throw new FoundationModelsError("Model has been disposed");
+    if (this._disposed) throw new FoundationModelsError("Model has been disposed");
+    if (!this._nativeModel) {
+      requireMacOS27("Private Cloud Compute");
+      throw new FoundationModelsError("Failed to create PrivateCloudComputeLanguageModel");
+    }
     return this._nativeModel;
   }
 
   /** Whether requests can run now, and if not, why. */
   isAvailable(): PrivateCloudComputeAvailability {
+    if (this._requiresNewerOS && !this._disposed) {
+      return { available: false, reason: PrivateCloudComputeUnavailableReason.REQUIRES_NEWER_OS };
+    }
     const reasonOut = [0];
     const available = getFunctions().FMPrivateCloudComputeLanguageModelIsAvailable(
       this._assertNotDisposed(),
@@ -111,8 +126,9 @@ export class PrivateCloudComputeLanguageModel {
     }
   }
 
-  /** What the model can do, including reasoning. */
-  get capabilities(): ModelCapability[] {
+  /** What the model can do, including reasoning, or `null` on macOS 26. */
+  get capabilities(): ModelCapability[] | null {
+    if (this._requiresNewerOS && !this._disposed) return null;
     return parseCapabilities(
       decodeAndFreeString(
         getFunctions().FMPrivateCloudComputeLanguageModelGetCapabilitiesJSON(
@@ -122,8 +138,9 @@ export class PrivateCloudComputeLanguageModel {
     );
   }
 
-  /** The user's daily quota. */
-  get quotaUsage(): PrivateCloudComputeQuotaUsage {
+  /** The user's daily quota, or `null` on macOS 26. */
+  get quotaUsage(): PrivateCloudComputeQuotaUsage | null {
+    if (this._requiresNewerOS && !this._disposed) return null;
     const json = decodeAndFreeString(
       getFunctions().FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON(
         this._assertNotDisposed(),
@@ -139,8 +156,13 @@ export class PrivateCloudComputeLanguageModel {
 
   /** The context window size in tokens (asynchronous for this model). */
   contextSize(): Promise<number> {
+    let model: NativePointer;
+    try {
+      model = this._assertNotDisposed();
+    } catch (err) {
+      return Promise.reject(err);
+    }
     const fn = getFunctions();
-    const model = this._assertNotDisposed();
     const keepAlive = setInterval(() => {}, 10000);
     return new Promise<number>((resolve, reject) => {
       const handle: { task: NativePointer | null; callback: KoffiCallback | null } = {
@@ -180,6 +202,7 @@ export class PrivateCloudComputeLanguageModel {
   }
 
   dispose(): void {
+    this._disposed = true;
     if (this._nativeModel) {
       _pccRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeModel);

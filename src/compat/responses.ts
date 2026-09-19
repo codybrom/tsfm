@@ -328,7 +328,7 @@ function buildResponse(
   status: "completed" | "failed" | "incomplete",
   error: { code: string; message: string } | null = null,
   incompleteReason?: "max_output_tokens" | "content_filter",
-  usage?: Usage,
+  usage?: Usage | null,
 ): Response {
   const outputText = output
     .filter((item): item is ResponseOutputMessage => item.type === "message")
