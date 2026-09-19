@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - Unreleased
+
+### Added
+
+- Official support for macOS 27. The SDK is tested on macOS 27, and the full unit and integration suites pass there. macOS 26 is still supported, and the native library's minimum deployment target stays at macOS 26.0.
+
+### Changed
+
+- `koffi` upgraded from `^3.1.5` to `^3.3.0`. This is the runtime FFI dependency.
+- Development toolchain moved to Vitest 5 (`vitest` and `@vitest/coverage-v8` 5.0.1). `openai`, `eslint`, `typescript-eslint`, `@types/node`, `prettier`, and `tsx` also moved to their latest versions.
+
+### Security
+
+- Development dependencies no longer include vulnerable versions of `vitest` (GHSA-82fw-gwwq-j7x9) or `@humanfs/node` (GHSA-p498-v437-472g). None of these packages ship in the published package.
+
 ## [0.4.0] - 2026-08-14
 
 ### Added
@@ -183,6 +198,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
+[0.5.0]: https://github.com/codybrom/tsfm/compare/v0.4.0...HEAD
 [0.4.0]: https://github.com/codybrom/tsfm/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/codybrom/tsfm/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/codybrom/tsfm/compare/v0.2.3...v0.3.0
