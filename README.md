@@ -63,11 +63,11 @@ model.dispose();
 
 ## Requirements
 
-- Apple Silicon (M-Series) Mac running macOS 26 or later
+- Apple Silicon (M-Series) Mac running macOS 27 or later (for macOS 26, use `tsfm-sdk@0.x`)
 - Apple Intelligence enabled in System Settings
 - Node.js 24+
 
-Unless you are building from source, Xcode is not required.
+Unless you are building from source, Xcode is not required. Building from source needs Xcode 27.
 
 npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
 
@@ -77,7 +77,8 @@ npm 11 may warn that `koffi` has an install script not covered by `allowScripts`
 npm run build              # build native dylib + compile TypeScript
 npm test                   # run all tests
 npm run test:unit          # unit tests only (works on any machine)
-npm run test:integration   # integration tests (requires macOS 26 + Apple Intelligence)
+npm run test:integration   # integration tests (requires macOS 27 + Apple Intelligence)
+npm run test:integration:sdk27  # the same, in a host built with the macOS 27 SDK
 ```
 
 ## Contributing
@@ -90,6 +91,6 @@ Issues and PRs welcome. If something doesn't work on your machine or you find a 
 
 tsfm is licensed under the Apache 2.0 license. For complete licensing information, see this project's [LICENSE file](LICENSE.md).
 
-The `tsfm-sdk` package available from NPM contains precompiled C bindings and libraries for working with macOS 26 Foundation Models adapted from [python-apple-fm-sdk](https://github.com/apple/python-apple-fm-sdk) which is Copyright Apple Inc. and licensed under the Apache 2.0 license.
+The `tsfm-sdk` package available from NPM contains precompiled C bindings and libraries for working with macOS 27 Foundation Models adapted from [python-apple-fm-sdk](https://github.com/apple/python-apple-fm-sdk) which is Copyright Apple Inc. and licensed under the Apache 2.0 license.
 
 <small>This project is unaffiliated with Apple, Inc. The terms "Apple" and "Apple Intelligence" are trademarks of Apple Inc., registered in the U.S. and other countries and regions.</small>
