@@ -52,6 +52,7 @@
   "files": [
     "dist/",
     "native/libFoundationModels.dylib",
+    "native/tsfm.node",
     "native/FoundationModels.h",
     "src/",
     "NOTICE"

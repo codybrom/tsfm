@@ -1670,7 +1670,8 @@ static napi_value Shutdown(napi_env env, napi_callback_info info) {
 
 // ---------------------------------------------------------------------------
 
-#define EXPORT(name) {"FM" #name, NULL, name, NULL, NULL, NULL, napi_enumerable, NULL}
+// Writable and configurable like ordinary properties, so tests can spy on them.
+#define EXPORT(name) {"FM" #name, NULL, name, NULL, NULL, NULL, napi_default_jsproperty, NULL}
 
 NAPI_MODULE_INIT(/* napi_env env, napi_value exports */) {
   napi_property_descriptor props[] = {
@@ -1714,21 +1715,21 @@ NAPI_MODULE_INIT(/* napi_env env, napi_value exports */) {
       EXPORT(GenerationSchemaAddReferenceSchema),
       EXPORT(GenerationSchemaGetJSONString),
       {"FMGenerationSchemaPropertyAddAnyOfGuide", NULL, PropertyAddAnyOfGuide, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddCountGuide", NULL, PropertyAddCountGuide, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddMaxItemsGuide", NULL, PropertyAddMaxItemsGuide, NULL, NULL,
-       NULL, napi_enumerable, NULL},
+       NULL, napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddMinItemsGuide", NULL, PropertyAddMinItemsGuide, NULL, NULL,
-       NULL, napi_enumerable, NULL},
+       NULL, napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddMaximumGuide", NULL, PropertyAddMaximumGuide, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddMinimumGuide", NULL, PropertyAddMinimumGuide, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddRangeGuide", NULL, PropertyAddRangeGuide, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       {"FMGenerationSchemaPropertyAddRegex", NULL, PropertyAddRegex, NULL, NULL, NULL,
-       napi_enumerable, NULL},
+       napi_default_jsproperty, NULL},
       EXPORT(GeneratedContentCreateFromJSON),
       EXPORT(GeneratedContentIsComplete),
       EXPORT(GeneratedContentGetJSONString),

@@ -5,32 +5,10 @@
  * then pass instances to LanguageModelSession's tools option.
  */
 
-import koffi from "koffi";
-import {
-  getFunctions,
-  unregisterCallback,
-  ToolCallbackProto,
-  type KoffiCallback,
-  type NativePointer,
-} from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { GenerationSchema, GeneratedContent } from "./schema.js";
 import { statusToError, ToolCallError, GenerationErrorCode } from "./errors.js";
 import type { ToolCallBudget } from "./tool-budget.js";
-
-const _toolRegistry = new FinalizationRegistry(
-  ({ pointer, callback }: { pointer: NativePointer; callback: KoffiCallback }) => {
-    try {
-      unregisterCallback(callback);
-    } catch (err) {
-      console.warn("[tsfm] Tool callback cleanup via FinalizationRegistry failed:", err);
-    }
-    try {
-      getFunctions().FMRelease(pointer);
-    } catch (err) {
-      console.warn("[tsfm] Tool pointer cleanup via FinalizationRegistry failed:", err);
-    }
-  },
-);
 
 export abstract class Tool {
   abstract readonly name: string;
@@ -73,7 +51,6 @@ export abstract class Tool {
    * the same time can stop early but never exceeds a request's limit.
    */
   _budgets = new Set<ToolCallBudget>();
-  private _callback: KoffiCallback | null = null;
 
   /**
    * @internal Called once before passing to FMBridgedToolCreate.
@@ -94,11 +71,14 @@ export abstract class Tool {
 
     const fn = getFunctions();
 
-    // The tool callback is persistent — unlike one-shot response callbacks,
-    // it stays registered for the full lifetime of the tool because the model
-    // may invoke this tool multiple times within a single session.
-    this._callback = koffi.register((contentRef: NativePointer, callId: number) => {
+    // The callback is persistent: the model may call this tool many times, from
+    // any session using it. Each call must be answered, by id, with
+    // FMBridgedToolFinishCall or FMBridgedToolFailCall, or the response waits.
+    const onCall = (contentRef: NativePointer | null, callId: number) => {
+      const tool = this._nativeTool;
+      if (!tool) return; // disposed: the addon already failed the call
       try {
+        if (!contentRef) throw new Error("the tool call arrived without arguments");
         const content = new GeneratedContent(contentRef);
 
         const budgets = [...this._budgets];
@@ -108,7 +88,7 @@ export abstract class Tool {
           // is what stops a toolCallingMode "required" loop.
           content.dispose();
           fn.FMBridgedToolFailCall(
-            this._nativeTool,
+            tool,
             callId,
             GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
             `The request reached its limit of ${spent.max} tool call${spent.max === 1 ? "" : "s"} ` +
@@ -120,7 +100,7 @@ export abstract class Tool {
         for (const b of budgets) b.used++;
 
         // Fire onCall notification — informational only, must not block the
-        // tool call even if it throws (e.g. N-API issues in Electron).
+        // tool call even if it throws.
         try {
           this.onCall?.(this.name, content.toObject() as Record<string, unknown>);
         } catch (err) {
@@ -128,59 +108,46 @@ export abstract class Tool {
         }
         this.call(content)
           .then((result) => {
-            fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
+            // A disposed tool's pending calls were already failed.
+            if (this._nativeTool) fn.FMBridgedToolFinishCall(this._nativeTool, callId, result);
           })
           .catch((err: unknown) => {
             const cause = err instanceof Error ? err : new Error(String(err));
             const toolErr = new ToolCallError(this.name, cause);
-            fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
+            if (this._nativeTool) {
+              fn.FMBridgedToolFinishCall(this._nativeTool, callId, toolErr.message);
+            }
           });
       } catch (err: unknown) {
         // If anything throws synchronously (e.g. GeneratedContent construction),
-        // we must still finish the call or the session hangs forever.
+        // the call must still be answered or the response waits forever.
         const msg = err instanceof Error ? err.message : String(err);
-        fn.FMBridgedToolFinishCall(this._nativeTool, callId, `Tool callback error: ${msg}`);
+        fn.FMBridgedToolFinishCall(tool, callId, `Tool callback error: ${msg}`);
       }
-    }, koffi.pointer(ToolCallbackProto));
+    };
 
-    const errorCode = [0];
-    const pointer = fn.FMBridgedToolCreate(
+    const { value, status, description } = fn.FMBridgedToolCreate(
       this.name,
       this.description,
       this.argumentsSchema._nativeSchema,
-      this._callback,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-
-    if (!pointer) {
-      const err = statusToError(errorCode[0], `Failed to create tool '${this.name}'`);
-      throw err;
+      onCall,
+    );
+    if (!value) {
+      throw statusToError(status, description ?? `Failed to create tool '${this.name}'`);
     }
-
-    this._nativeTool = pointer;
-    _toolRegistry.register(this, { pointer, callback: this._callback }, this);
+    // The handle releases the tool when it's garbage collected.
+    this._nativeTool = value;
   }
 
   /**
-   * Release the underlying C tool object and unregister the native callback.
-   *
-   * Call this only when you are completely finished with the tool across all
-   * sessions. After `dispose()`, the tool cannot be reused with any new
-   * session. If you do not call `dispose()`, cleanup happens automatically
-   * when the instance is garbage collected.
+   * Releases the native tool. Calls the model made that haven't been answered
+   * yet are failed, so no response waits on them.
    */
   dispose(): void {
-    if (this._nativeTool || this._callback) {
-      _toolRegistry.unregister(this);
-    }
-    if (this._callback) {
-      unregisterCallback(this._callback);
-      this._callback = null;
-    }
     if (this._nativeTool) {
-      getFunctions().FMRelease(this._nativeTool);
+      const tool = this._nativeTool;
       this._nativeTool = null;
+      getFunctions().FMRelease(tool);
     }
   }
 
