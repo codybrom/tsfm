@@ -32,7 +32,10 @@ const review = MovieReview.parse(content);
 
 ### Nested Objects
 
-Use `type: "object"` with a `properties` map for nested structures:
+Use `type: "object"` with a `properties` map for nested structures. Each nested
+object becomes a reference schema named by its property path, like
+`shipping_address`, so objects under the same key in different places stay
+separate:
 
 ```ts
 const Team = generable("Team", {
