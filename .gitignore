@@ -6,6 +6,8 @@ build-native.log
 native/*
 !native/extensions/
 !native/bridge/
+!native/addon/
+native/addon/compile_flags.txt
 coverage
 docs/.vitepress/dist
 docs/.vitepress/cache

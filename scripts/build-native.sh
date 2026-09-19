@@ -49,6 +49,8 @@ EXTENSIONS_DIR="$NATIVE_DIR/extensions"
 
 DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
 HEADER="$NATIVE_DIR/FoundationModels.h"
+ADDON_DIR="$NATIVE_DIR/addon"
+ADDON="$NATIVE_DIR/tsfm.node"
 STAMP="$NATIVE_DIR/.build-inputs.sha256"
 
 hash_tree() {
@@ -62,11 +64,12 @@ build_fingerprint() {
     shasum -a 256 < "$SCRIPT_DIR/build-native.sh"
     [[ -d "$SOURCE_DIR" ]] && hash_tree "$SOURCE_DIR"
     [[ -d "$EXTENSIONS_DIR" ]] && hash_tree "$EXTENSIONS_DIR"
+    [[ -d "$ADDON_DIR" ]] && hash_tree "$ADDON_DIR"
   } | shasum -a 256 | cut -d' ' -f1
 }
 
 INPUTS_FINGERPRINT="$(build_fingerprint)"
-if [[ -f "$DYLIB" && -f "$HEADER" && -f "$STAMP" && "$(cat "$STAMP")" == "$INPUTS_FINGERPRINT" ]]; then
+if [[ -f "$DYLIB" && -f "$HEADER" && -f "$ADDON" && -f "$STAMP" && "$(cat "$STAMP")" == "$INPUTS_FINGERPRINT" ]]; then
   log "Native dylib is up to date with its sources, skipping build."
   exit 0
 fi
@@ -160,6 +163,32 @@ for f in "$EXTENSIONS_DIR"/*.h; do
   fi
 done
 log "Copied: FoundationModels.h"
+
+# --- Node-API addon ---
+#
+# tsfm.node is how JavaScript calls the bridge (see native/addon/tsfm_addon.c).
+# Node-API is ABI-stable, so one arm64 build serves every Node version; it
+# needs Node's headers only here, at build time. It deploys to macOS 26 like
+# the dylib, and finds the dylib next to itself at runtime.
+NODE_INCLUDE="$(node -p 'require("path").resolve(require("fs").realpathSync(process.execPath), "../../include/node")')"
+if [[ ! -f "$NODE_INCLUDE/node_api.h" ]]; then
+  log "error: node_api.h not found in $NODE_INCLUDE. Install Node.js from nodejs.org, nvm or Homebrew."
+  exit 1
+fi
+# For the editor's clang (clangd, SourceKit-LSP). Gitignored: this machine's paths.
+printf '%s\n' -std=c11 "-I$NODE_INCLUDE" "-I$NATIVE_DIR" > "$ADDON_DIR/compile_flags.txt"
+log "Building the Node-API addon..."
+xcrun clang -std=c11 -O2 -Wall -Wextra -Werror \
+  -mmacosx-version-min=26.0 -arch arm64 \
+  -bundle -undefined dynamic_lookup \
+  -I "$NODE_INCLUDE" -I "$NATIVE_DIR" \
+  "$ADDON_DIR/tsfm_addon.c" \
+  -L "$NATIVE_DIR" -lFoundationModels -Wl,-rpath,@loader_path \
+  -o "$ADDON" >> "$LOG_FILE" 2>&1 || {
+  log "error: the addon failed to build; see $LOG_FILE."
+  exit 1
+}
+log "Built: tsfm.node"
 
 # Recorded last, so a build that fails partway leaves no matching fingerprint
 # and the next run rebuilds.

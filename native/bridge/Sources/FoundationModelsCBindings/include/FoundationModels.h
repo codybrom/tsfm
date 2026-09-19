@@ -134,6 +134,10 @@ FMTaskRef FMLanguageModelSessionRespondWithSchemaFromJSON(FMLanguageModelSession
 // Tool functions
 FMBridgedToolRef _Nullable FMBridgedToolCreate(const char *_Nonnull name, const char *_Nonnull description, FMGenerationSchemaRef _Nonnull parameters, void (*_Nonnull callable)(FMGeneratedContentRef _Nonnull, unsigned int), int *_Nullable outErrorCode, char *_Nullable *_Nullable outErrorDescription) __attribute__((swift_attr("@Sendable")));
 void FMBridgedToolFinishCall(FMBridgedToolRef _Nonnull tool, unsigned int callId, const char *_Nonnull output);
+// tsfm: like FMBridgedToolCreate, but `callable` receives `userInfo`, and
+// `releaseUserInfo` (if set) is called with it once, when the tool is freed. On
+// failure (NULL), the caller still owns `userInfo`.
+FMBridgedToolRef _Nullable FMBridgedToolCreateWithUserInfo(const char *_Nonnull name, const char *_Nonnull description, FMGenerationSchemaRef _Nonnull parameters, void (*_Nonnull callable)(FMGeneratedContentRef _Nonnull, unsigned int, void *_Nullable), void *_Nullable userInfo, void (*_Nullable releaseUserInfo)(void *_Nullable), int *_Nullable outErrorCode, char *_Nullable *_Nullable outErrorDescription) __attribute__((swift_attr("@Sendable")));
 // tsfm: Private Cloud Compute (needs the managed PCC entitlement on the host executable)
 // tsfm: NULL before macOS 27, which has no Private Cloud Compute.
 void *_Nullable FMPrivateCloudComputeLanguageModelCreate(void);
