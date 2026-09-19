@@ -22,12 +22,19 @@ new LanguageModelSession(options?: {
 
 ### `respond()`
 
-Generate a text response.
+Generate a text response. The text is in `.content`; `.usage` has the tokens
+this request used.
 
 ```ts
 respond(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
-}): Promise<string>
+}): Promise<Response<string>>
+```
+
+```ts
+const { content, usage } = await session.respond("What is the capital of France?");
+console.log(content); // "Paris…"
+console.log(usage.input.totalTokens, usage.output.totalTokens);
 ```
 
 ### Prompt attachments <Badge type="warning" text="macOS 27" />
@@ -57,10 +64,10 @@ Generate structured output matching a `GenerationSchema`.
 ```ts
 respondWithSchema(prompt: string | PromptInput, schema: GenerationSchema, options?: {
   options?: GenerationOptions
-}): Promise<GeneratedContent>
+}): Promise<Response<GeneratedContent>>
 ```
 
-Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with typed property access.
+`.content` is a [`GeneratedContent`](/api/generation-schema#generatedcontent) with typed property access.
 
 ### `respondWithJsonSchema()`
 
@@ -69,10 +76,10 @@ Generate structured output from a JSON Schema object.
 ```ts
 respondWithJsonSchema(prompt: string | PromptInput, schema: object, options?: {
   options?: GenerationOptions
-}): Promise<GeneratedContent>
+}): Promise<Response<GeneratedContent>>
 ```
 
-Returns a [`GeneratedContent`](/api/generation-schema#generatedcontent) with `toObject()` for the full result.
+`.content` is a [`GeneratedContent`](/api/generation-schema#generatedcontent) with `toObject()` for the full result.
 
 ### `streamResponse()`
 
@@ -81,10 +88,21 @@ Stream a response token-by-token.
 ```ts
 streamResponse(prompt: string | PromptInput, options?: {
   options?: GenerationOptions
-}): AsyncIterable<string>
+}): ResponseStream
 ```
 
-Each yielded string contains only the new tokens since the last iteration.
+Iterate the `ResponseStream` with `for await`: each yielded string contains only
+the new tokens since the last iteration. Its `usage` is set once the stream
+finishes, and `collect()` reads the whole stream into a `Response<string>`.
+
+```ts
+const stream = session.streamResponse("Tell me a story");
+for await (const delta of stream) process.stdout.write(delta);
+console.log(stream.usage?.output.totalTokens);
+
+// or
+const { content, usage } = await session.streamResponse("Say hi").collect();
+```
 
 ### `prewarm()`
 
@@ -129,11 +147,20 @@ Also supports `Symbol.dispose` for use with TC39 Explicit Resource Management:
 
 ```ts
 using session = new LanguageModelSession();
-const reply = await session.respond("Hello");
+const { content: reply } = await session.respond("Hello");
 // session is released when the block exits
 ```
 
 ## Properties
+
+### `usage`
+
+Token usage accumulated over every response in the session. It equals the sum of
+the `usage` values the individual responses returned.
+
+```ts
+readonly usage: Usage
+```
 
 ### `isResponding`
 
@@ -164,3 +191,40 @@ static fromTranscript(transcript: Transcript, options?: {
   tools?: Tool[];
 }): LanguageModelSession
 ```
+
+## Types
+
+### `Response<T>`
+
+```ts
+interface Response<T> {
+  readonly content: T;
+  readonly usage: Usage;
+}
+```
+
+### `Usage`
+
+```ts
+interface Usage {
+  input: {
+    totalTokens: number;  // everything the model read, including earlier turns
+    cachedTokens: number; // the part of that it reused from its cache
+  };
+  output: {
+    totalTokens: number;
+    reasoningTokens: number; // always 0 on-device
+  };
+}
+```
+
+### `ResponseStream`
+
+```ts
+class ResponseStream implements AsyncIterable<string> {
+  readonly usage: Usage | undefined; // set when the stream finishes
+  collect(): Promise<Response<string>>;
+}
+```
+
+A `ResponseStream` can be iterated only once.

@@ -202,7 +202,16 @@ Only `json_schema` triggers constrained generation.
   parallel_tool_calls: boolean;
   text: ResponseTextConfig;
   truncation: "auto" | "disabled" | null;
-  usage: null;                   // not tracked
+  usage: ResponseUsage | null;   // null until completed, or if generation failed
+}
+
+// ResponseUsage
+{
+  input_tokens: number;
+  input_tokens_details: { cached_tokens: number };
+  output_tokens: number;
+  output_tokens_details: { reasoning_tokens: number };
+  total_tokens: number;
 }
 ```
 
@@ -467,8 +476,17 @@ Only `json_schema` triggers constrained generation. `text` and `json_object` are
   created: number;               // Unix timestamp (seconds)
   model: string;                 // "SystemLanguageModel"
   choices: ChatCompletionChoice[];
-  usage: null;
+  usage: CompletionUsage | null; // null if generation failed
   system_fingerprint: null;
+}
+
+// CompletionUsage
+{
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_tokens_details: { cached_tokens: number };
+  completion_tokens_details: { reasoning_tokens: number };
 }
 ```
 
@@ -522,7 +540,7 @@ The stream auto-closes on iteration completion, `break`, or error. A `Finalizati
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
-  usage: null;
+  usage: null;                   // streamed chunks don't carry usage yet
   system_fingerprint: null;
 }
 ```

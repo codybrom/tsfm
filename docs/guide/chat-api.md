@@ -69,7 +69,7 @@ Both APIs support the same core capabilities:
 | `temperature`, `max_output_tokens` | `temperature`, `max_output_tokens` | `temperature`, `max_tokens` / `max_completion_tokens` | Full |
 | `top_p`, `seed` | `top_p`, `seed` | `top_p`, `seed` | Full |
 | Image/audio content | `input_image`, `input_file` | Image URLs | Not supported (warns) |
-| `usage` / token counts | `usage` | `usage` | Always `null` |
+| `usage` / token counts | `usage` | `usage` | Full, except Chat Completions streaming (`stream_options.include_usage` isn't supported yet) |
 
 ---
 
@@ -282,7 +282,7 @@ const response = await client.responses.create({
   error: null,
   incomplete_details: null,        // { reason: "max_output_tokens" | "content_filter" }
   instructions: "...",
-  usage: null                      // not tracked
+  usage: { input_tokens: 56, output_tokens: 7, total_tokens: 63, ... }
 }
 ```
 
@@ -485,7 +485,7 @@ const response = await client.chat.completions.create({
     },
     finish_reason: "stop"       // "stop" | "length" | "tool_calls" | "content_filter"
   }],
-  usage: null,                  // Not tracked
+  usage: { prompt_tokens: 69, completion_tokens: 5, total_tokens: 74, ... },
   system_fingerprint: null
 }
 ```

@@ -36,14 +36,14 @@ const session = new LanguageModelSession({
 ### Text Response
 
 ```ts
-const reply = await session.respond("What is the capital of France?");
+const { content: reply } = await session.respond("What is the capital of France?");
 console.log(reply); // "The capital of France is Paris."
 ```
 
 ### With Generation Options
 
 ```ts
-const reply = await session.respond("Write a poem", {
+const { content: reply } = await session.respond("Write a poem", {
   options: {
     temperature: 0.9,
     maximumResponseTokens: 200,

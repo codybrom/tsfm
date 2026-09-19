@@ -41,7 +41,7 @@ const session = new LanguageModelSession({
   instructions: "You are a concise assistant.",
 });
 
-const reply = await session.respond("What is the capital of France?");
+const { content: reply } = await session.respond("What is the capital of France?");
 console.log(reply); // "The capital of France is Paris."
 
 session.dispose();

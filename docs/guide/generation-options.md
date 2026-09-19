@@ -13,7 +13,7 @@ Pass `options` as part of the second argument to any generation method:
 ```ts
 import { SamplingMode } from "tsfm-sdk";
 
-const reply = await session.respond("Write a haiku about rain", {
+const { content: reply } = await session.respond("Write a haiku about rain", {
   options: {
     temperature: 0.9,
     maximumResponseTokens: 100,

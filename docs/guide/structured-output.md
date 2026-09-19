@@ -25,7 +25,7 @@ const MovieReview = generable("MovieReview", {
 });
 
 const session = new LanguageModelSession();
-const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+const { content } = await session.respondWithSchema("Review Inception", MovieReview.schema);
 const review = MovieReview.parse(content);
 // review.title: string, review.rating: number, review.pros: string[], review.seen: boolean
 ```
@@ -56,7 +56,7 @@ const Team = generable("Team", {
   },
 });
 
-const content = await session.respondWithSchema("Describe a dev team", Team.schema);
+const { content } = await session.respondWithSchema("Describe a dev team", Team.schema);
 const team = Team.parse(content);
 // team.lead.name: string, team.members[0].role: string
 ```
@@ -131,7 +131,7 @@ The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.appl
 
 ```ts
 const session = new LanguageModelSession();
-const content = await session.respondWithSchema("Describe a software engineer", schema);
+const { content } = await session.respondWithSchema("Describe a software engineer", schema);
 ```
 
 ### Extracting Values
@@ -160,7 +160,7 @@ const schema = new GenerationSchema("Cat", "A rescue cat")
   })
   .property("breed", "string", { description: "The cat's breed" });
 
-const content = await session.respondWithSchema("Generate a rescue cat", schema);
+const { content } = await session.respondWithSchema("Generate a rescue cat", schema);
 
 const cat: Cat = {
   name: content.value("name"),
@@ -174,7 +174,7 @@ const cat: Cat = {
 If you already have a JSON Schema definition, or are porting from OpenAI or another API, you can pass it directly with respondWithJsonSchema instead of building a GenerationSchema first:
 
 ```ts
-const content = await session.respondWithJsonSchema("Generate a person profile", {
+const { content } = await session.respondWithJsonSchema("Generate a person profile", {
   type: "object",
   properties: {
     name: { type: "string", description: "Full name" },

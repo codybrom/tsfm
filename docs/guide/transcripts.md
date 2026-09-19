@@ -85,7 +85,7 @@ const resumed = LanguageModelSession.fromTranscript(transcript);
 The restored session has full context of the previous conversation:
 
 ```ts
-const reply = await resumed.respond("What's my name?");
+const { content: reply } = await resumed.respond("What's my name?");
 // The model remembers: "Your name is Cody."
 ```
 
@@ -100,7 +100,7 @@ session.dispose();
 
 // Later — resume from saved transcript
 const resumed = LanguageModelSession.fromTranscript(Transcript.fromJson(json));
-const recall = await resumed.respond("What's my name?");
+const { content: recall } = await resumed.respond("What's my name?");
 console.log(recall); // References "Cody"
 resumed.dispose();
 ```

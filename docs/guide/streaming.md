@@ -77,7 +77,7 @@ for await (const chunk of session.streamResponse("Write a long essay")) {
 }
 
 // The session is still usable
-const next = await session.respond("Summarize what you said");
+const { content: next } = await session.respond("Summarize what you said");
 ```
 
 ## Cancellation

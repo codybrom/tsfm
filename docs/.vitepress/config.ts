@@ -36,6 +36,7 @@ function guideSidebar() {
       collapsed: false,
       items: [
         { text: "Getting Started", link: "/guide/getting-started" },
+        { text: "Migrating to 1.0", link: "/guide/migrating-to-1" },
         { text: "Model Configuration", link: "/guide/model-configuration" },
         { text: "Chat & Responses APIs", link: "/guide/chat-api" },
       ],

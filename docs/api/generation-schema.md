@@ -118,7 +118,7 @@ dispose(): void
 Also supports `Symbol.dispose` for use with TC39 Explicit Resource Management:
 
 ```ts
-using content = await session.respondWithSchema(prompt, schema);
+using content = (await session.respondWithSchema(prompt, schema)).content;
 const data = content.toObject();
 // content is released when the block exits
 ```
