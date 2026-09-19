@@ -10,6 +10,7 @@
     "Llms",
     "Siri",
     "tsfm",
+    "tsfn",
     "vitepress",
     "vitest"
   ],
