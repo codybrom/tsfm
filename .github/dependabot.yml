@@ -2,7 +2,7 @@ version: 2
 
 updates:
   # The SDK itself. This project tracks bleeding-edge toolchains (TypeScript 7,
-  # koffi 3), so minor and patch bumps are grouped to keep the noise down while
+  # Vitest 5), so minor and patch bumps are grouped to keep the noise down while
   # majors still arrive as individual PRs worth reading.
   - package-ecosystem: npm
     directory: "/"

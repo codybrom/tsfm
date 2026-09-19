@@ -18,9 +18,9 @@ PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 NATIVE_DIR="$PACKAGE_DIR/native"
 LOG_FILE="$PACKAGE_DIR/build-native.log"
 
-# The bridge. src/bindings.ts is written against exactly this source:
-# koffi binds by symbol name and can't see a changed parameter type, so any edit
-# to a C signature here needs the matching change in src/bindings.ts.
+# The bridge. native/addon/tsfm_addon.c is written against exactly this source,
+# and src/bindings.ts against the addon: a change to a C signature here needs
+# the matching change in both.
 BRIDGE_DIR="$NATIVE_DIR/bridge"
 # Built from a copy so native/bridge never holds build output or extensions.
 STAGING_DIR="$PACKAGE_DIR/.build/bridge"
