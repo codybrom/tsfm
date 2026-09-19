@@ -214,13 +214,8 @@ describe("Responses API compat layer", () => {
       expect(result.output_text).toBe("Hello from Apple Intelligence");
       expect(result.error).toBeNull();
       expect(result.incomplete_details).toBeNull();
-      expect(result.usage).toEqual({
-        input_tokens: 0,
-        input_tokens_details: { cached_tokens: 0 },
-        output_tokens: 0,
-        output_tokens_details: { reasoning_tokens: 0 },
-        total_tokens: 0,
-      });
+      // The mocks report no usage, as on macOS 26.
+      expect(result.usage).toBeNull();
       client.close();
     });
 
@@ -576,13 +571,8 @@ describe("Responses API compat layer", () => {
       expect(result.parallel_tool_calls).toBe(false);
       expect(result.text).toEqual({ format: { type: "text" } });
       expect(result.truncation).toBeNull();
-      expect(result.usage).toEqual({
-        input_tokens: 0,
-        input_tokens_details: { cached_tokens: 0 },
-        output_tokens: 0,
-        output_tokens_details: { reasoning_tokens: 0 },
-        total_tokens: 0,
-      });
+      // The mocks report no usage, as on macOS 26.
+      expect(result.usage).toBeNull();
       expect(result.metadata).toBeNull();
       client.close();
     });

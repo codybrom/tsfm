@@ -15,8 +15,8 @@ describe("parseCapabilities", () => {
     expect(parseCapabilities('["vision","telepathy",3]')).toEqual(["vision"]);
   });
 
-  it("returns [] when nothing is reported", () => {
-    expect(parseCapabilities(null)).toEqual([]);
+  it("returns null when capabilities aren't available (macOS 26)", () => {
+    expect(parseCapabilities(null)).toBeNull();
   });
 
   it("throws on malformed JSON instead of reporting no capabilities", () => {

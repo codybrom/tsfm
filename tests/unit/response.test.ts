@@ -25,10 +25,15 @@ describe("parseUsage", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("reads null (nothing to report) as zeros without warning", async () => {
-    const { parseUsage, emptyUsage } = await load();
-    expect(parseUsage(null)).toEqual(emptyUsage());
+  it("keeps null (usage unavailable, e.g. macOS 26) as null without warning", async () => {
+    const { parseUsage, usageBetween } = await load();
+    expect(parseUsage(null)).toBeNull();
     expect(warn).not.toHaveBeenCalled();
+    const some = parseUsage(
+      '{"input":{"totalTokens":1,"cachedTokens":0},"output":{"totalTokens":1,"reasoningTokens":0}}',
+    );
+    expect(usageBetween(null, some)).toBeNull();
+    expect(usageBetween(some, null)).toBeNull();
   });
 
   it.each([

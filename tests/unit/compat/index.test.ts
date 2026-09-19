@@ -226,13 +226,8 @@ describe("Chat API compat layer", () => {
       expect(result.choices[0].message.content).toBe("Hello from Apple Intelligence");
       expect(result.choices[0].message.refusal).toBeNull();
       expect(result.id).toMatch(/^chatcmpl-/);
-      expect(result.usage).toEqual({
-        prompt_tokens: 0,
-        completion_tokens: 0,
-        total_tokens: 0,
-        prompt_tokens_details: { cached_tokens: 0 },
-        completion_tokens_details: { reasoning_tokens: 0 },
-      });
+      // The mocks report no usage, as on macOS 26.
+      expect(result.usage).toBeNull();
       expect(result.system_fingerprint).toBeNull();
       client.close();
     });
@@ -479,6 +474,26 @@ describe("Chat API compat layer", () => {
     it("still reports usage after a mapped error", async () => {
       // Status 1 = ExceededContextWindowSizeError
       simulateStreamError(1, "Context window exceeded");
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
+        expect(chunks[chunks.length - 1].usage).toMatchObject({ prompt_tokens: 62 });
+        client.close();
+      } finally {
+        restore();
+      }
+    });
+
+    it("ends with a usage chunk whose usage is null where usage isn't reported (macOS 26)", async () => {
+      simulateStreamSuccess(["Hi"]);
       const client = new Client();
       const stream = await client.chat.completions.create({
         messages: basicMessages,
@@ -487,8 +502,9 @@ describe("Chat API compat layer", () => {
       });
       const chunks: ChatCompletionChunk[] = [];
       for await (const chunk of stream) chunks.push(chunk);
-      expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
-      expect(chunks[chunks.length - 1].usage).not.toBeNull();
+      const last = chunks[chunks.length - 1];
+      expect(last.choices).toEqual([]);
+      expect(last.usage).toBeNull();
       client.close();
     });
   });
