@@ -171,7 +171,7 @@ else
 fi
 
 log "Building Foundation Models C bindings (this takes ~1-2 min)..."
-swift build -c release --package-path "$FM_C_DIR" "${SWIFT_ARGS[@]}" >> "$LOG_FILE" 2>&1
+swift build -c release --package-path "$FM_C_DIR" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} >> "$LOG_FILE" 2>&1
 log "Build complete."
 
 BUILD_DIR="$(swift build -c release --package-path "$FM_C_DIR" --show-bin-path 2>>"$LOG_FILE")"
