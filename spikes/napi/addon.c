@@ -259,7 +259,12 @@ static napi_value create_session(napi_env env, napi_callback_info info) {
   if (argc > 0) {
     napi_valuetype type;
     napi_typeof(env, argv[0], &type);
-    if (type == napi_string && !(instructions = get_string(env, argv[0]))) return NULL;
+    if (type == napi_string) {
+      if (!(instructions = get_string(env, argv[0]))) return NULL;
+    } else if (type != napi_null && type != napi_undefined) {
+      napi_throw_type_error(env, NULL, "Expected a string or null for instructions");
+      return NULL;
+    }
   }
   SessionBox *box = calloc(1, sizeof(SessionBox));
   if (!box) {
