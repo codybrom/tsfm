@@ -64,6 +64,8 @@ export class Transcript {
   private _owned: boolean;
 
   private _disposed = false;
+  /** Set when the session backing this transcript is disposed. */
+  private _detached = false;
 
   /** @internal */
   constructor(sessionPointer: NativePointer, owned = false) {
@@ -76,6 +78,20 @@ export class Transcript {
     if (this._disposed) {
       throw new FoundationModelsError("Transcript has been disposed");
     }
+    if (this._detached) {
+      throw new FoundationModelsError(
+        "The session this transcript belongs to has been disposed. " +
+          "Export the transcript before disposing the session.",
+      );
+    }
+  }
+
+  /**
+   * @internal Called when the backing session is disposed. Its pointer is
+   * released, and reading through it would crash the host.
+   */
+  _detach(): void {
+    if (!this._owned) this._detached = true;
   }
 
   /** @internal Release the C object this instance owns, if any. */
@@ -115,8 +131,8 @@ export class Transcript {
    *
    * **Lifetime note:** instances created by `new LanguageModelSession()` or
    * `LanguageModelSession.fromTranscript()` are backed by the live session's
-   * C state. Calling `toJson()` after `session.dispose()` will dereference a
-   * freed pointer. Export the transcript before disposing the session.
+   * C state. Export the transcript before disposing the session; afterwards
+   * `toJson()` throws.
    *
    * Instances created via the static `Transcript.fromJson()` /
    * `Transcript.fromDict()` constructors are independent C objects and are

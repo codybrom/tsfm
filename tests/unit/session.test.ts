@@ -55,6 +55,8 @@ vi.mock("../../src/tool.js", () => ({
 }));
 
 import { LanguageModelSession } from "../../src/session.js";
+import { InvalidGenerationSchemaError } from "../../src/errors.js";
+import type { JsonSchema } from "../../src/schema.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -472,6 +474,16 @@ describe("LanguageModelSession", () => {
   });
 
   describe("respondWithJsonSchema", () => {
+    it("rejects a schema nested too deeply before calling native code", async () => {
+      let schema: JsonSchema = { type: "string" };
+      for (let i = 0; i < 100; i++) schema = { type: "object", properties: { child: schema } };
+      const session = new LanguageModelSession();
+      await expect(session.respondWithJsonSchema("Extract", schema)).rejects.toBeInstanceOf(
+        InvalidGenerationSchemaError,
+      );
+      expect(mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON).not.toHaveBeenCalled();
+    });
+
     it("resolves with GeneratedContent on success", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
         (..._args: unknown[]) => {
@@ -801,10 +813,10 @@ describe("LanguageModelSession", () => {
       );
     });
 
-    it("unregisters callback when consumer breaks early (stream not done)", async () => {
+    it("keeps the callback registered after an early break until the native side's final call", async () => {
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
         (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
-          // Send a single chunk, then stop — never send the null end-of-stream signal
+          // Send a single chunk, then stop — the final call comes later.
           setTimeout(() => {
             lastRegisteredCallback?.(0, "Hello", 5, null);
           }, 0);
@@ -815,13 +827,20 @@ describe("LanguageModelSession", () => {
       const chunks: string[] = [];
       for await (const chunk of session.streamResponse("Hi")) {
         chunks.push(chunk);
-        break; // consumer breaks early — streamDone is still false
+        break; // consumer breaks early — the native stream is still running
       }
       expect(chunks).toEqual(["Hello"]);
-      // The finally block should call unregisterCallback because streamDone is false
-      const bindings = await import("../../src/bindings.js");
-      expect(bindings.unregisterCallback).toHaveBeenCalledWith("mock-cb-pointer");
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-stream-pointer");
+      // Native code calling an unregistered callback kills the host, so the
+      // callback stays registered while the cancelled stream winds down.
+      const bindings = await import("../../src/bindings.js");
+      expect(bindings.unregisterCallback).not.toHaveBeenCalledWith("mock-cb-pointer");
+
+      // Late snapshots are ignored; the final "cancelled" call unregisters it.
+      lastRegisteredCallback?.(0, "Hello there", 11, null);
+      expect(bindings.unregisterCallback).not.toHaveBeenCalledWith("mock-cb-pointer");
+      lastRegisteredCallback?.(255, "Stream cancelled", 16, null);
+      expect(bindings.unregisterCallback).toHaveBeenCalledWith("mock-cb-pointer");
     });
 
     it("handles empty stream (immediate null content)", async () => {
@@ -1025,6 +1044,24 @@ describe("LanguageModelSession", () => {
   });
 
   describe("disposed session guard", () => {
+    it("throws when reading a live transcript after dispose, instead of using a freed pointer", () => {
+      const session = new LanguageModelSession();
+      const transcript = session.transcript;
+      session.dispose();
+      expect(() => transcript.toJson()).toThrow(/Export the transcript before disposing/);
+      expect(mockFns.FMLanguageModelSessionGetTranscriptJSONString).not.toHaveBeenCalled();
+    });
+
+    it("rejects a disposed SystemLanguageModel instead of falling back to the default", async () => {
+      const { SystemLanguageModel } = await import("../../src/core.js");
+      const model = new SystemLanguageModel();
+      model.dispose();
+      expect(() => new LanguageModelSession({ model })).toThrow(
+        "SystemLanguageModel has been disposed",
+      );
+      expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
+    });
+
     it("respond throws on disposed session", async () => {
       const session = new LanguageModelSession();
       session.dispose();

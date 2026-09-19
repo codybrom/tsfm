@@ -11,14 +11,32 @@ import {
 } from "./bindings.js";
 import { SystemLanguageModel } from "./core.js";
 import { Tool } from "./tool.js";
-import { GenerationSchema, GeneratedContent, afmSchemaFormat, type JsonSchema } from "./schema.js";
+import {
+  GenerationSchema,
+  GeneratedContent,
+  afmSchemaFormat,
+  jsonNestingDepth,
+  MAX_SCHEMA_DEPTH,
+  type JsonSchema,
+} from "./schema.js";
 import { GenerationOptions, serializeOptions } from "./options.js";
-import { statusToError, FoundationModelsError } from "./errors.js";
+import { statusToError, FoundationModelsError, InvalidGenerationSchemaError } from "./errors.js";
 import { Transcript } from "./transcript.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
 
 /** Sentinel object passed to the constructor to skip the C API call. */
 const _FROM_POINTER = Symbol("fromPointer");
+
+/**
+ * The native pointer for a session's model, or null for the default model. A
+ * disposed model has no pointer, and passing null would quietly fall back to
+ * the default model, dropping its use case and guardrails.
+ */
+function modelPointer(model: SystemLanguageModel | undefined): NativePointer | null {
+  if (!model) return null;
+  if (!model._nativeModel) throw new FoundationModelsError("SystemLanguageModel has been disposed");
+  return model._nativeModel;
+}
 
 const _sessionRegistry = new FinalizationRegistry((pointer: NativePointer) => {
   try {
@@ -116,7 +134,7 @@ export class LanguageModelSession {
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
     const pointer = fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
-      opts.model?._nativeModel ?? null,
+      modelPointer(opts.model),
       opts.instructions ?? null,
       toolPointersArg,
       tools.length,
@@ -145,7 +163,7 @@ export class LanguageModelSession {
 
     const pointer = fn.FMLanguageModelSessionCreateFromTranscript(
       transcript._nativeSession,
-      opts.model?._nativeModel ?? null,
+      modelPointer(opts.model),
       toolPointersArg,
       tools.length,
     ) as NativePointer | null;
@@ -304,6 +322,11 @@ export class LanguageModelSession {
     let keepAlive: ReturnType<typeof setInterval> | null = null;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let streamDone = false;
+    // Set when the consumer stops before the native stream ends. The native task
+    // always makes one final call (end, error or "cancelled"), so the callback
+    // must stay registered until then: native code calling an unregistered
+    // callback kills the host.
+    let draining = false;
     let composedPrompt: NativePointer | null = null;
 
     type QueueItem = { content: string } | { done: true; error?: Error };
@@ -343,12 +366,10 @@ export class LanguageModelSession {
                   "Stream idle timeout: no callback received within 30s of the previous snapshot",
                 ),
               });
+              // The native stream may still call back, so drain instead of unregistering.
               streamDone = true;
+              draining = true;
               if (keepAlive) clearInterval(keepAlive);
-              if (callback) {
-                unregisterCallback(callback);
-                callback = null;
-              }
               const notify = notifyConsumer;
               notifyConsumer = null;
               notify?.();
@@ -359,6 +380,14 @@ export class LanguageModelSession {
 
       callback = koffi.register((...args: ResponseCbArgs) => {
         const [status, text] = args;
+        if (draining) {
+          // The consumer is gone; wait for the final call, then let go.
+          if ((status !== 0 || !text) && callback) {
+            unregisterCallback(callback);
+            callback = null;
+          }
+          return;
+        }
         // The `str` parameter of ResponseCallbackProto is marshalled by koffi
         // before the handler runs: a non-null char* arrives as a JS string and
         // the end-of-stream null pointer arrives as JS null. Calling
@@ -437,11 +466,11 @@ export class LanguageModelSession {
       this._cancelStream = null;
       if (keepAlive) clearInterval(keepAlive);
       if (idleTimer) clearTimeout(idleTimer);
-      if (callback) {
-        // Callback wasn't unregistered by the handler or idle timer —
-        // this means the consumer broke out early (e.g. break/return).
-        unregisterCallback(callback);
-        callback = null;
+      if (callback && !draining) {
+        // Still registered, so the consumer stopped early (break, return or
+        // cancel()) and the native stream will call back at least once more.
+        // Releasing the stream below cancels it, which makes that call prompt.
+        draining = true;
       }
       if (fn && !streamDone) {
         // Reset the session after an early break so subsequent calls
@@ -461,6 +490,8 @@ export class LanguageModelSession {
       _liveSessions.delete(this._weakRef);
       this._weakRef = null;
     }
+    // The transcript reads through the session's pointer, which is released below.
+    this._transcript?._detach();
     if (this._nativeSession) {
       _sessionRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeSession);
@@ -591,6 +622,12 @@ export class LanguageModelSession {
     options: GenerationOptions | undefined,
   ): Promise<GeneratedContent> {
     this._assertNotDisposed();
+    if (jsonNestingDepth(jsonSchema, MAX_SCHEMA_DEPTH) > MAX_SCHEMA_DEPTH) {
+      throw new InvalidGenerationSchemaError(
+        `The schema nests more than ${MAX_SCHEMA_DEPTH} levels of JSON deep. ` +
+          "Flatten it, or move nested shapes into $defs and refer to them with $ref.",
+      );
+    }
     const fn = getFunctions();
     const optionsJson = serializeOptions(options);
     const schemaJson = JSON.stringify(afmSchemaFormat(jsonSchema));
