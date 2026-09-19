@@ -8,7 +8,7 @@ TSFM offers two ways to interact with the on-device Foundation Model:
    <small>(mostly mirrors [the original Swift FoundationModels API](https://developer.apple.com/documentation/foundationmodels))</small>
 2. **Compatibility APIs** that mirror popular cloud interfaces
 
-The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes.
+The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes. It's also available as `tsfm-sdk/openai`; both import paths load the same module.
 
 For full control over sessions, schemas, and tools, use the [native SDK](/guide/sessions) instead.
 
