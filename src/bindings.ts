@@ -158,11 +158,18 @@ export function checkStringArgs(
     const value = args[param.index];
     if (param.kind === "nullable_str" && value == null) continue;
     if (param.kind === "str_array") {
-      if (Array.isArray(value) && value.every((v) => typeof v === "string")) continue;
+      // Index every element: every() and find() skip the holes in a sparse
+      // array, which would reach native code as NULL.
+      const bad = Array.isArray(value)
+        ? Array.from({ length: value.length }, (_, i) => i).find(
+            (i) => typeof value[i] !== "string",
+          )
+        : undefined;
+      if (Array.isArray(value) && bad === undefined) continue;
       throw new TypeError(
         `Expected an array of strings for "${param.name}" (${functionName}), got ` +
           (Array.isArray(value)
-            ? `an array containing ${describe(value.find((v) => typeof v !== "string"))}`
+            ? `an array containing ${describe(value[bad!])} at index ${bad}`
             : describe(value)),
       );
     }

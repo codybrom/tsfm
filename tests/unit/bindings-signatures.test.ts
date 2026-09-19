@@ -46,7 +46,7 @@ describe("string parameters in the koffi signatures", () => {
     },
   );
 
-  it("declares every char * parameter in the header as a string", () => {
+  it("declares every const char * input parameter in the header as a string", () => {
     for (const sig of signatures) {
       const name = /\b(FM\w+)\s*\(/.exec(sig)![1];
       const declared = new Set(stringParams(sig).map((p) => p.index));
@@ -84,7 +84,9 @@ describe("checkStringArgs", () => {
     [[null, null, []], /"name" \(f\), got null/],
     [[undefined, null, []], /"name" \(f\), got undefined/],
     [["a", 42, []], /"label" \(f\), got number/],
-    [["a", null, [1]], /array of strings for "values" \(f\), got an array containing number/],
+    [["a", null, [1]], /"values" \(f\), got an array containing number at index 0/],
+    [["a", null, ["x", , "y"]], /"values" \(f\), got an array containing undefined at index 1/],
+    [["a", null, new Array(2)], /"values" \(f\), got an array containing undefined at index 0/],
     [["a", null, "x"], /array of strings for "values" \(f\), got string/],
   ])("rejects %j", (args, message) => {
     expect(() => checkStringArgs("f", params, args)).toThrow(TypeError);
