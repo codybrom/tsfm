@@ -6,14 +6,24 @@ import {
   GenerationGuide,
   type Usage,
 } from "../../src/index.js";
+import { hasMacOS27 } from "../../src/os.js";
 
 const model = new SystemLanguageModel();
 const { available } = await model.waitUntilAvailable(5_000);
-const describeIfAvailable = available ? describe : describe.skip;
+// Token usage is a macOS 27 API; on macOS 26 every usage is null.
+const describeWithUsage = available && hasMacOS27() ? describe : describe.skip;
+const describeWithoutUsage = available && !hasMacOS27() ? describe : describe.skip;
 
 afterAll(() => model.dispose());
 
-function expectNonZero(usage: Usage) {
+/** Asserts the usage is present, and returns it. */
+function present(usage: Usage | null | undefined): Usage {
+  expect(usage).toBeTruthy();
+  return usage!;
+}
+
+function expectNonZero(maybe: Usage | null | undefined) {
+  const usage = present(maybe);
   expect(usage.input.totalTokens).toBeGreaterThan(0);
   expect(usage.output.totalTokens).toBeGreaterThan(0);
   expect(usage.input.cachedTokens).toBeLessThanOrEqual(usage.input.totalTokens);
@@ -21,7 +31,8 @@ function expectNonZero(usage: Usage) {
   expect(usage.output.reasoningTokens).toBe(0);
 }
 
-function add(a: Usage, b: Usage): Usage {
+function add(x: Usage | null, y: Usage | null): Usage {
+  const [a, b] = [present(x), present(y)];
   return {
     input: {
       totalTokens: a.input.totalTokens + b.input.totalTokens,
@@ -34,7 +45,7 @@ function add(a: Usage, b: Usage): Usage {
   };
 }
 
-describeIfAvailable("token usage (integration)", () => {
+describeWithUsage("token usage (integration)", () => {
   it("respond() returns content with usage", async () => {
     const session = new LanguageModelSession();
     const response = await session.respond("Say hello in one word.");
@@ -62,7 +73,7 @@ describeIfAvailable("token usage (integration)", () => {
     for await (const delta of stream) text += delta;
     expect(text.length).toBeGreaterThan(0);
     expect(stream.usage).toBeDefined();
-    expectNonZero(stream.usage!);
+    expectNonZero(stream.usage);
     session.dispose();
   }, 30_000);
 
@@ -81,7 +92,7 @@ describeIfAvailable("token usage (integration)", () => {
     const c = await session.respond("Say thanks.");
     expect(session.usage).toEqual(add(add(a.usage, b.usage), c.usage));
     // Later turns re-read the transcript, so they read more input.
-    expect(c.usage.input.totalTokens).toBeGreaterThan(a.usage.input.totalTokens);
+    expect(present(c.usage).input.totalTokens).toBeGreaterThan(present(a.usage).input.totalTokens);
     session.dispose();
   }, 60_000);
 
@@ -95,6 +106,22 @@ describeIfAvailable("token usage (integration)", () => {
       session.respond("Name an animal."),
     ]);
     expect(session.usage).toEqual(add(add(first.usage, streamed.usage), last.usage));
+    session.dispose();
+  }, 60_000);
+});
+
+describeWithoutUsage("token usage on macOS 26 (integration)", () => {
+  it("reports null instead of zeros", async () => {
+    const session = new LanguageModelSession();
+    const response = await session.respond("Say hello in one word.");
+    expect(response.content.length).toBeGreaterThan(0);
+    expect(response.usage).toBeNull();
+    const stream = session.streamResponse("Say bye.");
+    for await (const _ of stream) {
+      // Consume.
+    }
+    expect(stream.usage).toBeNull();
+    expect(session.usage).toBeNull();
     session.dispose();
   }, 60_000);
 });

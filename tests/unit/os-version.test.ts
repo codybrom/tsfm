@@ -36,11 +36,12 @@ describe("macOSMajorVersion", () => {
 });
 
 describe.runIf(process.platform === "darwin")("unsupportedOSHint", () => {
-  it("points macOS 26 users to tsfm 0.x", () => {
-    expect(unsupportedOSHint(26)).toMatch(/requires macOS 27.*tsfm-sdk@0\.x/);
+  it("says tsfm needs macOS 26 on older systems", () => {
+    expect(unsupportedOSHint(15)).toMatch(/requires macOS 26 or later \(this is macOS 15\)/);
   });
 
-  it("adds nothing on macOS 27 or later", () => {
+  it("adds nothing on macOS 26 or later", () => {
+    expect(unsupportedOSHint(26)).toBe("");
     expect(unsupportedOSHint(27)).toBe("");
     expect(unsupportedOSHint(28)).toBe("");
   });

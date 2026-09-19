@@ -88,8 +88,8 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
     const session = new LanguageModelSession({ model: pcc });
     const { content, usage } = await session.respond("Say hi in five words.");
     expect(content.length).toBeGreaterThan(0);
-    expect(usage.input.totalTokens).toBeGreaterThan(0);
-    expect(usage.output.totalTokens).toBeGreaterThan(0);
+    expect(usage?.input.totalTokens).toBeGreaterThan(0);
+    expect(usage?.output.totalTokens).toBeGreaterThan(0);
     session.dispose();
   }, 60_000);
 
@@ -117,7 +117,7 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
     const session = new LanguageModelSession({ model: pcc });
     const response = await session.streamResponse("Count from 1 to 3.").collect();
     expect(response.content.length).toBeGreaterThan(0);
-    expect(response.usage.output.totalTokens).toBeGreaterThan(0);
+    expect(response.usage?.output.totalTokens).toBeGreaterThan(0);
     session.dispose();
   }, 60_000);
 
@@ -135,7 +135,7 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
 
   it("reports the quota", () => {
     const quota = pcc.quotaUsage;
-    expect(typeof quota.limitReached).toBe("boolean");
-    expect(typeof quota.approachingLimit).toBe("boolean");
+    expect(typeof quota?.limitReached).toBe("boolean");
+    expect(typeof quota?.approachingLimit).toBe("boolean");
   });
 });
