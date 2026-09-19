@@ -77,6 +77,14 @@ await session.respond(prompt, { options: { maximumToolCalls: 100 } });
 `toolCallingMode` is new: `"allowed"` (the default, same as 0.x), `"required"` or
 `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes).
 
+## Regex guides are checked before the request
+
+The macOS 27 on-device model supports only part of regex syntax, and notably not
+character classes like `[a-z]`. Unsupported patterns now throw
+`UnsupportedGuideError` before the request, naming the construct. See the
+[supported syntax](/api/generation-schema#regex-patterns); most classes have a
+replacement, such as `[0-9]` → `\d`.
+
 ## Errors
 
 - `GenerationErrorCode` is a regular `enum` now, not a `const enum`. Comparisons
