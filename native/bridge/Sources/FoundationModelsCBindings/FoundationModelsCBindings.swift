@@ -1757,6 +1757,25 @@ private func resolveDoubleArrayGuides(
   }
 }
 
+// tsfm: arrays of booleans. Booleans have no element guides, only counts.
+private func resolveBoolArrayGuides(
+  _ guide: PropertyGuide
+) throws -> GenerationGuide<[Bool]> {
+  switch guide {
+  case .count(let count):
+    return GenerationGuide.count(count)
+  case .maxItems(let count):
+    return GenerationGuide.maximumCount(count)
+  case .minItems(let count):
+    return GenerationGuide.minimumCount(count)
+  default:
+    let context = LanguageModelSession.GenerationError.Context(
+      debugDescription: "Unsupported guide for array<boolean> type"
+    )
+    throw LanguageModelSession.GenerationError.unsupportedGuide(context)
+  }
+}
+
 // MARK: - Schema builder
 
 private final class GenerationSchemaBuilder: @unchecked Sendable {
@@ -1893,6 +1912,17 @@ private final class GenerationSchemaBuilder: @unchecked Sendable {
           name: propertyInfo.name,
           description: propertyInfo.description,
           schema: .init(type: [Double].self, guides: arrayGuides),
+          isOptional: propertyInfo.isOptional
+        )
+      } else if typeName == "array<boolean>" {
+        // tsfm: without this, array<boolean> was read as a reference named "boolean".
+        let arrayGuides = try propertyInfo.guides.compactMap {
+          try resolveBoolArrayGuides($0)
+        }
+        return DynamicGenerationSchema.Property(
+          name: propertyInfo.name,
+          description: propertyInfo.description,
+          schema: .init(type: [Bool].self, guides: arrayGuides),
           isOptional: propertyInfo.isOptional
         )
       } else {
