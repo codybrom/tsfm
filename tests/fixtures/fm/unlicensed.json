@@ -1,0 +1,298 @@
+{
+  "description": "fm CLI runs recorded before the license was agreed. See unlicensed.md.",
+  "capturedOn": "2026-09-18",
+  "os": "macOS 27.0 (26A428)",
+  "fmSha256Prefix": "f429257df40311ba",
+  "user": "non-root",
+  "licensed": false,
+  "runs": [
+    {
+      "name": "available-null",
+      "argv": ["available"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "available-pipe",
+      "argv": ["available"],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "available-tty",
+      "argv": ["available"],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.017,
+      "stdout": "^D\b\bno\n\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m",
+      "stderr": ""
+    },
+    {
+      "name": "bare-null",
+      "argv": [],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "bare-pipe",
+      "argv": [],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "bare-tty",
+      "argv": [],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.021,
+      "stdout": "^D\b\bno\n\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m",
+      "stderr": ""
+    },
+    {
+      "name": "chat",
+      "argv": ["chat"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.017,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "count-tokens",
+      "argv": ["count-tokens", "hello"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "help-null",
+      "argv": ["--help"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.014,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "help-pipe",
+      "argv": ["--help"],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "help-tty",
+      "argv": ["--help"],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.018,
+      "stdout": "^D\b\bno\n\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m",
+      "stderr": ""
+    },
+    {
+      "name": "license-badflag",
+      "argv": ["license", "--nope"],
+      "stdin": "null",
+      "exitCode": 64,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "Error: Unknown option '--nope'\nUsage: fm license\n       fm license --status\n       fm license --show\n  See 'fm license --help' for more information.\n"
+    },
+    {
+      "name": "license-null",
+      "argv": ["license"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "license-pipe",
+      "argv": ["license"],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.018,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "license-status-null",
+      "argv": ["license", "--status"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.014,
+      "stdout": "Not agreed. Run 'sudo fm license' to review and agree.\n",
+      "stderr": ""
+    },
+    {
+      "name": "license-status-pipe",
+      "argv": ["license", "--status"],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.014,
+      "stdout": "Not agreed. Run 'sudo fm license' to review and agree.\n",
+      "stderr": ""
+    },
+    {
+      "name": "license-status-tty",
+      "argv": ["license", "--status"],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.018,
+      "stdout": "^D\b\bno\nNot agreed. Run 'sudo fm license' to review and agree.\n",
+      "stderr": ""
+    },
+    {
+      "name": "license-tty",
+      "argv": ["license"],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.021,
+      "stdout": "^D\b\bno\n\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m",
+      "stderr": ""
+    },
+    {
+      "name": "model-bogus",
+      "argv": ["-m", "bogus", "respond", "hi"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-badflag",
+      "argv": ["respond", "--nope", "hi"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-help",
+      "argv": ["respond", "--help"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.017,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-noargs",
+      "argv": ["respond"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-null",
+      "argv": ["respond", "hi"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-pipe",
+      "argv": ["respond", "hi"],
+      "stdin": "pipe",
+      "exitCode": 69,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-schema-bad",
+      "argv": ["respond", "--schema", "{bad", "hi"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "respond-tty",
+      "argv": ["respond", "hi"],
+      "stdin": "tty",
+      "exitCode": 69,
+      "seconds": 0.02,
+      "stdout": "^D\b\bno\n\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m",
+      "stderr": ""
+    },
+    {
+      "name": "schema-help",
+      "argv": ["schema", "--help"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.015,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "schema-object",
+      "argv": ["schema", "object", "--name", "P", "--string", "name"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.017,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "serve-port",
+      "argv": ["serve", "--port", "18765"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "serve-socket",
+      "argv": ["serve", "--socket", "<scratch-dir>/fm.sock"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.017,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "unknown-cmd",
+      "argv": ["frobnicate"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.04,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    },
+    {
+      "name": "version",
+      "argv": ["--version"],
+      "stdin": "null",
+      "exitCode": 69,
+      "seconds": 0.016,
+      "stdout": "",
+      "stderr": "\u001b[38;2;255;107;128mYOU HAVE NOT AGREED TO THE APPLE FOUNDATION MODELS CLI LEGAL NOTICE & TERMS.\nAgreeing to the Apple Foundation Models CLI Legal Notice & Terms applies to every user on the machine, so it must be run as a privileged user (e.g. 'sudo fm license').\n\u001b[0m"
+    }
+  ]
+}
