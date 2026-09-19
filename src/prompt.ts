@@ -1,18 +1,64 @@
+import { statSync } from "node:fs";
 import { getFunctions, type NativePointer } from "./bindings.js";
 import { PromptAttachmentError } from "./errors.js";
 
-/** A file attached to a prompt. Requires a macOS 27 runtime and SDK. */
+/** An image attached to a prompt. Requires macOS 27. */
 export interface PromptAttachment {
-  /** Filesystem path to the image or document. */
+  /**
+   * Filesystem path to the image. The bridge only builds image attachments,
+   * and the file must exist when the request is made.
+   */
   path: string;
   /** Optional label shown to the model alongside the attachment. */
   label?: string;
 }
 
-/** A prompt with attachments. Pass a plain string when you only need text. */
-export interface PromptInput {
+/** Prompt text followed by its attachments. */
+export interface TextPromptInput {
   text: string;
   attachments?: PromptAttachment[];
+}
+
+/**
+ * Prompt parts in the order the model sees them: text and attachments can
+ * interleave, and a prompt can be an image alone.
+ */
+export interface ContentPromptInput {
+  content: Array<string | PromptAttachment>;
+}
+
+/**
+ * A prompt with attachments. Pass a plain string when you only need text;
+ * `{ text, attachments }` to put attachments after the text; or `{ content }`
+ * to order text and attachments yourself.
+ */
+export type PromptInput = TextPromptInput | ContentPromptInput;
+
+/** The prompt's parts in order. A `{ text }` prompt always has its text, even empty. */
+function promptParts(prompt: string | PromptInput): Array<string | PromptAttachment> {
+  if (typeof prompt === "string") return [prompt];
+  if ("content" in prompt) return prompt.content;
+  return [prompt.text, ...(prompt.attachments ?? [])];
+}
+
+/**
+ * Throws `PromptAttachmentError` (`"not-found"`) unless the path is a file.
+ * The bridge hands the path to the framework without looking, and the request
+ * would fail later with an error that doesn't name the file.
+ */
+function assertAttachmentExists(attachment: PromptAttachment): void {
+  let isFile = false;
+  try {
+    isFile = statSync(attachment.path).isFile();
+  } catch {
+    // Missing, or a path we can't read: reported below.
+  }
+  if (!isFile) {
+    throw new PromptAttachmentError(
+      `Cannot attach ${attachment.path}: the file doesn't exist.`,
+      "not-found",
+    );
+  }
 }
 
 /**
@@ -28,17 +74,19 @@ export function composePrompt(
   fn: ReturnType<typeof getFunctions>,
   prompt: string | PromptInput,
 ): NativePointer {
+  const parts = promptParts(prompt);
+  // Checked before any native call, so a bad path costs nothing native.
+  for (const part of parts) {
+    if (typeof part !== "string") assertAttachmentExists(part);
+  }
   const composed = fn.FMComposedPromptInitialize();
   try {
-    fn.FMComposedPromptAddText(composed, typeof prompt === "string" ? prompt : prompt.text);
-    if (typeof prompt !== "string") {
-      for (const attachment of prompt.attachments ?? []) {
-        const error = fn.FMComposedPromptAddAttachment(
-          composed,
-          attachment.path,
-          attachment.label ?? null,
-        );
-        if (error !== 0) throw attachmentError(error, attachment.path);
+    for (const part of parts) {
+      if (typeof part === "string") {
+        fn.FMComposedPromptAddText(composed, part);
+      } else {
+        const error = fn.FMComposedPromptAddAttachment(composed, part.path, part.label ?? null);
+        if (error !== 0) throw attachmentError(error, part.path);
       }
     }
   } catch (err) {
@@ -58,6 +106,8 @@ export function attachmentError(code: number, path: string): PromptAttachmentErr
         "unsupported-os",
       );
     case 2:
+      // Unreachable with tsfm's bridge, which always builds against the macOS
+      // 27 SDK; kept for a library built from upstream's bridge.
       return new PromptAttachmentError(
         `Cannot attach ${path}: this native library was built without the macOS 27 SDK, ` +
           `so attachments are unavailable. Rebuild with an Xcode that includes it.`,

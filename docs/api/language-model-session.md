@@ -39,23 +39,53 @@ console.log(usage?.input.totalTokens, usage?.output.totalTokens); // usage is nu
 
 ### Prompt attachments <Badge type="warning" text="macOS 27" />
 
-Every method that takes a prompt accepts either a string or `PromptInput`:
+Every method that takes a prompt accepts a string or a `PromptInput`, which is
+one of two shapes:
 
 ```ts
-interface PromptInput {
-  text: string;
-  attachments?: { path: string; label?: string }[];
+interface PromptAttachment {
+  path: string; // an image file
+  label?: string;
 }
 
+// The text, then its attachments.
+interface TextPromptInput {
+  text: string;
+  attachments?: PromptAttachment[];
+}
+
+// Text and attachments in the order the model sees them.
+interface ContentPromptInput {
+  content: Array<string | PromptAttachment>;
+}
+
+type PromptInput = TextPromptInput | ContentPromptInput;
+```
+
+```ts
 await session.respond({
   text: "What is in this picture?",
   attachments: [{ path: "/tmp/chart.png", label: "quarterly chart" }],
 });
+
+// Text after an image, or several images with text between them:
+await session.respond({
+  content: [
+    { path: "/tmp/before.png", label: "before" },
+    { path: "/tmp/after.png", label: "after" },
+    "What changed between these two?",
+  ],
+});
+
+// An image alone; no text is sent.
+await session.respond({ content: [{ path: "/tmp/chart.png" }] });
 ```
 
-Attachments need macOS 27. On macOS 26, `respond()` throws a
-`PromptAttachmentError` with `reason: "unsupported-os"`. If the bridge refuses
-one for another reason, the reason is `"unknown"`.
+Attachments are images only. Each path must be an existing file: otherwise
+`respond()` throws a `PromptAttachmentError` with `reason: "not-found"` before
+anything reaches the native library. Attachments need macOS 27; on macOS 26 the
+reason is `"unsupported-os"`. If the bridge refuses one for another reason, the
+reason is `"unknown"`.
 
 ### `respondWithSchema()`
 

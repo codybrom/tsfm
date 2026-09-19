@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { createMockFunctions } from "./helpers/mock-bindings.js";
 
 // The addon returns promises and takes JS callbacks. These wrappers let a test
@@ -80,6 +83,7 @@ import {
   FoundationModelsError,
   GenerationError,
   InvalidGenerationSchemaError,
+  PromptAttachmentError,
   UnsupportedCapabilityError,
   UnsupportedGuideError,
 } from "../../src/errors.js";
@@ -168,11 +172,49 @@ describe("LanguageModelSession", () => {
   });
 
   describe("prompt attachments", () => {
+    // Attachments are checked to exist before any native call, so use a real file.
+    let dir: string;
+    let image: string;
+    beforeEach(() => {
+      dir = mkdtempSync(path.join(tmpdir(), "tsfm-session-"));
+      image = path.join(dir, "a.jpg");
+      writeFileSync(image, "jpg");
+    });
+    afterEach(() => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("throws not-found for a missing file before touching native code", async () => {
+      const session = new LanguageModelSession();
+      const missing = path.join(dir, "missing.jpg");
+      const err = await session.respond({ content: [{ path: missing }] }).catch((e) => e);
+      expect(err).toBeInstanceOf(PromptAttachmentError);
+      expect(err.reason).toBe("not-found");
+      expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
+      expect(mockFns.FMLanguageModelSessionRespond).not.toHaveBeenCalled();
+    });
+
+    it("composes { content } parts in order, with the text after the image", async () => {
+      const session = new LanguageModelSession();
+      const promise = session.respond({
+        content: [{ path: image, label: "photo" }, "Describe it."],
+      });
+      queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
+      await promise;
+      const attachmentOrder = mockFns.FMComposedPromptAddAttachment.mock.invocationCallOrder[0];
+      const textOrder = mockFns.FMComposedPromptAddText.mock.invocationCallOrder[0];
+      expect(attachmentOrder).toBeLessThan(textOrder);
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+        "mock-composed-prompt",
+        "Describe it.",
+      );
+    });
+
     it("adds an attachment with its label", async () => {
       const session = new LanguageModelSession();
       const promise = session.respond({
         text: "What is this?",
-        attachments: [{ path: "/tmp/a.jpg", label: "diagram" }],
+        attachments: [{ path: image, label: "diagram" }],
       });
       queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
       await promise;
@@ -183,19 +225,19 @@ describe("LanguageModelSession", () => {
       );
       expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
         "mock-composed-prompt",
-        "/tmp/a.jpg",
+        image,
         "diagram",
       );
     });
 
     it("passes null for an attachment with no label", async () => {
       const session = new LanguageModelSession();
-      const promise = session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] });
+      const promise = session.respond({ text: "hi", attachments: [{ path: image }] });
       queueMicrotask(() => lastRegisteredCallback?.(0, "ok", 2, null));
       await promise;
       expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
         "mock-composed-prompt",
-        "/tmp/a.jpg",
+        image,
         null,
       );
     });
@@ -205,16 +247,16 @@ describe("LanguageModelSession", () => {
       // dylib built without the macOS 27 SDK always returns.
       mockFns.FMComposedPromptAddAttachment.mockReturnValueOnce(2);
       const session = new LanguageModelSession();
-      await expect(
-        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
-      ).rejects.toThrow(/macOS 27/i);
+      await expect(session.respond({ text: "hi", attachments: [{ path: image }] })).rejects.toThrow(
+        /macOS 27/i,
+      );
     });
 
     it("releases the composed prompt when an attachment is refused", async () => {
       mockFns.FMComposedPromptAddAttachment.mockReturnValueOnce(1);
       const session = new LanguageModelSession();
       await expect(
-        session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
+        session.respond({ text: "hi", attachments: [{ path: image }] }),
       ).rejects.toThrow();
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
     });

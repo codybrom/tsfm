@@ -15,7 +15,12 @@ export {
   type PrivateCloudComputeQuotaUsage,
 } from "./pcc.js";
 export { ResponseStream, type Response, type Usage } from "./response.js";
-export { type PromptInput, type PromptAttachment } from "./prompt.js";
+export {
+  type PromptInput,
+  type PromptAttachment,
+  type TextPromptInput,
+  type ContentPromptInput,
+} from "./prompt.js";
 
 export {
   Transcript,

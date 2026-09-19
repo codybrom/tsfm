@@ -134,8 +134,9 @@ Thrown when an attachment cannot be added to a prompt. Carries a `reason`:
 
 | Reason | Meaning |
 | --- | --- |
+| `not-found` | The path isn't an existing file. Checked before any native call, so nothing was sent |
 | `unknown` | The bridge refused the attachment without saying why |
 | `unsupported-os` | Attachments need macOS 27, and this Mac runs macOS 26 |
-| `unsupported-sdk` | The native library was built without the macOS 27 SDK (never the bundled one) |
+| `unsupported-sdk` | Never reported by a library tsfm built: its bridge always uses the macOS 27 SDK. Kept from 0.5 for a library built from upstream's bridge without that SDK |
 
 See [prompt attachments](/api/language-model-session#prompt-attachments).
