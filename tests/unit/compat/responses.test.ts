@@ -743,8 +743,48 @@ describe("Responses API compat layer", () => {
       const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("Tool result");
       expect(prompt).toContain("Rainy, 55F");
+      expect(prompt).toContain("Use the tool result to respond to the request: Get weather");
+
+      // The function_call is described in plain text, not echoed as JSON
+      const json = mockFns.FMTranscriptCreateFromJSONString.mock.calls[0][0] as string;
+      const entries = JSON.parse(json).transcript.entries;
+      expect(entries.map((e: { contents: { text: string }[] }) => e.contents[0].text)).toContain(
+        'Calling get_weather with {"city":"NYC"}.',
+      );
+      expect(json).not.toContain("call_2");
       client.close();
     });
+  });
+
+  it("labels function outputs with arguments when a function is called more than once", async () => {
+    simulateRespondSuccess("OK");
+
+    const client = new Client();
+    await client.responses.create({
+      input: [
+        { role: "user", content: "Weather in Tokyo and Paris?" },
+        {
+          type: "function_call",
+          name: "get_weather",
+          arguments: '{"city":"Tokyo"}',
+          call_id: "c1",
+        },
+        {
+          type: "function_call",
+          name: "get_weather",
+          arguments: '{"city":"Paris"}',
+          call_id: "c2",
+        },
+        { type: "function_call_output", call_id: "c2", output: "Rainy" },
+        { type: "function_call_output", call_id: "c1", output: "Sunny" },
+      ],
+      tools: sampleFunctionTools,
+    });
+
+    const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Paris"}]: Rainy');
+    expect(prompt).toContain('[Tool result for get_weather {"city":"Tokyo"}]: Sunny');
+    client.close();
   });
 
   describe("error mapping — non-streaming", () => {

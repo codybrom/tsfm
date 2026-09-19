@@ -61,3 +61,49 @@ export class CompatError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Render a past tool call as a transcript response entry.
+ *
+ * Plain text rather than the OpenAI JSON shape: given a raw tool_calls array in
+ * its history, the model tends to echo that JSON back as its final answer.
+ */
+export function describeToolCall(name: string, args: string): string {
+  return `Calling ${name} with ${args}.`;
+}
+
+/**
+ * Build the prompt for a request that ends in tool results.
+ *
+ * The results alone read as a new, unrelated user turn, and the model often
+ * answers something else. Restating the request that led to the tool call
+ * keeps the reply on it.
+ */
+export function toolResultPrompt(results: string[], request: string | null): string {
+  const text = results.join("\n");
+  return request ? `${text}\n\nUse the tool result to respond to the request: ${request}` : text;
+}
+
+/** The name and arguments of a past tool call, as both compat APIs record them. */
+export interface ToolCallRef {
+  name: string;
+  arguments: string;
+}
+
+/**
+ * Label a tool result with the call that produced it.
+ *
+ * When a tool was called more than once, the name alone cannot tell the model
+ * which result belongs to which call, so the label adds the call's arguments.
+ * Call IDs are left out: the model cannot use them, and it echoes them back.
+ */
+export function formatToolResult(
+  call: ToolCallRef | null,
+  allCalls: ToolCallRef[],
+  content: string,
+): string {
+  if (!call) return `[Tool result]: ${content}`;
+  const repeated = allCalls.filter((c) => c.name === call.name).length > 1;
+  const label = repeated ? `${call.name} ${call.arguments}` : call.name;
+  return `[Tool result for ${label}]: ${content}`;
+}

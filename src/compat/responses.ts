@@ -17,7 +17,15 @@ import {
   type ToolModelOutput,
 } from "./tools.js";
 import { ResponseStream } from "./responses-stream.js";
-import { reorderJson, nowSeconds, CompatError } from "./utils.js";
+import {
+  reorderJson,
+  nowSeconds,
+  CompatError,
+  describeToolCall,
+  formatToolResult,
+  toolResultPrompt,
+  type ToolCallRef,
+} from "./utils.js";
 import type {
   ResponseCreateParams,
   Response,
@@ -210,6 +218,13 @@ function inputToTranscript(
     seenInstructions = true;
   }
 
+  const calls = input.filter(
+    (item): item is ResponseFunctionToolCall =>
+      (item as ResponseFunctionToolCall).type === "function_call",
+  );
+  const callFor = (id: string): ToolCallRef | null =>
+    calls.findLast((c) => c.call_id === id) ?? null;
+
   // Normalize: if last item is function_call_output, append a synthetic user message
   let normalized = input;
   const lastItem = input[input.length - 1];
@@ -222,15 +237,13 @@ function inputToTranscript(
     const outputs = input.slice(start) as FunctionCallOutput[];
     const parts: string[] = [];
     for (const out of outputs) {
-      const name = resolveCallName(out.call_id, input);
-      parts.push(
-        name != null ? `[Tool result for ${name}]: ${out.output}` : `[Tool result]: ${out.output}`,
-      );
+      parts.push(formatToolResult(callFor(out.call_id), calls, out.output));
     }
-    normalized = [
-      ...input,
-      { role: "user" as const, content: parts.join("\n") } as EasyInputMessage,
-    ];
+    const request = (input.slice(0, start) as EasyInputMessage[]).findLast(
+      (m) => m.role === "user",
+    );
+    const content = toolResultPrompt(parts, request ? extractInputText(request.content) : null);
+    normalized = [...input, { role: "user" as const, content } as EasyInputMessage];
   }
 
   // Find the last user message to use as prompt
@@ -272,24 +285,12 @@ function inputToTranscript(
       }
     } else if ((item as ResponseFunctionToolCall).type === "function_call") {
       const fc = item as ResponseFunctionToolCall;
-      entries.push(
-        makeEntry(
-          "response",
-          JSON.stringify([
-            {
-              id: fc.call_id,
-              type: "function",
-              function: { name: fc.name, arguments: fc.arguments },
-            },
-          ]),
-        ),
-      );
+      entries.push(makeEntry("response", describeToolCall(fc.name, fc.arguments)));
     } else if ((item as FunctionCallOutput).type === "function_call_output") {
       const fco = item as FunctionCallOutput;
-      const name = resolveCallName(fco.call_id, input);
-      const text =
-        name != null ? `[Tool result for ${name}]: ${fco.output}` : `[Tool result]: ${fco.output}`;
-      entries.push(makeEntry("user", text, true));
+      entries.push(
+        makeEntry("user", formatToolResult(callFor(fco.call_id), calls, fco.output), true),
+      );
     }
   }
 
@@ -304,16 +305,6 @@ function inputToTranscript(
 }
 
 /** Find a function_call's name by its call_id. */
-function resolveCallName(callId: string, items: ResponseInputItem[]): string | null {
-  for (let i = items.length - 1; i >= 0; i--) {
-    const item = items[i] as ResponseFunctionToolCall;
-    if (item.type === "function_call" && item.call_id === callId) {
-      return item.name;
-    }
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
 // Response builders
 // ---------------------------------------------------------------------------
