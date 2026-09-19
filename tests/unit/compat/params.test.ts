@@ -156,6 +156,34 @@ describe("mapParams", () => {
     );
   });
 
+  it.each([
+    ["a string", "yes", /"stream_options" must be an object; got string/],
+    ["a number", 3, /"stream_options" must be an object; got number/],
+  ])("warns when stream_options is %s", (_name, value, message) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mapParams({ stream_options: value } as never);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(message));
+    warn.mockRestore();
+  });
+
+  it("warns when include_usage isn't a boolean", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mapParams({ stream_options: { include_usage: "true" } } as never);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/"stream_options.include_usage" must be a boolean; got string/),
+    );
+    warn.mockRestore();
+  });
+
+  it("ignores a stream option supplied by the prototype", () => {
+    const polluted = Object.create({ nonsense: true }) as Record<string, unknown>;
+    polluted.include_usage = true;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mapParams({ stream_options: polluted } as never);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("takes the model from the params' own properties, not the prototype", () => {
     // A polluted prototype must not pick Private Cloud Compute for a caller.
     const polluted = Object.create({

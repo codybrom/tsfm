@@ -13,7 +13,7 @@ import {
   GuardrailViolationError,
 } from "../errors.js";
 import { messagesToTranscript } from "./transcript.js";
-import { mapParams } from "./params.js";
+import { mapParams, ownParams } from "./params.js";
 import {
   buildToolInstructions,
   buildToolSchema,
@@ -100,7 +100,9 @@ class Completions {
     params: ChatCompletionCreateParams & { stream?: false | null },
   ): Promise<ChatCompletion>;
   async create(params: ChatCompletionCreateParams): Promise<ChatCompletion | Stream>;
-  async create(params: ChatCompletionCreateParams): Promise<ChatCompletion | Stream> {
+  async create(raw: ChatCompletionCreateParams): Promise<ChatCompletion | Stream> {
+    // Own properties only; see ownParams.
+    const params = ownParams(raw);
     const options = mapParams(params);
     const { transcriptJson, prompt: rawPrompt } = messagesToTranscript(params.messages);
     let prompt = rawPrompt;

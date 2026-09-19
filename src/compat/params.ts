@@ -35,23 +35,26 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
  * `reasoning_effort` maps to `reasoningLevel` when `model` is
  * `"PrivateCloudComputeLanguageModel"`; the on-device model doesn't reason.
  */
-export function mapParams(params: Partial<ChatCompletionCreateParams>): GenerationOptions {
+/**
+ * A caller's params, with only their own properties. Request objects arrive as
+ * plain JSON from outside the SDK, and reading them directly would let a
+ * polluted `Object.prototype` supply values the caller never sent -- a model,
+ * a reasoning effort, a stream option. Copy once at the boundary and every
+ * read after it is the caller's own.
+ */
+export function ownParams<T extends object>(params: T): T {
+  return { ...params };
+}
+
+export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationOptions {
+  const params = ownParams(raw);
   const options: GenerationOptions = {};
 
-  // The two fields that pick a model and its reasoning are read as own
-  // properties: these params come from a caller's JSON, and a polluted
-  // Object.prototype would otherwise choose the model for them.
-  const own = <K extends keyof ChatCompletionCreateParams>(
-    key: K,
-  ): ChatCompletionCreateParams[K] | undefined =>
-    Object.hasOwn(params, key) ? params[key] : undefined;
-  const model = own("model");
-
-  warnOnUnknownModel(model);
+  warnOnUnknownModel(params.model);
 
   const reasoningLevel = mapReasoningEffort(
-    own("reasoning_effort"),
-    compatModelName(model),
+    params.reasoning_effort,
+    compatModelName(params.model),
     "reasoning_effort",
   );
   if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;
@@ -93,12 +96,24 @@ export function mapParams(params: Partial<ChatCompletionCreateParams>): Generati
   }
 
   // Only include_usage is supported; Chat Completions has no other stream option.
-  const streamOptions = params.stream_options as Record<string, unknown> | null | undefined;
-  for (const key of Object.keys(streamOptions ?? {})) {
-    if (key !== "include_usage" && streamOptions?.[key] != null) {
+  const rawStreamOptions = params.stream_options;
+  if (rawStreamOptions != null && typeof rawStreamOptions !== "object") {
+    console.warn(
+      `[tsfm compat] Parameter "stream_options" must be an object; got ${typeof rawStreamOptions}. It will be ignored.`,
+    );
+  } else if (rawStreamOptions) {
+    const streamOptions = ownParams(rawStreamOptions) as Record<string, unknown>;
+    if ("include_usage" in streamOptions && typeof streamOptions.include_usage !== "boolean") {
       console.warn(
-        `[tsfm compat] Parameter "stream_options.${key}" is not supported and will be ignored.`,
+        `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean; got ${typeof streamOptions.include_usage}. It will be ignored.`,
       );
+    }
+    for (const key of Object.keys(streamOptions)) {
+      if (key !== "include_usage" && streamOptions[key] != null) {
+        console.warn(
+          `[tsfm compat] Parameter "stream_options.${key}" is not supported and will be ignored.`,
+        );
+      }
     }
   }
 

@@ -3,6 +3,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
 import { SamplingMode, type GenerationOptions } from "../options.js";
+import { ownParams } from "./params.js";
 import type { Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
@@ -141,13 +142,14 @@ function extractInputText(content: string | Array<{ type: string; text?: string 
 }
 
 /** Map ResponseCreateParams to native GenerationOptions. */
-function mapResponseParams(params: ResponseCreateParams): GenerationOptions {
+function mapResponseParams(raw: ResponseCreateParams): GenerationOptions {
+  const params = ownParams(raw);
   const options: GenerationOptions = {};
 
   warnOnUnknownModel(params.model);
 
   const reasoningLevel = mapReasoningEffort(
-    params.reasoning?.effort,
+    params.reasoning ? ownParams(params.reasoning).effort : undefined,
     compatModelName(params.model),
     "reasoning.effort",
   );
@@ -420,7 +422,9 @@ export class Responses {
   async create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>;
   async create(params: ResponseCreateParams & { stream?: false | null }): Promise<Response>;
   async create(params: ResponseCreateParams): Promise<Response | ResponseStream>;
-  async create(params: ResponseCreateParams): Promise<Response | ResponseStream> {
+  async create(raw: ResponseCreateParams): Promise<Response | ResponseStream> {
+    // Own properties only; see ownParams.
+    const params = ownParams(raw);
     const options = mapResponseParams(params);
     const { transcriptJson, prompt: rawPrompt } = inputToTranscript(
       params.input,
