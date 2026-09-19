@@ -2105,20 +2105,29 @@ final class BridgedTool: Tool {
 
   let id: Atomic<CUnsignedInt> = Atomic(0)
 
-  let foreignCall: @convention(c) (FMGeneratedContentRef, CUnsignedInt) -> Void
+  // tsfm: a closure, so a caller can pass context (see FMBridgedToolCreateWithUserInfo).
+  let foreignCall: @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void
   let outputContinuation = Mutex<[CUnsignedInt: CheckedContinuation<String, any Error>]>([:])
   let parameters: GenerationSchema
+  // tsfm: runs when the tool is freed, to release the caller's context.
+  let onDeinit: (@Sendable () -> Void)?
 
   init(
     name: String,
     description: String,
     parameters: GenerationSchema,
-    foreignCall: @convention(c) (FMGeneratedContentRef, CUnsignedInt) -> Void
+    foreignCall: @escaping @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void,
+    onDeinit: (@Sendable () -> Void)? = nil
   ) {
     self.name = name
     self.description = description
     self.parameters = parameters
     self.foreignCall = foreignCall
+    self.onDeinit = onDeinit
+  }
+
+  deinit {
+    onDeinit?()
   }
 
   func nextID() -> CUnsignedInt {
@@ -2158,7 +2167,7 @@ public func FMBridgedToolCreate(
       name: String(cString: name),
       description: String(cString: description),
       parameters: schema,
-      foreignCall: callable
+      foreignCall: { callable($0, $1) }
     )
     return FMBridgedToolRef(Unmanaged.passRetained(bridgedTool).toOpaque())
   } catch let error where frameworkStatusCode(for: error) != nil {
@@ -2175,6 +2184,53 @@ public func FMBridgedToolCreate(
     let debugDescription = error.localizedDescription
     debugDescription.withCString { cString in
       outErrorCode?.pointee = StatusCode.unknownError.rawValue
+      outErrorDescription?.pointee = UnsafePointer(strdup(cString))
+    }
+    return nil
+  }
+}
+
+/// tsfm: FMBridgedToolCreate with a context pointer. `callable` receives
+/// `userInfo` with each call, so one C function can serve many tools (the
+/// Node-API addon uses it to find the tool's JavaScript callback). When the tool
+/// is freed, `releaseUserInfo` is called with `userInfo`, once.
+@_cdecl("FMBridgedToolCreateWithUserInfo")
+public func FMBridgedToolCreateWithUserInfo(
+  name: UnsafePointer<CChar>,
+  description: UnsafePointer<CChar>,
+  parameters: FMGenerationSchemaRef,
+  callable: @convention(c) (FMGeneratedContentRef, CUnsignedInt, UnsafeMutableRawPointer?) -> Void,
+  userInfo: UnsafeMutableRawPointer?,
+  releaseUserInfo: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?,
+  outErrorCode: UnsafeMutablePointer<Int32>?,
+  outErrorDescription: UnsafeMutablePointer<UnsafePointer<CChar>?>?
+) -> FMBridgedToolRef? {
+  let context = UnsafeSendableUserInfo(pointer: userInfo)
+  do {
+    let schemaBuilder = Unmanaged<GenerationSchemaBuilder>.fromOpaque(parameters)
+      .takeUnretainedValue()
+    let schema = try schemaBuilder.buildSchema()
+    var onDeinit: (@Sendable () -> Void)? = nil
+    if let releaseUserInfo {
+      onDeinit = { releaseUserInfo(context.pointer) }
+    }
+    let foreignCall: @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void = { content, id in
+      callable(content, id, context.pointer)
+    }
+    let bridgedTool = BridgedTool(
+      name: String(cString: name),
+      description: String(cString: description),
+      parameters: schema,
+      foreignCall: foreignCall,
+      onDeinit: onDeinit
+    )
+    return FMBridgedToolRef(Unmanaged.passRetained(bridgedTool).toOpaque())
+  } catch {
+    // The tool was never created, so the caller still owns its context.
+    let errorCode = statusCode(for: error)
+    let debugDescription = error.localizedDescription
+    debugDescription.withCString { cString in
+      outErrorCode?.pointee = errorCode
       outErrorDescription?.pointee = UnsafePointer(strdup(cString))
     }
     return nil
