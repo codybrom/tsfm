@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockFunctions } from "./helpers/mock-bindings.js";
+import { createMockFunctions, started } from "./helpers/mock-bindings.js";
 
 vi.hoisted(() => {
   globalThis.FinalizationRegistry = class MockFinalizationRegistry {
@@ -8,27 +8,9 @@ vi.hoisted(() => {
   } as unknown as typeof FinalizationRegistry;
 });
 
-const { lastCallback } = vi.hoisted(() => ({
-  lastCallback: { cb: null as ((...args: unknown[]) => void) | null },
-}));
-
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void) => {
-      lastCallback.cb = cb;
-      return "mock-cb-pointer";
-    }),
-    pointer: vi.fn(() => "mock-proto-pointer"),
-  },
-}));
-
 const mockFns = createMockFunctions();
-const mockDecodeAndFreeString = vi.fn();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: (...args: unknown[]) => mockDecodeAndFreeString(...args),
-  unregisterCallback: vi.fn(),
-  TokenCountCallbackProto: "mock-token-proto",
 }));
 
 import {
@@ -54,9 +36,10 @@ describe("PrivateCloudComputeLanguageModel", () => {
     [3, PrivateCloudComputeUnavailableReason.ENTITLEMENT_MISSING],
     [42, PrivateCloudComputeUnavailableReason.UNKNOWN],
   ])("maps unavailable reason %i", (code, reason) => {
-    mockFns.FMPrivateCloudComputeLanguageModelIsAvailable.mockImplementationOnce(
-      (_m: unknown, out: number[]) => ((out[0] = code), false),
-    );
+    mockFns.FMPrivateCloudComputeLanguageModelIsAvailable.mockReturnValueOnce({
+      available: false,
+      reason: code,
+    });
     expect(new PrivateCloudComputeLanguageModel().isAvailable()).toEqual({
       available: false,
       reason,
@@ -64,7 +47,10 @@ describe("PrivateCloudComputeLanguageModel", () => {
   });
 
   it("reports availability", () => {
-    mockFns.FMPrivateCloudComputeLanguageModelIsAvailable.mockImplementationOnce(() => true);
+    mockFns.FMPrivateCloudComputeLanguageModelIsAvailable.mockReturnValueOnce({
+      available: true,
+      reason: null,
+    });
     expect(new PrivateCloudComputeLanguageModel().isAvailable()).toEqual({ available: true });
   });
 
@@ -75,7 +61,7 @@ describe("PrivateCloudComputeLanguageModel", () => {
   });
 
   it("parses the quota", () => {
-    mockDecodeAndFreeString.mockReturnValueOnce(
+    mockFns.FMPrivateCloudComputeLanguageModelGetQuotaUsageJSON.mockReturnValueOnce(
       '{"limitReached":false,"approachingLimit":true,"resetDate":"2026-09-20T00:00:00Z"}',
     );
     expect(new PrivateCloudComputeLanguageModel().quotaUsage).toEqual({
@@ -85,17 +71,20 @@ describe("PrivateCloudComputeLanguageModel", () => {
     });
   });
 
-  it("resolves the context size from the callback", async () => {
-    const promise = new PrivateCloudComputeLanguageModel().contextSize();
-    lastCallback.cb?.(0, 32768, null);
-    await expect(promise).resolves.toBe(32768);
-    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-task");
+  it("resolves the context size", async () => {
+    mockFns.FMPrivateCloudComputeLanguageModelGetContextSize.mockReturnValueOnce(
+      started({ status: 0, count: 32768, message: null }) as never,
+    );
+    await expect(new PrivateCloudComputeLanguageModel().contextSize()).resolves.toBe(32768);
   });
 
   it("rejects the context size with a mapped error", async () => {
-    const promise = new PrivateCloudComputeLanguageModel().contextSize();
-    lastCallback.cb?.(16, 0, "offline");
-    await expect(promise).rejects.toBeInstanceOf(PrivateCloudComputeNetworkError);
+    mockFns.FMPrivateCloudComputeLanguageModelGetContextSize.mockReturnValueOnce(
+      started({ status: 16, count: 0, message: "offline" }) as never,
+    );
+    await expect(new PrivateCloudComputeLanguageModel().contextSize()).rejects.toBeInstanceOf(
+      PrivateCloudComputeNetworkError,
+    );
   });
 
   it("disposes once, and refuses use afterwards", () => {

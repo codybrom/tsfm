@@ -1,50 +1,70 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createMockFunctions } from "./helpers/mock-bindings.js";
 
-const { capturedSessionRegistryCallback } = vi.hoisted(() => {
-  let registryCb: ((pointer: unknown) => void) | null = null;
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    constructor(callback: (pointer: unknown) => void) {
-      registryCb = callback;
-    }
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
-  return { capturedSessionRegistryCallback: () => registryCb };
-});
-
-const mockFns = createMockFunctions();
-
+// The addon returns promises and takes JS callbacks. These wrappers let a test
+// answer a request the way the native side does, by firing
+// `lastRegisteredCallback`: (status, text) for text requests and streams, or
+// (status, content) for structured ones. A test's own implementation runs
+// after the callback is set, as koffi's registration used to.
 let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
 
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
-      lastRegisteredCallback = cb;
-      return "mock-cb-pointer";
-    }),
-    unregister: vi.fn(),
-    as: vi.fn((_arr: unknown[], _type: string) => "mock-arr-pointer"),
-    pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-  },
-}));
+type Impl = (...args: unknown[]) => unknown;
+
+/** A text request: [promise, request], settled through lastRegisteredCallback. */
+function textRequest(impl?: Impl) {
+  return (...args: unknown[]) => {
+    let resolve!: (result: unknown) => void;
+    const result = new Promise((r) => (resolve = r));
+    lastRegisteredCallback = (status, text) => resolve({ status, text: text ?? null });
+    impl?.(...args);
+    return [result, "mock-task-pointer"] as never;
+  };
+}
+
+/** A structured request: [promise, request], settled through lastRegisteredCallback. */
+function structuredRequest(impl?: Impl) {
+  return (...args: unknown[]) => {
+    let resolve!: (result: unknown) => void;
+    const result = new Promise((r) => (resolve = r));
+    lastRegisteredCallback = (status, content) =>
+      resolve(
+        status === 0
+          ? { status, content, message: null }
+          : { status, content: null, message: null },
+      );
+    impl?.(...args);
+    return [result, "mock-task-pointer"] as never;
+  };
+}
+
+/**
+ * A stream: onChunk becomes lastRegisteredCallback, and
+ * FMLanguageModelSessionResponseStreamIterate (a test hook) starts it, as the
+ * native side did. An implementation returning null means it couldn't start.
+ */
+function streamRequest(impl?: Impl) {
+  return (...args: unknown[]) => {
+    const onChunk = args[3] as (status: number, text: string | null) => void;
+    lastRegisteredCallback = (status, text) =>
+      onChunk(status as number, (text as string | null) ?? null);
+    if (impl?.(...args) === null) return null;
+    mockFns.FMLanguageModelSessionResponseStreamIterate("mock-stream-pointer", null, onChunk);
+    return "mock-stream-pointer";
+  };
+}
+
+const mockFns = {
+  ...createMockFunctions(),
+  /** Test hook: runs when a stream starts; drive it with lastRegisteredCallback. */
+  FMLanguageModelSessionResponseStreamIterate: vi.fn((..._args: unknown[]) => {}),
+};
+mockFns.FMLanguageModelSessionRespond.mockImplementation(textRequest());
+mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(structuredRequest());
+mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(structuredRequest());
+mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(streamRequest());
 
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    // In tests, callbacks receive plain strings as mock pointers —
-    // pass them through so existing assertions work unchanged.
-    if (typeof pointer === "string") return pointer;
-    return null;
-  }),
-  decodeAndFreeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    return '{"key":"value"}';
-  }),
-  unregisterCallback: vi.fn(),
-  ResponseCallbackProto: "ResponseCallbackProto",
-  StructuredResponseCallbackProto: "StructuredResponseCallbackProto",
 }));
 
 vi.mock("../../src/tool.js", () => ({
@@ -80,8 +100,7 @@ describe("LanguageModelSession", () => {
     expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).toHaveBeenCalledWith(
       null,
       null,
-      null,
-      0,
+      [],
     );
     expect(session._nativeSession).toBe("mock-session-pointer");
   });
@@ -91,8 +110,7 @@ describe("LanguageModelSession", () => {
     expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).toHaveBeenCalledWith(
       null,
       "Be helpful",
-      null,
-      0,
+      [],
     );
   });
 
@@ -165,7 +183,6 @@ describe("LanguageModelSession", () => {
         "mock-composed-prompt",
         "/tmp/a.jpg",
         "diagram",
-        expect.anything(),
       );
     });
 
@@ -178,17 +195,13 @@ describe("LanguageModelSession", () => {
         "mock-composed-prompt",
         "/tmp/a.jpg",
         null,
-        expect.anything(),
       );
     });
 
     it("reports why the bridge refused the attachment", async () => {
       // 2 = FMComposedPromptAddImageErrorUnsupportedSDK, which is what a
       // dylib built without the macOS 27 SDK always returns.
-      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
-        (_args[3] as number[])[0] = 2;
-        return false;
-      });
+      mockFns.FMComposedPromptAddAttachment.mockReturnValueOnce(2);
       const session = new LanguageModelSession();
       await expect(
         session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
@@ -196,10 +209,7 @@ describe("LanguageModelSession", () => {
     });
 
     it("releases the composed prompt when an attachment is refused", async () => {
-      mockFns.FMComposedPromptAddAttachment.mockImplementationOnce((..._args: unknown[]) => {
-        (_args[3] as number[])[0] = 1;
-        return false;
-      });
+      mockFns.FMComposedPromptAddAttachment.mockReturnValueOnce(1);
       const session = new LanguageModelSession();
       await expect(
         session.respond({ text: "hi", attachments: [{ path: "/tmp/a.jpg" }] }),
@@ -251,12 +261,14 @@ describe("LanguageModelSession", () => {
 
   describe("respond", () => {
     it("resolves with response text on success", async () => {
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, "Hello world", 11, null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "Hello world", 11, null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const result = await session.respond("Hi");
@@ -264,12 +276,14 @@ describe("LanguageModelSession", () => {
     });
 
     it("resolves with empty string when content is null", async () => {
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, null, 0, null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, null, 0, null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const result = await session.respond("Hi");
@@ -278,13 +292,15 @@ describe("LanguageModelSession", () => {
 
     it("keepalive interval fires while waiting for callback", async () => {
       vi.useFakeTimers();
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(() => {
-        // Schedule callback after 15s so the 10s keepalive fires first
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, "delayed", 7, null);
-        }, 15000);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest(() => {
+          // Schedule callback after 15s so the 10s keepalive fires first
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "delayed", 7, null);
+          }, 15000);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const promise = session.respond("Hi");
@@ -295,12 +311,14 @@ describe("LanguageModelSession", () => {
     });
 
     it("rejects with error on non-zero status", async () => {
-      mockFns.FMLanguageModelSessionRespond.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(7, "Rate limited", 12, null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(7, "Rate limited", 12, null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       await expect(session.respond("Hi")).rejects.toThrow("Rate limited");
@@ -308,11 +326,11 @@ describe("LanguageModelSession", () => {
   });
 
   describe("cancel", () => {
-    it("calls FMTaskCancel and FMLanguageModelSessionReset", () => {
+    it("calls FMRequestCancel and FMLanguageModelSessionReset", () => {
       const session = new LanguageModelSession();
       (session as unknown as { _activeTask: unknown })._activeTask = "mock-task";
       session.cancel();
-      expect(mockFns.FMTaskCancel).toHaveBeenCalledWith("mock-task");
+      expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-task");
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
   });
@@ -396,14 +414,14 @@ describe("LanguageModelSession", () => {
       const session = new LanguageModelSession();
       session.dispose(); // sets _nativeSession to null
       session.cancel();
-      expect(mockFns.FMTaskCancel).not.toHaveBeenCalled();
+      expect(mockFns.FMRequestCancel).not.toHaveBeenCalled();
       expect(mockFns.FMLanguageModelSessionReset).not.toHaveBeenCalled();
     });
 
     it("resets session but does not cancel when no active task", () => {
       const session = new LanguageModelSession();
       session.cancel();
-      expect(mockFns.FMTaskCancel).not.toHaveBeenCalled();
+      expect(mockFns.FMRequestCancel).not.toHaveBeenCalled();
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
   });
@@ -411,12 +429,14 @@ describe("LanguageModelSession", () => {
   describe("respondWithSchema", () => {
     it("keepalive interval fires while waiting for structured callback", async () => {
       vi.useFakeTimers();
-      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, "mock-content-ref", null);
-        }, 15000);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(
+        structuredRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "mock-content-ref", null);
+          }, 15000);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const mockSchema = { _nativeSchema: "mock-schema-pointer" };
@@ -428,12 +448,14 @@ describe("LanguageModelSession", () => {
     });
 
     it("resolves with GeneratedContent on success", async () => {
-      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, "mock-content-ref", null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(
+        structuredRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "mock-content-ref", null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const mockSchema = { _nativeSchema: "mock-schema-pointer" };
@@ -443,29 +465,32 @@ describe("LanguageModelSession", () => {
     });
 
     it("rejects with error on non-zero status", async () => {
-      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(() => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(3, "mock-content-ref", null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(
+        structuredRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(3, "mock-content-ref", null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const mockSchema = { _nativeSchema: "mock-schema-pointer" };
       await expect(session.respondWithSchema("Describe", mockSchema as never)).rejects.toThrow(
         "Guardrail violation",
       );
-      expect(mockFns.FMGeneratedContentGetJSONString).toHaveBeenCalledWith("mock-content-ref");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-content-ref");
+      // The addon reads the error message from the content and releases it.
     });
 
     it("passes generation options to the C function", async () => {
-      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation((..._args: unknown[]) => {
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, "mock-content-ref", null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(
+        structuredRequest((..._args: unknown[]) => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, "mock-content-ref", null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const mockSchema = { _nativeSchema: "mock-schema-pointer" };
@@ -482,8 +507,6 @@ describe("LanguageModelSession", () => {
         "mock-composed-prompt",
         "mock-schema-pointer",
         JSON.stringify({ temperature: 0.5 }),
-        null,
-        "mock-cb-pointer",
       );
     });
   });
@@ -501,12 +524,12 @@ describe("LanguageModelSession", () => {
 
     it("resolves with GeneratedContent on success", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(0, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -524,12 +547,12 @@ describe("LanguageModelSession", () => {
 
     it("applies afmSchemaFormat transformations", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(0, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -552,12 +575,12 @@ describe("LanguageModelSession", () => {
 
     it("handles schema without properties key", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(0, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -573,12 +596,12 @@ describe("LanguageModelSession", () => {
 
     it("preserves existing x-order if provided", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(0, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -600,12 +623,12 @@ describe("LanguageModelSession", () => {
 
     it("rejects with error on non-zero status", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(7, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -615,14 +638,13 @@ describe("LanguageModelSession", () => {
     });
 
     it("rejects with undefined message when content JSON is null", async () => {
-      mockFns.FMGeneratedContentGetJSONString.mockReturnValueOnce(null);
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(3, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -633,12 +655,12 @@ describe("LanguageModelSession", () => {
 
     it("passes generation options", async () => {
       mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
+        structuredRequest((..._args: unknown[]) => {
           setTimeout(() => {
             lastRegisteredCallback?.(0, "mock-content-ref", null);
           }, 0);
           return "mock-task-pointer";
-        },
+        }),
       );
 
       const session = new LanguageModelSession();
@@ -657,8 +679,6 @@ describe("LanguageModelSession", () => {
         "mock-composed-prompt",
         expect.any(String),
         JSON.stringify({ maximum_response_tokens: 100 }),
-        null,
-        "mock-cb-pointer",
       );
     });
   });
@@ -825,10 +845,11 @@ describe("LanguageModelSession", () => {
         "mock-session-pointer",
         "mock-composed-prompt",
         JSON.stringify({ temperature: 0.8 }),
+        expect.any(Function),
       );
     });
 
-    it("keeps the callback registered after an early break until the native side's final call", async () => {
+    it("cancels the request after an early break, and ignores late chunks", async () => {
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
         (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
           // Send a single chunk, then stop — the final call comes later.
@@ -845,26 +866,25 @@ describe("LanguageModelSession", () => {
         break; // consumer breaks early — the native stream is still running
       }
       expect(chunks).toEqual(["Hello"]);
+      // Cancelling ends the native stream; the addon absorbs its final call.
+      expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-stream-pointer");
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-stream-pointer");
-      // Native code calling an unregistered callback kills the host, so the
-      // callback stays registered while the cancelled stream winds down.
-      const bindings = await import("../../src/bindings.js");
-      expect(bindings.unregisterCallback).not.toHaveBeenCalledWith("mock-cb-pointer");
 
-      // Late snapshots are ignored; the final "cancelled" call unregisters it.
-      lastRegisteredCallback?.(0, "Hello there", 11, null);
-      expect(bindings.unregisterCallback).not.toHaveBeenCalledWith("mock-cb-pointer");
-      lastRegisteredCallback?.(255, "Stream cancelled", 16, null);
-      expect(bindings.unregisterCallback).toHaveBeenCalledWith("mock-cb-pointer");
+      // Late snapshots and the final "cancelled" call are ignored.
+      expect(() => lastRegisteredCallback?.(0, "Hello there", 11, null)).not.toThrow();
+      expect(() => lastRegisteredCallback?.(255, "Stream cancelled", 16, null)).not.toThrow();
+      expect(chunks).toEqual(["Hello"]);
     });
 
     it("rejects a stream that was queued when the session was disposed", async () => {
       let finishFirst!: () => void;
-      mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-        const cb = lastRegisteredCallback;
-        finishFirst = () => cb?.(0, "done", 4, null);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest((..._args: unknown[]) => {
+          const cb = lastRegisteredCallback;
+          finishFirst = () => cb?.(0, "done", 4, null);
+          return "mock-task-pointer";
+        }),
+      );
       const session = new LanguageModelSession();
       const first = session.respond("Hi");
       const queued = (async () => {
@@ -910,8 +930,7 @@ describe("LanguageModelSession", () => {
       expect(mockFns.FMLanguageModelSessionCreateFromTranscript).toHaveBeenCalledWith(
         "mock-transcript-session-pointer",
         null,
-        null,
-        0,
+        [],
       );
       expect(session._nativeSession).toBe("mock-session-pointer");
       expect(mockTranscript._updateNativeSession).toHaveBeenCalledWith("mock-session-pointer");
@@ -963,15 +982,17 @@ describe("LanguageModelSession", () => {
     it("serializes concurrent respond calls", async () => {
       const callOrder: number[] = [];
 
-      mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-        const text = mockFns.FMComposedPromptAddText.mock.calls.at(-1)?.[1];
-        const idx = text === "first" ? 1 : 2;
-        callOrder.push(idx);
-        setTimeout(() => {
-          lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
-        }, 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementation(
+        textRequest((..._args: unknown[]) => {
+          const text = mockFns.FMComposedPromptAddText.mock.calls.at(-1)?.[1];
+          const idx = text === "first" ? 1 : 2;
+          callOrder.push(idx);
+          setTimeout(() => {
+            lastRegisteredCallback?.(0, `Response ${idx}`, 10, null);
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
 
       const session = new LanguageModelSession();
       const [r1, r2] = await Promise.all([session.respond("first"), session.respond("second")]);
@@ -979,23 +1000,6 @@ describe("LanguageModelSession", () => {
       expect(r1.content).toBe("Response 1");
       expect(r2.content).toBe("Response 2");
       expect(callOrder).toEqual([1, 2]);
-    });
-  });
-
-  describe("FinalizationRegistry cleanup", () => {
-    it("releases pointer when GC callback fires", () => {
-      const cleanup = capturedSessionRegistryCallback();
-      expect(cleanup).toBeTypeOf("function");
-      cleanup!("leaked-session-pointer");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("leaked-session-pointer");
-    });
-
-    it("swallows errors in GC callback", () => {
-      mockFns.FMRelease.mockImplementationOnce(() => {
-        throw new Error("already released");
-      });
-      const cleanup = capturedSessionRegistryCallback();
-      expect(() => cleanup!("bad-pointer")).not.toThrow();
     });
   });
 
@@ -1209,10 +1213,12 @@ describe("LanguageModelSession", () => {
       await expect(session.streamResponse("Hi").collect()).rejects.toThrow("usage read failed");
 
       // The queue must not stay locked.
-      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(() => {
-        setTimeout(() => lastRegisteredCallback?.(0, "after", 5, null), 0);
-        return "mock-task-pointer";
-      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(
+        textRequest(() => {
+          setTimeout(() => lastRegisteredCallback?.(0, "after", 5, null), 0);
+          return "mock-task-pointer";
+        }),
+      );
       const { content } = await session.respond("Next");
       expect(content).toBe("after");
     });
@@ -1221,9 +1227,11 @@ describe("LanguageModelSession", () => {
       const session = new LanguageModelSession();
 
       // Make the native stream call throw to simulate a setup failure
-      mockFns.FMLanguageModelSessionStreamResponse.mockImplementationOnce(() => {
-        throw new Error("native stream setup failed");
-      });
+      mockFns.FMLanguageModelSessionStreamResponse.mockImplementationOnce(
+        streamRequest(() => {
+          throw new Error("native stream setup failed");
+        }),
+      );
 
       // streamResponse should propagate the error
       const chunks: string[] = [];
@@ -1239,18 +1247,20 @@ describe("LanguageModelSession", () => {
       // The queue should NOT be stalled — a subsequent respond() must work.
       // Set up a normal mock response.
       mockFns.FMLanguageModelSessionRespond.mockImplementation(
-        (
-          _session: unknown,
-          _prompt: unknown,
-          _opts: unknown,
-          _ui: unknown,
-          _cbPointer: unknown,
-        ) => {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, "response text", 13, null);
-          }, 0);
-          return "mock-task";
-        },
+        textRequest(
+          (
+            _session: unknown,
+            _prompt: unknown,
+            _opts: unknown,
+            _ui: unknown,
+            _cbPointer: unknown,
+          ) => {
+            setTimeout(() => {
+              lastRegisteredCallback?.(0, "response text", 13, null);
+            }, 0);
+            return "mock-task";
+          },
+        ),
       );
 
       const result = await session.respond("Next prompt");
@@ -1293,8 +1303,7 @@ describe("Private Cloud Compute sessions", () => {
     expect(mockFns.FMLanguageModelSessionCreateFromPrivateCloudComputeModel).toHaveBeenCalledWith(
       "mock-pcc-pointer",
       "hi",
-      null,
-      0,
+      [],
     );
     expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
     expect(session._nativeSession).toBe("mock-pcc-session");
@@ -1314,10 +1323,12 @@ describe("Private Cloud Compute sessions", () => {
   });
 
   it("skips the on-device regex check", async () => {
-    mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementationOnce(() => {
-      setTimeout(() => lastRegisteredCallback?.(0, "mock-content-ref", null), 0);
-      return "mock-task";
-    });
+    mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementationOnce(
+      structuredRequest(() => {
+        setTimeout(() => lastRegisteredCallback?.(0, "mock-content-ref", null), 0);
+        return "mock-task";
+      }),
+    );
     const session = new LanguageModelSession({ model: new PrivateCloudComputeLanguageModel() });
     const schema = { type: "object", properties: { v: { type: "string", pattern: "[a-z]+" } } };
     await expect(session.respondWithJsonSchema("x", schema)).resolves.toBeDefined();

@@ -1,31 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import { createMockFunctions } from "./helpers/mock-bindings.js";
 
-vi.hoisted(() => {
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
-});
-
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn(() => "mock-cb-pointer"),
-    unregister: vi.fn(),
-    as: vi.fn(() => "mock-arr-pointer"),
-    pointer: vi.fn(() => "mock-proto-pointer"),
-  },
-}));
-
 const mockFns = createMockFunctions();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeString: vi.fn(() => null),
-  decodeAndFreeString: vi.fn(() => null),
-  unregisterCallback: vi.fn(),
-  ResponseCallbackProto: "ResponseCallbackProto",
-  StructuredResponseCallbackProto: "StructuredResponseCallbackProto",
-  TokenCountCallbackProto: "TokenCountCallbackProto",
 }));
 
 vi.mock("../../src/tool.js", () => ({

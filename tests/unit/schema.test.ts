@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockFunctions } from "./helpers/mock-bindings.js";
+import { createMockFunctions, failed, ok } from "./helpers/mock-bindings.js";
 
 const mockFns = createMockFunctions();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    return '{"name":"test"}';
-  }),
 }));
 
 import {
@@ -26,6 +22,8 @@ const mockPointer = (label: string) => label as unknown as NativePointer;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFns.FMGenerationSchemaGetJSONString.mockReturnValue(ok<string | null>('{"name":"test"}'));
+  mockFns.FMGeneratedContentGetJSONString.mockReturnValue('{"name":"test"}');
 });
 
 describe("afmSchemaFormat", () => {
@@ -280,7 +278,6 @@ describe("GenerationGuide._applyToProperty", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-property",
       ["a", "b"],
-      2,
       false,
     );
   });
@@ -291,7 +288,6 @@ describe("GenerationGuide._applyToProperty", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-property",
       ["fixed"],
-      1,
       false,
     );
   });
@@ -471,10 +467,8 @@ describe("GenerationSchema", () => {
     expect(dict).toEqual({ name: "test" });
   });
 
-  it("toDict throws when decodeAndFreeString returns null", async () => {
-    const mod = await import("../../src/bindings.js");
-    const mockDecode = mod.decodeAndFreeString as ReturnType<typeof vi.fn>;
-    mockDecode.mockReturnValueOnce(null);
+  it("toDict throws when the schema can't be serialized", () => {
+    mockFns.FMGenerationSchemaGetJSONString.mockReturnValueOnce(failed(10, "bad schema"));
 
     const schema = new GenerationSchema("Bad");
     expect(() => schema.toDict()).toThrow();
@@ -482,26 +476,15 @@ describe("GenerationSchema", () => {
 });
 
 describe("GeneratedContent", () => {
-  // Get a handle on the mocked decodeAndFreeString so we can control it per-test
-  let mockDecodeAndFreeString: ReturnType<typeof vi.fn>;
-  beforeEach(async () => {
-    const mod = await import("../../src/bindings.js");
-    mockDecodeAndFreeString = mod.decodeAndFreeString as ReturnType<typeof vi.fn>;
-  });
-
   it("fromJson creates instance from JSON string", () => {
     const content = GeneratedContent.fromJson('{"name":"test"}');
-    expect(mockFns.FMGeneratedContentCreateFromJSON).toHaveBeenCalledWith(
-      '{"name":"test"}',
-      [0],
-      null,
-    );
+    expect(mockFns.FMGeneratedContentCreateFromJSON).toHaveBeenCalledWith('{"name":"test"}');
     expect(content).toBeInstanceOf(GeneratedContent);
     expect(content._nativeContent).toBe("mock-content-pointer");
   });
 
   it("fromJson throws when C returns null pointer", () => {
-    mockFns.FMGeneratedContentCreateFromJSON.mockReturnValueOnce(null);
+    mockFns.FMGeneratedContentCreateFromJSON.mockReturnValueOnce(failed(6));
     expect(() => GeneratedContent.fromJson("bad")).toThrow();
   });
 
@@ -514,14 +497,14 @@ describe("GeneratedContent", () => {
     expect(content.isComplete).toBe(false);
   });
 
-  it("toJson returns JSON string via decodeAndFreeString", () => {
+  it("toJson returns the JSON string", () => {
     const content = new GeneratedContent(mockPointer("mock-content"));
     const json = content.toJson();
     expect(mockFns.FMGeneratedContentGetJSONString).toHaveBeenCalledWith("mock-content");
     expect(json).toBe('{"name":"test"}');
   });
 
-  it('toJson returns "{}" when decodeAndFreeString returns null', () => {
+  it('toJson returns "{}" when there is no JSON', () => {
     mockFns.FMGeneratedContentGetJSONString.mockReturnValueOnce(null);
     const content = new GeneratedContent(mockPointer("mock-content"));
     const json = content.toJson();
@@ -541,31 +524,27 @@ describe("GeneratedContent", () => {
   });
 
   it("value returns parsed JSON value when FFI returns non-null", () => {
-    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce("mock-value-pointer");
-    mockDecodeAndFreeString.mockReturnValueOnce('"hello"');
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(ok<string | null>('"hello"'));
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("greeting");
     expect(result).toBe("hello");
     expect(mockFns.FMGeneratedContentGetPropertyValue).toHaveBeenCalledWith(
       "mock-content",
       "greeting",
-      null,
-      null,
     );
   });
 
   it("value returns raw string when JSON.parse fails", () => {
-    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce("mock-value-pointer");
-    mockDecodeAndFreeString.mockReturnValueOnce("not-valid-json");
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(
+      ok<string | null>("not-valid-json"),
+    );
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("field");
     expect(result).toBe("not-valid-json");
   });
 
   it("value falls back to toObject when FFI returns null", () => {
-    // FMGeneratedContentGetPropertyValue returns null by default
-    // decodeAndFreeString(null) returns null per the mock setup
-    // toJson's decodeAndFreeString call returns the default '{"name":"test"}'
+    // The property accessor returns null by default, so value() reads toJson().
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("name");
     expect(result).toBe("test");
@@ -702,7 +681,6 @@ describe("generable", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-prop-pointer",
       ["a", "b"],
-      2,
       false,
     );
   });

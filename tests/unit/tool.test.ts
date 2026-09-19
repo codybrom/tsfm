@@ -1,44 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockFns, mockKoffi, capturedCallbacks, capturedRegistryCallback } = vi.hoisted(() => {
+const { mockFns, capturedCallbacks } = vi.hoisted(() => {
   const capturedCallbacks: Array<(contentRef: unknown, callId: number) => void> = [];
-  let registryCb: ((held: { pointer: unknown; callback: unknown }) => void) | null = null;
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    constructor(callback: (held: { pointer: unknown; callback: unknown }) => void) {
-      registryCb = callback;
-    }
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
+  const ok = (value: unknown) => ({ value, status: 0, description: null });
   return {
     mockFns: {
-      FMBridgedToolCreate: vi.fn((): string | null => "mock-tool-pointer"),
-      FMBridgedToolFinishCall: vi.fn(),
-      FMBridgedToolFailCall: vi.fn(),
+      // The addon hands each tool call to the onCall function it was given.
+      FMBridgedToolCreate: vi.fn(
+        (_name: string, _description: string, _schema: unknown, onCall: unknown) => {
+          capturedCallbacks.push(onCall as (contentRef: unknown, callId: number) => void);
+          return ok("mock-tool-pointer") as {
+            value: string | null;
+            status: number;
+            description: string | null;
+          };
+        },
+      ),
+      FMBridgedToolFinishCall: vi.fn(() => true),
+      FMBridgedToolFailCall: vi.fn(() => true),
       FMRelease: vi.fn(),
     },
-    mockKoffi: {
-      register: vi.fn((cb: unknown, _proto: unknown) => {
-        capturedCallbacks.push(cb as (contentRef: unknown, callId: number) => void);
-        return "mock-cb-pointer";
-      }),
-      unregister: vi.fn(),
-      pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-    },
     capturedCallbacks,
-    capturedRegistryCallback: () => registryCb,
   };
 });
 
-vi.mock("koffi", () => ({
-  default: mockKoffi,
-}));
-
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: vi.fn(),
-  unregisterCallback: (pointer: unknown) => mockKoffi.unregister(pointer),
-  ToolCallbackProto: "ToolCallbackProto",
 }));
 
 const { shouldThrowOnConstruct, mockContentDispose } = vi.hoisted(() => ({
@@ -105,9 +92,7 @@ describe("Tool", () => {
       "test-tool",
       "A test tool",
       "mock-schema-pointer",
-      "mock-cb-pointer",
-      expect.any(Array),
-      null,
+      expect.any(Function),
     );
     expect(tool._nativeTool).toBe("mock-tool-pointer");
   });
@@ -133,17 +118,20 @@ describe("Tool", () => {
   });
 
   it("_register throws when C returns null", () => {
-    mockFns.FMBridgedToolCreate.mockReturnValueOnce(null);
+    mockFns.FMBridgedToolCreate.mockReturnValueOnce({
+      value: null,
+      status: 10,
+      description: "bad schema",
+    });
     const tool = new TestTool();
     expect(() => tool._register()).toThrow();
   });
 
-  it("dispose releases pointer and unregisters callback", () => {
+  it("dispose releases the tool", () => {
     const tool = new TestTool();
     tool._register();
     vi.clearAllMocks();
     tool.dispose();
-    expect(mockKoffi.unregister).toHaveBeenCalledWith("mock-cb-pointer");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
     expect(tool._nativeTool).toBeNull();
   });
@@ -154,11 +142,19 @@ describe("Tool", () => {
     tool.dispose();
     vi.clearAllMocks();
     tool.dispose();
-    expect(mockKoffi.unregister).not.toHaveBeenCalled();
     expect(mockFns.FMRelease).not.toHaveBeenCalled();
   });
 
-  describe("koffi callback handler", () => {
+  it("ignores a call that arrives after dispose, which the addon has already failed", () => {
+    const tool = new TestTool();
+    tool._register();
+    tool.dispose();
+    capturedCallbacks[0]("late-ref", 9);
+    expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+    expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+  });
+
+  describe("tool call handler", () => {
     it("calls FMBridgedToolFinishCall with the result on success", async () => {
       const tool = new TestTool();
       tool._register();
@@ -375,37 +371,8 @@ describe("Tool", () => {
       tool._register();
       vi.clearAllMocks();
       tool[Symbol.dispose]();
-      expect(mockKoffi.unregister).toHaveBeenCalledWith("mock-cb-pointer");
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
       expect(tool._nativeTool).toBeNull();
-    });
-  });
-
-  describe("FinalizationRegistry cleanup", () => {
-    it("unregisters callback and releases pointer when GC fires", () => {
-      const cleanup = capturedRegistryCallback();
-      expect(cleanup).toBeTypeOf("function");
-      cleanup!({ pointer: "gc-tool-pointer", callback: "gc-cb-pointer" });
-      expect(mockKoffi.unregister).toHaveBeenCalledWith("gc-cb-pointer");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("gc-tool-pointer");
-    });
-
-    it("swallows errors from koffi.unregister in GC callback", () => {
-      mockKoffi.unregister.mockImplementationOnce(() => {
-        throw new Error("already unregistered");
-      });
-      const cleanup = capturedRegistryCallback();
-      // Should not throw, and should still attempt FMRelease
-      expect(() => cleanup!({ pointer: "gc-pointer", callback: "bad-cb" })).not.toThrow();
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("gc-pointer");
-    });
-
-    it("swallows errors from FMRelease in GC callback", () => {
-      mockFns.FMRelease.mockImplementationOnce(() => {
-        throw new Error("already freed");
-      });
-      const cleanup = capturedRegistryCallback();
-      expect(() => cleanup!({ pointer: "bad-pointer", callback: "gc-cb" })).not.toThrow();
     });
   });
 });

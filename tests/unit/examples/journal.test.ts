@@ -1,10 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { koffiMock, coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
+import { coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-vi.mock("koffi", () => koffiMock());
 vi.mock("../../../src/bindings.js", () => coreBindingsMock());
 vi.mock("../../../src/errors.js", () => errorsMock());
 

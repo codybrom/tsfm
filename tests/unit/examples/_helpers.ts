@@ -20,25 +20,17 @@ export function mockPointer(): NativePointer {
   return "mock-ptr" as unknown as NativePointer;
 }
 
-/** Koffi mock factory. */
-export function koffiMock() {
-  return {
-    default: {
-      proto: vi.fn(() => "mock-proto"),
-      register: vi.fn(() => "mock-cb-pointer"),
-      unregister: vi.fn(),
-      as: vi.fn(() => "mock-arr-pointer"),
-      pointer: vi.fn(() => "mock-proto-pointer"),
-    },
-  };
-}
-
 /** Core bindings mock factory (schema + tool functions). */
 export function coreBindingsMock() {
   return {
     getFunctions: () => ({
-      FMBridgedToolCreate: vi.fn(() => "mock-tool-pointer"),
-      FMBridgedToolFinishCall: vi.fn(),
+      FMBridgedToolCreate: vi.fn(() => ({
+        value: "mock-tool-pointer",
+        status: 0,
+        description: null,
+      })),
+      FMBridgedToolFinishCall: vi.fn(() => true),
+      FMBridgedToolFailCall: vi.fn(() => true),
       FMGenerationSchemaCreate: vi.fn(() => "mock-schema-pointer"),
       FMGenerationSchemaPropertyCreate: vi.fn(() => "mock-prop-pointer"),
       FMGenerationSchemaPropertyAddAnyOfGuide: vi.fn(),
@@ -48,16 +40,21 @@ export function coreBindingsMock() {
       FMGenerationSchemaPropertyAddMaxItemsGuide: vi.fn(),
       FMGenerationSchemaAddProperty: vi.fn(),
       FMGenerationSchemaAddReferenceSchema: vi.fn(),
-      FMGenerationSchemaGetJSONString: vi.fn(() => null),
-      FMGeneratedContentCreateFromJSON: vi.fn(() => "mock-content-pointer"),
+      FMGenerationSchemaGetJSONString: vi.fn(() => ({ value: "{}", status: 0, description: null })),
+      FMGeneratedContentCreateFromJSON: vi.fn(() => ({
+        value: "mock-content-pointer",
+        status: 0,
+        description: null,
+      })),
       FMGeneratedContentGetJSONString: vi.fn(() => null),
-      FMGeneratedContentGetPropertyValue: vi.fn(() => null),
+      FMGeneratedContentGetPropertyValue: vi.fn(() => ({
+        value: null,
+        status: 0,
+        description: null,
+      })),
       FMGeneratedContentIsComplete: vi.fn(() => true),
       FMRelease: vi.fn(),
-      FMFreeString: vi.fn(),
     }),
-    decodeString: vi.fn(() => null),
-    decodeAndFreeString: vi.fn(() => null),
     unregisterCallback: vi.fn(),
     ToolCallbackProto: "ToolCallbackProto",
   };
