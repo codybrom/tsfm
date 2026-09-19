@@ -223,15 +223,19 @@ export class PrivateCloudComputeEntitlementError extends GenerationError {
 }
 
 /**
- * The Apple Intelligence service (`generativeexperiencesd`) has crashed.
+ * An Apple Intelligence system service (the model manager or its safety
+ * classifier) failed.
  * Detected in `statusToError()` when UNKNOWN_ERROR details contain
  * "SensitiveContentAnalysisML" or "ModelManagerError Code=1013".
  */
 export class ServiceCrashedError extends GenerationError {
   constructor(detail?: string) {
+    // launchctl can't restart these services while System Integrity Protection
+    // is on, so the recovery is to wait, or log out or restart.
     const recovery =
-      "The Apple Intelligence service has crashed. " +
-      "Restart it by running: launchctl kickstart -k gui/$(id -u)/com.apple.generativeexperiencesd";
+      "The Apple Intelligence service has crashed. macOS restarts it, usually within a few " +
+      "minutes; retry with a new session then. If it keeps failing, log out and back in, or " +
+      "restart the Mac.";
     super(detail ? `${recovery}\n\nOriginal error: ${detail}` : recovery);
     this.name = "ServiceCrashedError";
   }
