@@ -138,6 +138,11 @@ export class LanguageModelSession {
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+    // A disposed model has no native pointer; passing null to the PCC constructors
+    // would crash the host in Swift.
+    if (pcc && !pcc._nativeModel) {
+      throw new FoundationModelsError("PrivateCloudComputeLanguageModel has been disposed");
+    }
     // Each model type has its own native constructor; the pointers aren't interchangeable.
     const pointer = (
       pcc
@@ -178,6 +183,11 @@ export class LanguageModelSession {
     const toolPointersArg = tools.length > 0 ? koffi.as(toolPointers, "void **") : null;
 
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+    // A disposed model has no native pointer; passing null to the PCC constructors
+    // would crash the host in Swift.
+    if (pcc && !pcc._nativeModel) {
+      throw new FoundationModelsError("PrivateCloudComputeLanguageModel has been disposed");
+    }
     const pointer = (
       pcc
         ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(

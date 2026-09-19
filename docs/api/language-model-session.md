@@ -7,7 +7,7 @@ Manages conversation state and provides all generation methods — text, streami
 ```ts
 new LanguageModelSession(options?: {
   instructions?: string;
-  model?: SystemLanguageModel;
+  model?: SystemLanguageModel | PrivateCloudComputeLanguageModel;
   tools?: Tool[];
 })
 ```
@@ -15,7 +15,7 @@ new LanguageModelSession(options?: {
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `instructions` | `undefined` | System prompt for the session |
-| `model` | Default model | A configured `SystemLanguageModel` |
+| `model` | Default model | A configured `SystemLanguageModel`, or a [`PrivateCloudComputeLanguageModel`](/guide/private-cloud-compute) |
 | `tools` | `[]` | Tools available during generation |
 
 ## Methods
@@ -186,11 +186,12 @@ Create a new session from a saved transcript.
 
 ```ts
 static fromTranscript(transcript: Transcript, options?: {
-  instructions?: string;
-  model?: SystemLanguageModel;
+  model?: SystemLanguageModel | PrivateCloudComputeLanguageModel;
   tools?: Tool[];
 }): LanguageModelSession
 ```
+
+The transcript carries its own instructions.
 
 ## Types
 

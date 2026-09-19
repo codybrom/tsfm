@@ -18,8 +18,21 @@ import {
  */
 
 const pcc = new PrivateCloudComputeLanguageModel();
-const availability = pcc.isAvailable();
+// test:integration:pcc sets TSFM_PCC_REQUIRE=1: then PCC must become available, so
+// an ineligible or not-ready machine fails the run instead of skipping every test.
+const required = process.env.TSFM_PCC_REQUIRE === "1";
+const availability = required ? await pcc.waitUntilAvailable(60_000) : pcc.isAvailable();
 afterAll(() => pcc.dispose());
+
+describe.runIf(required)("Private Cloud Compute is required (test:integration:pcc)", () => {
+  it("is available on this host", () => {
+    expect(
+      availability,
+      "PCC isn't available here, so the entitled tests can't run. Check the entitlement, " +
+        "the device's eligibility and that Apple Intelligence is set up.",
+    ).toEqual({ available: true });
+  });
+});
 
 const entitled = availability.available;
 const describeWithoutEntitlement =

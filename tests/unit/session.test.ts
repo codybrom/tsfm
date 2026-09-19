@@ -1237,6 +1237,19 @@ describe("Private Cloud Compute sessions", () => {
     expect(session._nativeSession).toBe("mock-pcc-session");
   });
 
+  it("refuses a disposed PCC model instead of passing null to Swift", () => {
+    const model = new PrivateCloudComputeLanguageModel();
+    model.dispose();
+    expect(() => new LanguageModelSession({ model })).toThrow(/disposed/);
+    expect(() =>
+      LanguageModelSession.fromTranscript({ _nativeSession: "t" } as never, { model }),
+    ).toThrow(/disposed/);
+    expect(mockFns.FMLanguageModelSessionCreateFromPrivateCloudComputeModel).not.toHaveBeenCalled();
+    expect(
+      mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+    ).not.toHaveBeenCalled();
+  });
+
   it("skips the on-device regex check", async () => {
     mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementationOnce(() => {
       setTimeout(() => lastRegisteredCallback?.(0, "mock-content-ref", null), 0);
