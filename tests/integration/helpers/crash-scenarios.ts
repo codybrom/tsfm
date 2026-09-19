@@ -279,6 +279,50 @@ const scenarios: Record<string, () => Promise<void>> = {
       ),
     );
 
+    // Guide bounds that crashed the host before the bridge checked them. The
+    // public constructors reject these, so build the guides directly to reach
+    // the native checks too.
+    const rawGuide = (type: string, value: unknown) =>
+      new (GenerationGuide as unknown as new (data: unknown) => GenerationGuide)({ type, value });
+    const badGuides: Array<[string, string, () => GenerationGuide]> = [
+      ["integer", "range 5..1", () => rawGuide("range", [5, 1])],
+      ["number", "range 5..1", () => rawGuide("range", [5, 1])],
+      ["integer", "range NaN", () => rawGuide("range", [Number.NaN, 3])],
+      ["number", "range Infinity", () => rawGuide("range", [0, Infinity])],
+      ["integer", "maximum 1e20", () => rawGuide("maximum", 1e20)],
+      ["integer", "minimum -Infinity", () => rawGuide("minimum", -Infinity)],
+      ["number", "minimum NaN", () => rawGuide("minimum", Number.NaN)],
+      ["array<string>", "count -1", () => rawGuide("count", -1)],
+      ["array<string>", "count 1e20", () => rawGuide("count", 1e20)],
+      ["array<string>", "minItems -2", () => rawGuide("minItems", -2)],
+      ["array<string>", "maxItems NaN", () => rawGuide("maxItems", Number.NaN)],
+      ["integer", "public range 5..1", () => GenerationGuide.range(5, 1)],
+      ["integer", "public maximum 1e20", () => GenerationGuide.maximum(1e20)],
+    ];
+    for (const [type, name, guide] of badGuides) {
+      add(`guide ${name} on ${type}`, () =>
+        session.respondWithSchema(
+          "Make one up.",
+          new GenerationSchema("S", "s").property("v", type as "string", { guides: [guide()] }),
+          { options: quick },
+        ),
+      );
+    }
+    for (const schema of [
+      { type: "integer", maximum: 1e20 },
+      { type: "integer", minimum: -1e300 },
+      { type: "array", items: { type: "string" }, minItems: -1 },
+      { type: "array", items: { type: "string" }, maxItems: 1e20 },
+    ]) {
+      add(`json schema bound ${JSON.stringify(schema)}`, () =>
+        session.respondWithJsonSchema(
+          "Make one up.",
+          { type: "object", properties: { v: schema } } as JsonSchema,
+          { options: quick },
+        ),
+      );
+    }
+
     // Transcripts: malformed JSON and wrong shapes.
     const badTranscripts = [
       "",

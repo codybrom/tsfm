@@ -244,6 +244,33 @@ describe("GenerationGuide", () => {
     expect(guide).toBeInstanceOf(GenerationGuide);
   });
 
+  it("rejects range bounds that are not finite or out of order", () => {
+    expect(() => GenerationGuide.range(5, 1)).toThrow(RangeError);
+    expect(() => GenerationGuide.range(Number.NaN, 1)).toThrow(RangeError);
+    expect(() => GenerationGuide.range(0, Infinity)).toThrow(RangeError);
+    expect(GenerationGuide.range(3, 3)).toBeInstanceOf(GenerationGuide);
+  });
+
+  it("rejects minimum and maximum that are not finite", () => {
+    expect(() => GenerationGuide.minimum(-Infinity)).toThrow(RangeError);
+    expect(() => GenerationGuide.maximum(Number.NaN)).toThrow(RangeError);
+    expect(GenerationGuide.minimum(-1.5)).toBeInstanceOf(GenerationGuide);
+  });
+
+  it("rejects counts that are not non-negative integers", () => {
+    for (const make of [
+      GenerationGuide.count,
+      GenerationGuide.minItems,
+      GenerationGuide.maxItems,
+    ]) {
+      expect(() => make(-1)).toThrow(RangeError);
+      expect(() => make(1.5)).toThrow(RangeError);
+      expect(() => make(Number.NaN)).toThrow(RangeError);
+      expect(() => make(1e20)).toThrow(RangeError);
+      expect(make(0)).toBeInstanceOf(GenerationGuide);
+    }
+  });
+
   it("regex creates guide with pattern", () => {
     const guide = GenerationGuide.regex("^[a-z]+$");
     expect(guide).toBeInstanceOf(GenerationGuide);

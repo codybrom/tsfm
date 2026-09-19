@@ -1760,11 +1760,11 @@ private func resolveArrayStringGuides(
 ) throws -> GenerationGuide<[String]> {
   switch guide {
   case .count(let count):
-    return GenerationGuide.count(count)
+    return GenerationGuide.count(try itemCount(count))
   case .maxItems(let count):
-    return GenerationGuide.maximumCount(count)
+    return GenerationGuide.maximumCount(try itemCount(count))
   case .minItems(let count):
-    return GenerationGuide.minimumCount(count)
+    return GenerationGuide.minimumCount(try itemCount(count))
   case .anyOf(let anyOf):
     return GenerationGuide.element(GenerationGuide.anyOf(anyOf))
   case .element(let wrapped):
@@ -1778,16 +1778,47 @@ private func resolveArrayStringGuides(
   }
 }
 
+// tsfm: guide bounds come from JavaScript. `min...max` traps unless
+// min <= max (and NaN fails every comparison), and Int(_:) traps on NaN,
+// infinity or a value outside Int's range, so check before building a guide.
+private func invalidGuide(_ description: String) -> Error {
+  LanguageModelSession.GenerationError.unsupportedGuide(
+    LanguageModelSession.GenerationError.Context(debugDescription: description))
+}
+
+private func finiteBound(_ value: Double) throws -> Double {
+  guard value.isFinite else { throw invalidGuide("Guide bounds must be finite numbers") }
+  return value
+}
+
+private func integerBound(_ value: Double) throws -> Int {
+  // Double(Int.max) rounds up to 2^63, which Int can't hold, so the upper check is strict.
+  guard value.isFinite, value >= Double(Int.min), value < Double(Int.max) else {
+    throw invalidGuide("Guide bounds for an integer must be finite and fit in 64 bits")
+  }
+  return Int(value)
+}
+
+private func itemCount(_ value: Int) throws -> Int {
+  guard value >= 0 else { throw invalidGuide("Array count guides must not be negative") }
+  return value
+}
+
+private func checkedRange<T: Comparable>(_ min: T, _ max: T) throws -> ClosedRange<T> {
+  guard min <= max else { throw invalidGuide("A range guide's minimum is above its maximum") }
+  return min...max
+}
+
 private func resolveDoubleGuides(
   _ guide: PropertyGuide
 ) throws -> GenerationGuide<Double> {
   switch guide {
   case .range(let min, let max):
-    return GenerationGuide.range(min...max)
+    return GenerationGuide.range(try checkedRange(try finiteBound(min), try finiteBound(max)))
   case .maximum(let max):
-    return GenerationGuide.maximum(max)
+    return GenerationGuide.maximum(try finiteBound(max))
   case .minimum(let min):
-    return GenerationGuide.minimum(min)
+    return GenerationGuide.minimum(try finiteBound(min))
   default:
     let context = LanguageModelSession.GenerationError.Context(
       debugDescription: "Unsupported guide for double type"
@@ -1801,11 +1832,11 @@ private func resolveIntGuides(
 ) throws -> GenerationGuide<Int> {
   switch guide {
   case .range(let min, let max):
-    return GenerationGuide.range(Int(min)...Int(max))
+    return GenerationGuide.range(try checkedRange(try integerBound(min), try integerBound(max)))
   case .maximum(let max):
-    return GenerationGuide.maximum(Int(max))
+    return GenerationGuide.maximum(try integerBound(max))
   case .minimum(let min):
-    return GenerationGuide.minimum(Int(min))
+    return GenerationGuide.minimum(try integerBound(min))
   default:
     let context = LanguageModelSession.GenerationError.Context(
       debugDescription: "Unsupported guide for int type"
@@ -1819,11 +1850,11 @@ private func resolveIntArrayGuides(
 ) throws -> GenerationGuide<[Int]> {
   switch guide {
   case .count(let count):
-    return GenerationGuide.count(count)
+    return GenerationGuide.count(try itemCount(count))
   case .maxItems(let count):
-    return GenerationGuide.maximumCount(count)
+    return GenerationGuide.maximumCount(try itemCount(count))
   case .minItems(let count):
-    return GenerationGuide.minimumCount(count)
+    return GenerationGuide.minimumCount(try itemCount(count))
   case .element(let wrapped):
     let elementGuide = try resolveIntGuides(wrapped)
     return GenerationGuide.element(elementGuide)
@@ -1840,11 +1871,11 @@ private func resolveDoubleArrayGuides(
 ) throws -> GenerationGuide<[Double]> {
   switch guide {
   case .count(let count):
-    return GenerationGuide.count(count)
+    return GenerationGuide.count(try itemCount(count))
   case .maxItems(let count):
-    return GenerationGuide.maximumCount(count)
+    return GenerationGuide.maximumCount(try itemCount(count))
   case .minItems(let count):
-    return GenerationGuide.minimumCount(count)
+    return GenerationGuide.minimumCount(try itemCount(count))
   case .element(let wrapped):
     let elementGuide = try resolveDoubleGuides(wrapped)
     return GenerationGuide.element(elementGuide)
@@ -1862,11 +1893,11 @@ private func resolveBoolArrayGuides(
 ) throws -> GenerationGuide<[Bool]> {
   switch guide {
   case .count(let count):
-    return GenerationGuide.count(count)
+    return GenerationGuide.count(try itemCount(count))
   case .maxItems(let count):
-    return GenerationGuide.maximumCount(count)
+    return GenerationGuide.maximumCount(try itemCount(count))
   case .minItems(let count):
-    return GenerationGuide.minimumCount(count)
+    return GenerationGuide.minimumCount(try itemCount(count))
   default:
     let context = LanguageModelSession.GenerationError.Context(
       debugDescription: "Unsupported guide for array<boolean> type"
