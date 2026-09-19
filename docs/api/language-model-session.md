@@ -34,7 +34,7 @@ respond(prompt: string | PromptInput, options?: {
 ```ts
 const { content, usage } = await session.respond("What is the capital of France?");
 console.log(content); // "Paris…"
-console.log(usage.input.totalTokens, usage.output.totalTokens);
+console.log(usage?.input.totalTokens, usage?.output.totalTokens); // usage is null on macOS 26
 ```
 
 ### Prompt attachments <Badge type="warning" text="macOS 27" />
@@ -53,9 +53,9 @@ await session.respond({
 });
 ```
 
-Attachments are always available on macOS 27, which tsfm 1.x requires. If the
-bridge refuses one anyway, `respond()` throws a `PromptAttachmentError` with
-`reason: "unknown"`.
+Attachments need macOS 27. On macOS 26, `respond()` throws a
+`PromptAttachmentError` with `reason: "unsupported-os"`. If the bridge refuses
+one for another reason, the reason is `"unknown"`.
 
 ### `respondWithSchema()`
 
@@ -153,13 +153,14 @@ const { content: reply } = await session.respond("Hello");
 
 ## Properties
 
-### `usage`
+### `usage` <Badge type="warning" text="macOS 27" />
 
 Token usage accumulated over every response in the session. It equals the sum of
-the `usage` values the individual responses returned.
+the `usage` values the individual responses returned. `null` on macOS 26, which
+doesn't report usage, and once the session is disposed.
 
 ```ts
-readonly usage: Usage
+readonly usage: Usage | null
 ```
 
 ### `isResponding`
@@ -200,7 +201,7 @@ The transcript carries its own instructions.
 ```ts
 interface Response<T> {
   readonly content: T;
-  readonly usage: Usage;
+  readonly usage: Usage | null; // null on macOS 26
 }
 ```
 
@@ -223,7 +224,7 @@ interface Usage {
 
 ```ts
 class ResponseStream implements AsyncIterable<string> {
-  readonly usage: Usage | undefined; // set when the stream finishes
+  readonly usage: Usage | null | undefined; // set when the stream finishes; null on macOS 26
   collect(): Promise<Response<string>>;
 }
 ```

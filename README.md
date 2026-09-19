@@ -63,7 +63,7 @@ model.dispose();
 
 ## Requirements
 
-- Apple Silicon (M-Series) Mac running macOS 27 or later (for macOS 26, use `tsfm-sdk@0.x`)
+- Apple Silicon (M-Series) Mac running macOS 26 or later. Token usage, tool-calling modes, Private Cloud Compute, attachments and model info need macOS 27 ([details](https://tsfm.dev/guide/getting-started#macos-26-and-macos-27)).
 - Apple Intelligence enabled in System Settings
 - Node.js 24+
 
@@ -77,7 +77,7 @@ npm 11 may warn that `koffi` has an install script not covered by `allowScripts`
 npm run build              # build native dylib + compile TypeScript
 npm test                   # run all tests
 npm run test:unit          # unit tests only (works on any machine)
-npm run test:integration   # integration tests (requires macOS 27 + Apple Intelligence)
+npm run test:integration   # integration tests (requires macOS 26+ and Apple Intelligence)
 npm run test:integration:sdk27  # the same, in a host built with the macOS 27 SDK
 ```
 
@@ -91,6 +91,6 @@ Issues and PRs welcome. If something doesn't work on your machine or you find a 
 
 tsfm is licensed under the Apache 2.0 license. For complete licensing information, see this project's [LICENSE file](LICENSE.md).
 
-The `tsfm-sdk` package available from NPM contains precompiled C bindings and libraries for working with macOS 27 Foundation Models adapted from [python-apple-fm-sdk](https://github.com/apple/python-apple-fm-sdk) which is Copyright Apple Inc. and licensed under the Apache 2.0 license.
+The `tsfm-sdk` package available from NPM contains precompiled C bindings and libraries for working with Foundation Models on macOS 26 and 27, adapted from [python-apple-fm-sdk](https://github.com/apple/python-apple-fm-sdk) which is Copyright Apple Inc. and licensed under the Apache 2.0 license.
 
 <small>This project is unaffiliated with Apple, Inc. The terms "Apple" and "Apple Intelligence" are trademarks of Apple Inc., registered in the U.S. and other countries and regions.</small>

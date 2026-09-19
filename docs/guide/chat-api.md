@@ -69,7 +69,7 @@ Both APIs support the same core capabilities:
 | `temperature`, `max_output_tokens` | `temperature`, `max_output_tokens` | `temperature`, `max_tokens` / `max_completion_tokens` | Full |
 | `top_p`, `seed` | `top_p`, `seed` | `top_p`, `seed` | Full |
 | Image/audio content | `input_image`, `input_file` | Image URLs | Not supported (warns) |
-| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full |
+| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full on macOS 27; `null` on macOS 26 |
 | Reasoning effort | `reasoning: { effort }` | `reasoning_effort` | Private Cloud Compute only |
 
 ### Private Cloud Compute

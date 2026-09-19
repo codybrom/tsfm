@@ -81,21 +81,21 @@ readonly contextSize: number
 
 On macOS 27 the on-device model has an 8,192-token context.
 
-### `variant`
+### `variant` <Badge type="warning" text="macOS 27" />
 
-The on-device model's variant, e.g. `"AFM 3 Core Advanced"`.
+The on-device model's variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26.
 
 ```ts
-readonly variant: string
+readonly variant: string | null
 ```
 
-### `capabilities`
+### `capabilities` <Badge type="warning" text="macOS 27" />
 
-What the model can do. The on-device model has `"vision"`, `"toolCalling"` and
-`"guidedGeneration"`, but not `"reasoning"`.
+What the model can do, or `null` on macOS 26. The on-device model has
+`"vision"`, `"toolCalling"` and `"guidedGeneration"`, but not `"reasoning"`.
 
 ```ts
-readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[]
+readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[] | null
 ```
 
 ### `tokenCount()`

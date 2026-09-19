@@ -1,12 +1,15 @@
 # Migrating to 1.0
 
-tsfm 1.0 targets macOS 27 and adds token usage, tool-calling modes and more. Most
-apps need two small changes: read `.content` from responses, and update to macOS 27.
+tsfm 1.0 adds token usage, tool-calling modes, Private Cloud Compute and more for
+macOS 27, and still runs on macOS 26. Most apps need one small change: read
+`.content` from responses.
 
 ## Requirements
 
-- **macOS 27** or later. tsfm 1.x won't load on macOS 26; stay on `tsfm-sdk@0.x`
-  there.
+- **macOS 26** or later, as before. Token usage, tool-calling modes, Private
+  Cloud Compute, attachments and model info need macOS 27; on macOS 26 each
+  reports a clear reason instead. See
+  [macOS 26 and macOS 27](/guide/getting-started#macos-26-and-macos-27).
 - **Xcode 27** to build from source. Installing from npm doesn't need Xcode.
 
 ## `respond()` returns a `Response`
@@ -59,7 +62,8 @@ directly on the old `AsyncGenerator` should use
 ## Token usage
 
 Every response carries `usage`, and `session.usage` totals the whole session. See
-[`Usage`](/api/language-model-session#usage-1).
+[`Usage`](/api/language-model-session#usage-1). Usage is a macOS 27 API: on
+macOS 26 it's `null`, so check before reading it.
 
 The Chat and Responses compatibility APIs now fill in OpenAI's `usage` fields
 instead of returning `null`. Chat Completions streams report usage in a final
@@ -81,10 +85,11 @@ await session.respond(prompt, { options: { maximumToolCalls: 100 } });
 ## Regex guides are checked before the request
 
 The macOS 27 on-device model supports only part of regex syntax, and notably not
-character classes like `[a-z]`. Unsupported patterns now throw
+character classes like `[a-z]`. On macOS 27, unsupported patterns now throw
 `UnsupportedGuideError` before the request, naming the construct. See the
 [supported syntax](/api/generation-schema#regex-patterns); most classes have a
-replacement, such as `[0-9]` → `\d`.
+replacement, such as `[0-9]` → `\d`. On macOS 26, patterns aren't checked, as
+in 0.x.
 
 ## New: Private Cloud Compute
 
@@ -124,5 +129,5 @@ entitlement; plain `node` can't use it. See
 - New error classes, all subclasses of `GenerationError`: `InvalidArgumentError`,
   `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`
   and `ToolCallLimitExceededError`. See [Errors](/api/errors).
-- `PromptAttachmentError` no longer reports `unsupported-os` or `unsupported-sdk`,
-  because attachments always work on macOS 27.
+- `UnsupportedCapabilityError` has a `requiredMacOS` property. It's `27` when a
+  macOS 27 feature is used on macOS 26.

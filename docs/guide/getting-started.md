@@ -2,15 +2,37 @@
 
 TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a pre-compiled dynamic library [via FFI](https://koffi.dev/), allowing it the same access as native Swift and ObjC applications.
 
-TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 27+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
+TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26 or later with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
 ## Requirements
 
-- **macOS 27** or later, Apple Silicon (for macOS 26, use `tsfm-sdk@0.x`)
+- **macOS 26** or later, Apple Silicon. A few features need macOS 27; see below.
 - **Apple Intelligence** enabled in System Settings
 - **Node.js 24+**
+
+### macOS 26 and macOS 27
+
+tsfm runs on both. Features built on macOS 27 APIs don't crash on macOS 26: each
+reports a clear reason your app can check.
+
+| Feature | On macOS 26 |
+| --- | --- |
+| Token usage (`response.usage`, `session.usage`) | `null` |
+| `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `requiredMacOS: 27` |
+| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`; using it throws `UnsupportedCapabilityError` |
+| [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
+| `model.variant`, `model.capabilities` | `null` |
+
+Everything else works on both, including text, streaming, structured output,
+tools, transcripts and the Chat and Responses APIs. Regex guides are checked
+against the model's supported syntax only on macOS 27, where it's known.
+
+::: info
+tsfm's integration tests run on macOS 27. On macOS 26, the library's loading and
+fallbacks are verified at build time, but the model itself isn't tested there.
+:::
 
 ## Installation
 
@@ -18,7 +40,7 @@ You might use TSFM for CLI tools, local dev tooling, Electron apps, automation s
 npm install tsfm-sdk
 ```
 
-Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 27.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
+Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 26.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
 
 To check that everything tsfm needs is in place, run:
 

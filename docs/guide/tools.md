@@ -67,6 +67,10 @@ request:
 | `"required"` | The model must call a tool before answering. |
 | `"disallowed"` | The model answers without calling any tool. |
 
+`"required"` and `"disallowed"` need macOS 27. On macOS 26 they throw
+`UnsupportedCapabilityError` with `requiredMacOS: 27`, before the request is
+sent; `"allowed"` works on both.
+
 ```ts
 // Skip tools when the answer is already in the conversation
 await session.respond("Summarize what you found", {
