@@ -125,4 +125,33 @@ describe("mapParams", () => {
     mapParams({});
     expect(console.warn).not.toHaveBeenCalled();
   });
+
+  it("maps reasoning_effort to reasoningLevel for Private Cloud Compute", () => {
+    const result = mapParams({
+      model: "PrivateCloudComputeLanguageModel",
+      reasoning_effort: "medium",
+    });
+    expect(result.reasoningLevel).toBe("moderate");
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("warns and ignores reasoning_effort for the on-device model", () => {
+    const result = mapParams({ reasoning_effort: "high" });
+    expect(result.reasoningLevel).toBeUndefined();
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("reasoning_effort"));
+  });
+
+  it("accepts stream_options.include_usage without warning", () => {
+    mapParams({ stream_options: { include_usage: true } });
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it("warns on other stream_options keys", () => {
+    mapParams({
+      stream_options: { include_usage: true, include_obfuscation: true } as never,
+    });
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("stream_options.include_obfuscation"),
+    );
+  });
 });

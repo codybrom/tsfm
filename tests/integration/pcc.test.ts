@@ -8,6 +8,7 @@ import {
   GenerationGuide,
   UnsupportedCapabilityError,
 } from "../../src/index.js";
+import Client from "../../src/compat/index.js";
 
 /*
  * Private Cloud Compute needs a host signed with its managed entitlement.
@@ -55,6 +56,17 @@ describeWithoutEntitlement("Private Cloud Compute without the entitlement (integ
       PrivateCloudComputeEntitlementError,
     );
     session.dispose();
+  }, 30_000);
+
+  it("fails compat requests for the PCC model the same way", async () => {
+    const client = new Client();
+    await expect(
+      client.chat.completions.create({
+        model: "PrivateCloudComputeLanguageModel",
+        messages: [{ role: "user", content: "Say hi." }],
+      }),
+    ).rejects.toBeInstanceOf(PrivateCloudComputeEntitlementError);
+    client.close();
   }, 30_000);
 
   it("still reads the context size", async () => {
@@ -108,6 +120,19 @@ describeEntitled("Private Cloud Compute (entitled host)", () => {
     expect(response.content.length).toBeGreaterThan(0);
     expect(response.usage.output.totalTokens).toBeGreaterThan(0);
     session.dispose();
+  }, 60_000);
+
+  it("serves compat requests, mapping reasoning_effort", async () => {
+    const client = new Client();
+    const completion = await client.chat.completions.create({
+      model: "PrivateCloudComputeLanguageModel",
+      reasoning_effort: "low",
+      messages: [{ role: "user", content: "What is 6 times 7? Just the number." }],
+    });
+    expect(completion.model).toBe("PrivateCloudComputeLanguageModel");
+    expect(completion.choices[0].message.content).toContain("42");
+    expect(completion.usage?.completion_tokens).toBeGreaterThan(0);
+    client.close();
   }, 60_000);
 
   it("reports the quota", () => {

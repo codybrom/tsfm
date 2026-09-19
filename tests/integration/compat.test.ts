@@ -64,6 +64,22 @@ describe("Chat API integration", () => {
     expect(full).toContain("15");
   });
 
+  it("streaming with include_usage ends with a usage chunk", async () => {
+    const stream = await client.chat.completions.create({
+      messages: [{ role: "user", content: "Say hi." }],
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+
+    const last = chunks[chunks.length - 1];
+    expect(last.choices).toEqual([]);
+    expect(last.usage?.prompt_tokens).toBeGreaterThan(0);
+    expect(last.usage?.completion_tokens).toBeGreaterThan(0);
+    expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
+  });
+
   it("structured output with json_schema", async () => {
     const response = await client.chat.completions.create({
       messages: [{ role: "user", content: "Extract: John is 30 years old" }],

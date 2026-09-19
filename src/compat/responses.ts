@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { SystemLanguageModel } from "../core.js";
 import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
@@ -18,6 +17,13 @@ import {
   type ToolModelOutput,
 } from "./tools.js";
 import { ResponseStream } from "./responses-stream.js";
+import {
+  compatModelName,
+  mapReasoningEffort,
+  warnOnUnknownModel,
+  type CompatModel,
+  type CompatModelName,
+} from "./models.js";
 import {
   reorderJson,
   nowSeconds,
@@ -43,8 +49,6 @@ import type {
   ResponseFormatJsonSchema,
 } from "./responses-types.js";
 import type { ChatCompletionTool } from "./types.js";
-
-const MODEL_DEFAULT = "SystemLanguageModel";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -82,7 +86,6 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ResponseCreateParams> = [
   "truncation",
   "metadata",
   "include",
-  "reasoning",
   "parallel_tool_calls",
   "service_tier",
   "user",
@@ -141,9 +144,17 @@ function extractInputText(content: string | Array<{ type: string; text?: string 
 function mapResponseParams(params: ResponseCreateParams): GenerationOptions {
   const options: GenerationOptions = {};
 
-  if (params.model !== undefined && params.model !== "SystemLanguageModel") {
+  warnOnUnknownModel(params.model);
+
+  const reasoningLevel = mapReasoningEffort(
+    params.reasoning?.effort,
+    compatModelName(params.model),
+    "reasoning.effort",
+  );
+  if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;
+  if (params.reasoning?.summary != null) {
     console.warn(
-      `[tsfm compat] Model "${params.model}" is not supported. Use "SystemLanguageModel" or omit the model field.`,
+      `[tsfm compat] Parameter "reasoning.summary" is not supported and will be ignored.`,
     );
   }
 
@@ -330,7 +341,7 @@ function buildResponse(
     id: makeId(),
     object: "response",
     created_at: nowSeconds(),
-    model: MODEL_DEFAULT,
+    model: compatModelName(params.model),
     output,
     output_text: outputText,
     status,
@@ -400,9 +411,9 @@ function makeFunctionCall(name: string, args: string): ResponseOutputFunctionToo
 // ---------------------------------------------------------------------------
 
 export class Responses {
-  private _getModel: () => SystemLanguageModel;
+  private _getModel: (name: CompatModelName) => CompatModel;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: (name: CompatModelName) => CompatModel) {
     this._getModel = getModel;
   }
 
@@ -448,7 +459,7 @@ export class Responses {
     }
 
     const transcript = Transcript.fromJson(transcriptStr);
-    const model = this._getModel();
+    const model = this._getModel(compatModelName(params.model));
     const session = LanguageModelSession.fromTranscript(transcript, { model });
 
     if (params.stream) {
