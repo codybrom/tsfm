@@ -60,18 +60,65 @@ export function findUnsupportedRegexConstruct(pattern: string): string | null {
   return null;
 }
 
-/** Every `pattern` string in a JSON schema, with the path to it. */
+/** Keywords whose value is a single subschema. */
+const SUBSCHEMA_KEYWORDS = [
+  "items",
+  "additionalProperties",
+  "unevaluatedProperties",
+  "additionalItems",
+  "contains",
+  "propertyNames",
+  "not",
+  "if",
+  "then",
+  "else",
+];
+/** Keywords whose value is an array of subschemas. */
+const SUBSCHEMA_ARRAY_KEYWORDS = ["anyOf", "oneOf", "allOf", "prefixItems"];
+/** Keywords whose value maps names to subschemas. */
+const SUBSCHEMA_MAP_KEYWORDS = [
+  "properties",
+  "patternProperties",
+  "$defs",
+  "definitions",
+  "dependentSchemas",
+];
+
+/**
+ * Every `pattern` constraint in a JSON schema, with the path to it. Only
+ * keywords that hold subschemas are followed, so a "pattern" key inside
+ * instance data (examples, default, const, enum values) isn't mistaken for one.
+ */
 export function collectSchemaPatterns(
   schema: unknown,
   path = "$",
 ): Array<{ path: string; pattern: string }> {
-  if (schema === null || typeof schema !== "object") return [];
+  if (schema === null || typeof schema !== "object" || Array.isArray(schema)) return [];
+  const node = schema as Record<string, unknown>;
   const found: Array<{ path: string; pattern: string }> = [];
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === "pattern" && typeof value === "string") {
-      found.push({ path, pattern: value });
-    } else if (typeof value === "object") {
+  if (typeof node.pattern === "string") found.push({ path, pattern: node.pattern });
+
+  for (const key of SUBSCHEMA_KEYWORDS) {
+    const value = node[key];
+    if (Array.isArray(value)) {
+      // Draft-4 tuple form: "items": [schema, schema].
+      value.forEach((v, i) => found.push(...collectSchemaPatterns(v, `${path}.${key}[${i}]`)));
+    } else {
       found.push(...collectSchemaPatterns(value, `${path}.${key}`));
+    }
+  }
+  for (const key of SUBSCHEMA_ARRAY_KEYWORDS) {
+    const value = node[key];
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => found.push(...collectSchemaPatterns(v, `${path}.${key}[${i}]`)));
+    }
+  }
+  for (const key of SUBSCHEMA_MAP_KEYWORDS) {
+    const value = node[key];
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      for (const [name, sub] of Object.entries(value)) {
+        found.push(...collectSchemaPatterns(sub, `${path}.${key}.${name}`));
+      }
     }
   }
   return found;

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import {
   SystemLanguageModel,
   LanguageModelSession,
@@ -6,6 +6,7 @@ import {
   GenerationGuide,
   UnsupportedGuideError,
 } from "../../src/index.js";
+import { getFunctions } from "../../src/bindings.js";
 
 const model = new SystemLanguageModel();
 const { available } = await model.waitUntilAvailable(5_000);
@@ -38,8 +39,9 @@ describeIfAvailable("regex guides (integration)", () => {
   );
 
   it("rejects an unsupported pattern before calling the model", async () => {
+    const fns = getFunctions();
+    const respondWithSchema = vi.spyOn(fns, "FMLanguageModelSessionRespondWithSchema");
     const session = new LanguageModelSession();
-    const started = Date.now();
     const error = await session.respondWithSchema("Make one up.", schemaWith("[a-z]+")).then(
       () => undefined,
       (e: unknown) => e,
@@ -48,8 +50,9 @@ describeIfAvailable("regex guides (integration)", () => {
     expect((error as Error).message).toMatch(
       /character class.*"\[a-z\]\+" at \$\.properties\.value/,
     );
-    // No model round trip.
-    expect(Date.now() - started).toBeLessThan(100);
+    // The native request was never made.
+    expect(respondWithSchema).not.toHaveBeenCalled();
+    respondWithSchema.mockRestore();
     session.dispose();
   });
 
