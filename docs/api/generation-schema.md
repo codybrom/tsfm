@@ -42,6 +42,8 @@ toDict(): object
 type PropertyType = "string" | "integer" | "number" | "boolean" | "array" | "object"
 ```
 
+`"array"` and `"object"` are the vocabulary of `generable()` property definitions, where an array carries its `items` and an object its `properties`. `property()` takes a `NativeTypeName` instead, and there a bare `"array"` is rejected at runtime: give the element type as `"array<string>"`, `"array<integer>"`, and so on, and name a reference schema for objects.
+
 ## GenerationGuide
 
 Factory methods that create output constraints for schema properties.
@@ -57,7 +59,8 @@ GenerationGuide.regex(pattern: string)      // regex pattern (see supported synt
 ### Regex patterns
 
 The on-device model supports a subset of regex syntax in `regex` guides and JSON
-Schema `pattern`:
+Schema `pattern`. Apple documents no restrictions; this table is tsfm's own
+measurement on macOS 27.0 (AFM 3 Core Advanced), and a later model may differ:
 
 | Supported | Not supported |
 | --- | --- |

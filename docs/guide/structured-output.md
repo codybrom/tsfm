@@ -114,7 +114,7 @@ Bare `"array"` is not accepted by `GenerationSchema.property()`. Use the compoun
 Guides constrain the model's output for a property.
 
 ::: info
-The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.apple.com/documentation/foundationmodels/guide()) annotations. See Apple's [Generating Swift Data Structures with Guided Generation](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) guide.
+The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.apple.com/documentation/foundationmodels/guide(description:)) annotations. See Apple's [Generating Swift Data Structures with Guided Generation](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) guide.
 :::
 
 | Method | Constrains |

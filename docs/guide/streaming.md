@@ -2,6 +2,8 @@
 
 TSFM can stream responses token-by-token using an async iterator. The on-device model produces cumulative snapshots, and the SDK diffs them internally so you receive only the new tokens on each iteration.
 
+Only plain text streams. Structured output (`respondWithSchema()`, `respondWithJsonSchema()`) is buffered until complete. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet; see [What tsfm doesn't expose](/guide/getting-started#what-tsfm-doesnt-expose).
+
 ::: info
 The **Swift** equivalent is [`LanguageModelSession.ResponseStream`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/responsestream).
 :::

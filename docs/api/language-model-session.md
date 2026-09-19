@@ -136,7 +136,7 @@ const { content, usage } = await session.streamResponse("Say hi").collect();
 
 ### `prewarm()`
 
-Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget — the prewarm runs in the background on the native side.
+Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget — the prewarm runs in the background on the native side. Apple says to call it at least a second before the first request for it to help, and that it guarantees nothing: it's a hint, and the framework may not act on it.
 
 ```ts
 prewarm(promptPrefix?: string): void
@@ -205,6 +205,8 @@ readonly isResponding: boolean
 ```
 
 `true` while a generation request is in progress.
+
+Apple says not to call `respond()` while this is `true`; in Swift that throws `ConcurrentRequestsError`. tsfm queues requests on a session and runs them one at a time, so calling `respond()` while responding just waits its turn. You rarely need to check this before a call.
 
 ### `transcript`
 

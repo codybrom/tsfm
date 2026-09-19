@@ -67,7 +67,7 @@ dispose(): void
 
 ### `supportedLanguages`
 
-Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+Returns the language identifiers the model supports, as minimal BCP 47 language tags. Some carry a region where the model distinguishes one (e.g. `["en-GB", "en-AU", "fr-CA", "es-US", "de", "ja", "zh-TW"]`); they are languages, not full locales.
 
 ```ts
 readonly supportedLanguages: string[]
@@ -81,11 +81,13 @@ The maximum number of tokens the model's context window can hold. All input — 
 readonly contextSize: number
 ```
 
-On macOS 27 the on-device model has an 8,192-token context.
+The size is per host and per model version, so read it rather than assuming it. Apple's documentation gives 4,096 tokens; tsfm measured 8,192 on macOS 27.0.
 
 ### `variant` <Badge type="warning" text="macOS 27" />
 
 The on-device model's variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26.
+
+There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Apple advises re-testing prompts against a new one. `variant` is how you tell which one you're running against.
 
 ```ts
 readonly variant: string | null
@@ -93,8 +95,7 @@ readonly variant: string | null
 
 ### `capabilities` <Badge type="warning" text="macOS 27" />
 
-What the model can do, or `null` on macOS 26. The on-device model has
-`"vision"`, `"toolCalling"` and `"guidedGeneration"`, but not `"reasoning"`.
+What the model can do, or `null` on macOS 26. Apple doesn't publish the set, which is why this property exists: read it rather than hard-coding it. On macOS 27.0 tsfm observed `"vision"`, `"toolCalling"` and `"guidedGeneration"`, and not `"reasoning"`.
 
 ```ts
 readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[] | null

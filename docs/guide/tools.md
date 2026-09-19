@@ -158,7 +158,7 @@ The callback receives the tool name and the parsed arguments object. It is best-
 
 ## Best Practices
 
-The Foundation Model [`Tool` documentation](https://developer.apple.com/documentation/foundationmodels/tool) recommends:
+Apple's [Managing the context window](https://developer.apple.com/documentation/foundationmodels/managing-the-context-window) article recommends:
 
 - **Limit to 3–5 tools per session.** Tool schemas and descriptions consume context window space. More tools means less room for conversation. If your session exceeds the context size, split work across new sessions.
 - **Keep descriptions short.** A brief phrase is enough. Long descriptions add latency and use up context.

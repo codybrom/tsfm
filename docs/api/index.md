@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all public exports from `tsfm`.
+Complete reference for all public exports from `tsfm-sdk`.
 
 ## Classes
 

@@ -97,6 +97,8 @@ if (session.isResponding) {
 }
 ```
 
+Apple's guidance is not to call `respond()` while `isResponding` is `true`. tsfm queues requests per session and runs them one at a time, so you don't have to check first; a second call waits for the first. That's also why `ConcurrentRequestsError` is nearly unreachable through tsfm.
+
 ## Cleanup
 
 Always dispose sessions when done to release native memory:

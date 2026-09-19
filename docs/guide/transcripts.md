@@ -11,7 +11,7 @@ The **Swift** equivalent is Foundation Models' [`Transcript`](https://developer.
 A transcript is a linear sequence of entries.
 
 ::: info
-The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/documentation/foundationmodels/transcript).
+The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/documentation/foundationmodels/transcript/entry).
 :::
 
 | Role | Description |

@@ -179,7 +179,7 @@ Key event types:
 | `response.incomplete` | Generation stopped early |
 
 ::: warning
-When streaming structured output or tool calls, the full response is generated before any events are emitted. This is because Foundation Models uses constrained generation (a grammar that forces valid JSON), which cannot be interrupted mid-token. Plain text generation is the only mode that streams incrementally as tokens are produced.
+When streaming structured output or tool calls, tsfm generates the full response before emitting any events. That is a tsfm limitation, not the framework's: Apple's `streamResponse(to:generating:)` has yielded partial structured snapshots since macOS 26, but tsfm's native layer doesn't stream them yet. Only plain text streams incrementally through tsfm.
 :::
 
 ### Structured Output
@@ -388,7 +388,7 @@ The `Stream` object supports:
 - **`stream.toReadableStream()`** — convert to a Web `ReadableStream` for HTTP responses
 
 ::: warning
-Structured output and tool call responses are buffered — the model must finish constrained generation before the response is emitted. Only plain text streams token-by-token.
+Structured output and tool call responses are buffered by tsfm until the model finishes; only plain text streams incrementally. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
 :::
 
 ### Chat: Structured Output

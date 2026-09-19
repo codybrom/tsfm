@@ -1,9 +1,9 @@
 # Error Handling
 
-All SDK errors extend `FoundationModelsError`. Generation-specific errors extend `GenerationError`, which itself extends `FoundationModelsError`. TSFM also adds `ServiceCrashedError` and `ToolCallError`.
+All SDK errors extend `FoundationModelsError`. Generation-specific errors extend `GenerationError`, which itself extends `FoundationModelsError`. TSFM also adds `ServiceCrashedError`, `SystemPressureError` and `ToolCallError`.
 
 ::: info
-The **Swift** equivalent is [`LanguageModelSession.GenerationError`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/generationerror).
+The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com/documentation/foundationmodels/languagemodelerror) (macOS 27) together with [`LanguageModelSession.Error`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/error), [`SystemLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/error) and [`PrivateCloudComputeLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel/error). The older `LanguageModelSession.GenerationError` is deprecated in macOS 27; hosts built against older SDKs still receive it, and tsfm maps both to the same classes.
 :::
 
 ## Error Hierarchy
@@ -24,6 +24,7 @@ All errors inherit from `FoundationModelsError`.
 - `RefusalError`
 - `InvalidGenerationSchemaError`
 - `ServiceCrashedError`
+- `SystemPressureError`
 
 **ToolCallError** — a tool's `call()` method threw
 :::
@@ -78,15 +79,17 @@ The model generated output during structured generation, but it couldn't be deco
 
 ### RateLimitedError
 
-Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. Back off and retry after a short delay.
+Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit; macOS 27 generalises it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background, which matters for Node daemons. On macOS 27 the framework's error carries a reset date; tsfm doesn't surface it yet, so back off and retry after a short delay.
 
 ### ConcurrentRequestsError
 
-You called a generation method on a session that's already processing a request. The SDK serializes calls internally via `_enqueue()`, so you shouldn't normally hit this. If you do, check that you're `await`ing calls or use `session.isResponding` to check state before calling.
+Apple says not to call `respond()` on a session while `isResponding` is `true`; doing so in Swift throws this. tsfm queues requests on a session and runs them one at a time instead, so a second `respond()` waits rather than failing, and this error is nearly unreachable through tsfm. If you see it, a session is being driven from outside tsfm's queue (for example through the transcript of a session that's still responding).
 
 ### RefusalError
 
 The model declined to generate a response. This is distinct from `GuardrailViolationError` — refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
+
+Only guided generation (`respondWithSchema()`, `respondWithJsonSchema()`) throws this. For a plain-text `respond()` or `streamResponse()`, a refusal comes back as ordinary text, and Apple says you may not be able to tell a refusal from a normal answer programmatically. So in the common case you won't see `RefusalError` from `respond()`.
 
 ### InvalidGenerationSchemaError
 
@@ -99,6 +102,25 @@ A JSON schema that nests more than 128 levels deep, or that contains itself, is 
 An Apple Intelligence system service has crashed: the model manager, or the safety classifier every request passes through. This is an OS-level issue, not an SDK bug, and it affects every app on the Mac, Apple's `fm` command included.
 
 macOS restarts the service itself, usually within a few minutes. Wait, then create a new session and retry. If it keeps failing, log out and back in, or restart the Mac. The services are protected by System Integrity Protection, so `launchctl` can't restart them.
+
+### SystemPressureError
+
+The system refused to run the model because of the machine's current state,
+most often memory pressure: "Not executed due to current system state
+[\"CriticalMemoryPressure\"], try again later". `err.state` names the state.
+It also covers a request preempted by a higher-priority one (`state:
+"Preempted"`).
+
+Nothing is wrong with your code or the model. It clears on its own, usually
+within a few minutes; retry then, and free memory if it persists. `launchctl`
+can't restart these services while System Integrity Protection is on.
+
+While this lasts, `isAvailable()` still reports `{ available: true }` — it
+describes whether the model is installed and the device eligible, not whether
+the system will serve a request. Two properties do change, and either works as a
+health check: `contextSize` reads `0` instead of its usual value, and `variant`
+drops to a lesser model. Recorded behaviour is in
+`tests/fixtures/service-pressure/`.
 
 ### ToolCallError
 

@@ -6,7 +6,7 @@
 
 <p align="center">
   TypeScript SDK for Apple's <a href="https://developer.apple.com/documentation/foundationmodels">Foundation Models</a> framework.<br>
-  On-device Apple Intelligence in Node.js — No keys. No fees. <i>It just works.</i>
+  Apple Intelligence in Node.js: the on-device model, and Private Cloud Compute. No keys. No fees.
 </p>
 
 <p align="center">
@@ -17,7 +17,8 @@
 
 ---
 
-- On-device inference — your data never leaves the machine
+- On-device inference by default — your data never leaves the machine; opt in to Apple's Private Cloud Compute model when you need more
+- Covers two of the framework's three model paths: `SystemLanguageModel` and `PrivateCloudComputeLanguageModel`, not custom `LanguageModel` implementations ([what tsfm doesn't expose](https://tsfm.dev/guide/getting-started#what-tsfm-doesnt-expose))
 - Streaming text generation
 - Structured output with typed schemas and generation guides
 - Tool calling
@@ -57,7 +58,7 @@ model.dispose();
 
 **[Read the full docs →](https://tsfm.dev/)**
 
-- [Getting Started](https://tsfm.dev/guide/getting-started) — installation, requirements, first steps
+- [Getting Started](https://tsfm.dev/guide/getting-started) — installation, requirements, first steps, and [what tsfm doesn't expose](https://tsfm.dev/guide/getting-started#what-tsfm-doesnt-expose) of the framework
 - [Sessions](https://tsfm.dev/guide/sessions) — text generation, concurrency, cancellation
 - [Streaming](https://tsfm.dev/guide/streaming) — token-by-token response streaming
 - [Structured Output](https://tsfm.dev/guide/structured-output) — typed schemas with generation guides

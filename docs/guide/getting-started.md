@@ -83,9 +83,9 @@ model.dispose();
 
 ## Key Concepts
 
-**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework exposes **SystemLanguageModel**, the **on-device** large language model at the core of Apple Intelligence that runs on Macs, iPhones and iPads with no network required.
+**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework is the API for the language models behind it. As of macOS 27 it exposes three model paths: **`SystemLanguageModel`**, the on-device model that runs on Macs, iPhones and iPads with no network; **`PrivateCloudComputeLanguageModel`**, Apple's larger server model; and any model that conforms to the **`LanguageModel`** protocol, which Apple's own `coreai-models` and `foundation-models-utilities` packages use to plug in other models. tsfm covers the first two.
 
-TSFM basically mirrors the Swift Foundation Models API (same class names, same method signatures, same concepts) with TypeScript translating the same actions to the same underlying model. For the most part, [Apple's own documentation](https://developer.apple.com/documentation/FoundationModels) will translate pretty directly.
+tsfm follows the Swift framework closely in its concepts and most of its names, so [Apple's documentation](https://developer.apple.com/documentation/FoundationModels) is a good reference for how the model behaves. It is not a one-to-one port: some methods, option names and error semantics differ, and parts of the framework aren't exposed. See [Differences from the Swift API](#differences-from-the-swift-api) and [What tsfm doesn't expose](#what-tsfm-doesnt-expose) below.
 
 | SDK class | Role |
 | --- | --- |
@@ -102,6 +102,37 @@ TSFM basically mirrors the Swift Foundation Models API (same class names, same m
 - [Tools](/guide/tools) — Function calling
 - [Error Handling](/guide/error-handling) — Error types and recovery
 - [Chat API Compatibility](/guide/chat-api) — Drop-in Chat API compatible interface
+
+## Differences from the Swift API
+
+Where tsfm and the Swift framework do the same thing differently:
+
+| Swift | tsfm | Note |
+| --- | --- | --- |
+| `respond(to:generating:)` / `respond(to:schema:)` | `respondWithSchema()` / `respondWithJsonSchema()` | Two methods instead of a generic parameter. |
+| A tool that throws ends the request: `respond()` rethrows the error | A tool that throws sends the message back to the model and the request continues | Throw `FailRequestError` from `call()` to get Apple's behavior; the request then rejects with `RequestFailedByToolError`. |
+| `reasoningLevel` on `ContextOptions` | `reasoningLevel` in `GenerationOptions` | One options object. |
+| Guides `maximumCount`, `minimumCount`, `pattern` | `maxItems`, `minItems`, `regex` | Named after JSON Schema. |
+| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary; the exported JSON is Apple's. |
+| No counterpart | `cancel()` also clears tsfm's own request state | Both cancel the native task; tsfm additionally drops its active request and unblocks a waiting stream reader. |
+| Macros `@Generable` and `@Guide` | `generable()` and `GenerationGuide` | Runtime builders instead of compile-time macros. |
+
+## What tsfm doesn't expose
+
+The framework has these; tsfm doesn't, as of 1.0:
+
+- Streaming partial structured snapshots (`streamResponse(to:generating:)`, macOS 26+). tsfm streams text only; structured output is buffered until complete.
+- Dynamic profiles and dynamic instructions (macOS 27), and the history-transform hooks built on them.
+- The `LanguageModel` protocol for custom models.
+- `transcriptErrorHandlingPolicy`.
+- `logFeedbackAttachment`.
+- Non-string tool output, and `Tool.includesSchemaInInstructions`. tsfm tools return a string.
+- `Attachment` orientation, and in-memory images (`CGImage`, `CIImage`, `CVPixelBuffer`). tsfm attaches image files by path.
+- Trained adapters (`SystemLanguageModel.Adapter`).
+- Mutating `Transcript.history`. tsfm transcripts are read, exported and restored, not edited in place.
+- `Response.rawContent` and `Response.transcriptEntries`.
+
+Skills, as used in Apple's utilities package, aren't framework API; they're a pattern built on tools. You can build the same thing today with tools and `anyOf` guides.
 
 ## Building from Source
 

@@ -1,8 +1,8 @@
 # Private Cloud Compute
 
 `PrivateCloudComputeLanguageModel` runs Apple's server model on Private Cloud
-Compute (PCC) instead of on the device. It has a 32K-token context (the
-on-device model has 8K) and can reason before answering. Each user gets a daily
+Compute (PCC) instead of on the device. It has a 32K-token context (larger
+than the on-device model's; read `model.contextSize` for either) and can reason before answering. Each user gets a daily
 request quota.
 
 PCC is opt-in and needs an entitlement that most Node processes won't have, so
@@ -51,9 +51,15 @@ if (available) {
 }
 ```
 
-Everything else works as with the on-device model: streaming, structured output,
-tools, transcripts and `usage`. Regex guides may use the full syntax, including
-character classes, which the on-device model doesn't support.
+Streaming, structured output, tools, transcripts and `usage` work as with the
+on-device model. Regex guides may use the full syntax, including character
+classes, which the on-device model doesn't support.
+
+PCC's guardrails are not the on-device model's: they follow different policies,
+which you can't configure (`SystemLanguageModelGuardrails` is on-device only),
+and they are stricter. In tsfm's tests PCC rejected a benign prompt containing
+"the password is PLUM-42" that the on-device model accepted. Expect
+`GuardrailViolationError` on some prompts the on-device model would answer.
 
 ### Reasoning
 
@@ -69,7 +75,25 @@ const { limitReached, approachingLimit, resetDate } = model.quotaUsage;
 ```
 
 When the quota runs out, requests fail with `PrivateCloudComputeQuotaExceededError`.
-Users can raise their limit with iCloud+.
+Users can raise their limit with iCloud+. `resetDate` is normally `null` while
+the user is well below their limit; expect a date only as they approach it or
+once they've reached it.
+
+### Supported languages
+
+```ts
+const languages = await model.supportedLanguages(); // e.g. ["en-GB", "fr-CA", "de", "ja"]
+if (await model.supportsLocale("ja-JP")) {
+  // ...
+}
+await model.supportsLocale(); // the host's current locale
+```
+
+Note the asymmetry with the on-device model: `SystemLanguageModel.supportedLanguages`
+and `supportsLocale()` are **synchronous**, but on `PrivateCloudComputeLanguageModel`
+both are **asynchronous** (they return a `Promise`). Apple defined them that way —
+`async throws` on PCC, plain on-device — as it did for `contextSize`. On macOS 26
+they resolve to `[]` and `false`.
 
 ## With the Chat and Responses APIs
 
