@@ -395,7 +395,7 @@ function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef
  *   review: { type: "string" },
  * });
  *
- * const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+ * const { content } = await session.respondWithSchema("Review Inception", MovieReview.schema);
  * const review = MovieReview.parse(content);
  * // review.title: string, review.rating: number, review.review: string
  * ```

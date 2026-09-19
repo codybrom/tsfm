@@ -206,7 +206,17 @@ export type Response = {
   parallel_tool_calls: boolean;
   text: ResponseTextConfig;
   truncation: "auto" | "disabled" | null;
-  usage: null;
+  /** Null until the response completes, or when generation failed. */
+  usage: ResponseUsage | null;
+};
+
+/** Token counts, in OpenAI's Responses shape. */
+export type ResponseUsage = {
+  input_tokens: number;
+  input_tokens_details: { cached_tokens: number };
+  output_tokens: number;
+  output_tokens_details: { reasoning_tokens: number };
+  total_tokens: number;
 };
 
 // ---------------------------------------------------------------------------

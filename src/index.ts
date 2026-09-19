@@ -7,6 +7,7 @@ export {
 } from "./core.js";
 
 export { LanguageModelSession } from "./session.js";
+export { ResponseStream, type Response, type Usage } from "./response.js";
 export { type PromptInput, type PromptAttachment } from "./prompt.js";
 
 export {

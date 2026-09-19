@@ -4,6 +4,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
 import { SamplingMode, type GenerationOptions } from "../options.js";
+import type { Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -24,6 +25,7 @@ import {
   describeToolCall,
   formatToolResult,
   toolResultPrompt,
+  toResponseUsage,
   type ToolCallRef,
 } from "./utils.js";
 import type {
@@ -315,6 +317,7 @@ function buildResponse(
   status: "completed" | "failed" | "incomplete",
   error: { code: string; message: string } | null = null,
   incompleteReason?: "max_output_tokens" | "content_filter",
+  usage?: Usage,
 ): Response {
   const outputText = output
     .filter((item): item is ResponseOutputMessage => item.type === "message")
@@ -343,7 +346,7 @@ function buildResponse(
     parallel_tool_calls: params.parallel_tool_calls ?? false,
     text: params.text ?? { format: { type: "text" } },
     truncation: params.truncation ?? null,
-    usage: null,
+    usage: usage ? toResponseUsage(usage) : null,
   };
 }
 
@@ -466,7 +469,9 @@ export class Responses {
       // Tools → structured output with tool schema
       if (tools && tools.length > 0) {
         const schema = buildToolSchema(tools);
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
         const result = parseToolResponse(parsed);
 
@@ -475,9 +480,16 @@ export class Responses {
             result.toolCall.function.name,
             result.toolCall.function.arguments,
           );
-          return buildResponse(params, [fc], "completed");
+          return buildResponse(params, [fc], "completed", null, undefined, usage);
         }
-        return buildResponse(params, [makeOutputMessage(result.content as string)], "completed");
+        return buildResponse(
+          params,
+          [makeOutputMessage(result.content as string)],
+          "completed",
+          null,
+          undefined,
+          usage,
+        );
       }
 
       // Structured output via text.format
@@ -485,17 +497,29 @@ export class Responses {
       if (format?.type === "json_schema") {
         const jsFormat = format as ResponseFormatJsonSchema;
         const schema = jsFormat.schema ?? { type: "object" };
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         return buildResponse(
           params,
           [makeOutputMessage(reorderJson(content.toJson(), schema))],
           "completed",
+          null,
+          undefined,
+          usage,
         );
       }
 
       // Plain text
-      const text = await session.respond(prompt, { options });
-      return buildResponse(params, [makeOutputMessage(text)], "completed");
+      const { content, usage } = await session.respond(prompt, { options });
+      return buildResponse(
+        params,
+        [makeOutputMessage(content)],
+        "completed",
+        null,
+        undefined,
+        usage,
+      );
     } catch (err) {
       if (err instanceof ExceededContextWindowSizeError) {
         return buildResponse(
@@ -546,7 +570,9 @@ export class Responses {
         // Tools → buffer full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
+          const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+            options,
+          });
           const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
           const result = parseToolResponse(parsed);
 
@@ -585,7 +611,7 @@ export class Responses {
               sequence_number: seq++,
             };
 
-            const finalResponse = buildResponse(params, [fc], "completed");
+            const finalResponse = buildResponse(params, [fc], "completed", null, undefined, usage);
             yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
             return;
           }
@@ -593,7 +619,7 @@ export class Responses {
           // Text response from tool schema
           const msg = makeOutputMessage(result.content as string);
           yield* emitTextMessage(msg, 0);
-          const finalResponse = buildResponse(params, [msg], "completed");
+          const finalResponse = buildResponse(params, [msg], "completed", null, undefined, usage);
           yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
           return;
         }
@@ -603,11 +629,13 @@ export class Responses {
         if (format?.type === "json_schema") {
           const jsFormat = format as ResponseFormatJsonSchema;
           const schema = jsFormat.schema ?? { type: "object" };
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
+          const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+            options,
+          });
           const text = reorderJson(content.toJson(), schema);
           const msg = makeOutputMessage(text);
           yield* emitTextMessage(msg, 0);
-          const finalResponse = buildResponse(params, [msg], "completed");
+          const finalResponse = buildResponse(params, [msg], "completed", null, undefined, usage);
           yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
           return;
         }
@@ -638,7 +666,8 @@ export class Responses {
         };
 
         let fullText = "";
-        for await (const delta of session.streamResponse(prompt, { options })) {
+        const stream = session.streamResponse(prompt, { options });
+        for await (const delta of stream) {
           fullText += delta;
           yield {
             type: "response.output_text.delta",
@@ -681,7 +710,14 @@ export class Responses {
           sequence_number: seq++,
         };
 
-        const finalResponse = buildResponse(params, [doneItem], "completed");
+        const finalResponse = buildResponse(
+          params,
+          [doneItem],
+          "completed",
+          null,
+          undefined,
+          stream.usage,
+        );
         yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
       } catch (err) {
         if (err instanceof ExceededContextWindowSizeError) {

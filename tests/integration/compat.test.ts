@@ -21,7 +21,12 @@ describe("Chat API integration", () => {
     expect(typeof response.choices[0].message.content).toBe("string");
     expect(response.choices[0].finish_reason).toBe("stop");
     expect(response.id).toMatch(/^chatcmpl-/);
-    expect(response.usage).toBeNull();
+    // Real token counts from the model.
+    expect(response.usage?.prompt_tokens).toBeGreaterThan(0);
+    expect(response.usage?.completion_tokens).toBeGreaterThan(0);
+    expect(response.usage?.total_tokens).toBe(
+      response.usage!.prompt_tokens + response.usage!.completion_tokens,
+    );
     expect(response.system_fingerprint).toBeNull();
   });
 

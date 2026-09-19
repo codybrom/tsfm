@@ -7,3 +7,6 @@ bool FMSystemLanguageModelSupportsLocale(FMSystemLanguageModelRef _Nonnull model
 
 // LanguageModelSession performance
 void FMLanguageModelSessionPrewarm(FMLanguageModelSessionRef _Nonnull session, const char *_Nullable promptPrefix);
+
+// LanguageModelSession token usage (cumulative); free with FMFreeString
+char *_Nullable FMLanguageModelSessionGetUsageJSON(FMLanguageModelSessionRef _Nonnull session);

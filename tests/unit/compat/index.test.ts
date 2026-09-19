@@ -22,6 +22,25 @@ const { decodeAndFreeStringMock } = vi.hoisted(() => {
 
 const mockFns = createMockFunctions();
 
+/** Feeds two cumulative usage readings (before, after) through the mocks. */
+function withUsageReadings(before: string, after: string): () => void {
+  const readings = [before, after];
+  const original = decodeAndFreeStringMock.getMockImplementation();
+  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => "usage-pointer");
+  decodeAndFreeStringMock.mockImplementation((pointer: unknown) =>
+    pointer === "usage-pointer" ? (readings.shift() ?? null) : (original?.(pointer) ?? null),
+  );
+  return () => {
+    mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+    if (original) decodeAndFreeStringMock.mockImplementation(original);
+  };
+}
+
+const USAGE_BEFORE =
+  '{"input":{"totalTokens":100,"cachedTokens":40},"output":{"totalTokens":20,"reasoningTokens":0}}';
+const USAGE_AFTER =
+  '{"input":{"totalTokens":162,"cachedTokens":64},"output":{"totalTokens":25,"reasoningTokens":0}}';
+
 let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
 
 vi.mock("koffi", () => ({
@@ -207,9 +226,34 @@ describe("Chat API compat layer", () => {
       expect(result.choices[0].message.content).toBe("Hello from Apple Intelligence");
       expect(result.choices[0].message.refusal).toBeNull();
       expect(result.id).toMatch(/^chatcmpl-/);
-      expect(result.usage).toBeNull();
+      expect(result.usage).toEqual({
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        total_tokens: 0,
+        prompt_tokens_details: { cached_tokens: 0 },
+        completion_tokens_details: { reasoning_tokens: 0 },
+      });
       expect(result.system_fingerprint).toBeNull();
       client.close();
+    });
+
+    it("reports the request's token usage in the Chat Completions shape", async () => {
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const result = await client.chat.completions.create({ messages: basicMessages });
+        // The request's usage is the change in the session's cumulative usage.
+        expect(result.usage).toEqual({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+          total_tokens: 67,
+          prompt_tokens_details: { cached_tokens: 24 },
+          completion_tokens_details: { reasoning_tokens: 0 },
+        });
+        client.close();
+      } finally {
+        restore();
+      }
     });
 
     it("disposes session after successful create", async () => {

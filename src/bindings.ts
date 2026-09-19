@@ -278,6 +278,10 @@ function defineFunctions() {
     FMLanguageModelSessionPrewarm: fn(
       "void FMLanguageModelSessionPrewarm(void * session, str promptPrefix)",
     ),
+    // Cumulative token usage as JSON; free with FMFreeString (decodeAndFreeString).
+    FMLanguageModelSessionGetUsageJSON: fn(
+      "void * FMLanguageModelSessionGetUsageJSON(void * session)",
+    ),
 
     // --- Memory ---
     // FMRetain: fn("void FMRetain(void * object)"),

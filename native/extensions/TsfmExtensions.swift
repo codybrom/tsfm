@@ -51,3 +51,35 @@ public func FMLanguageModelSessionPrewarm(
     session.prewarm()
   }
 }
+
+/// The session's cumulative token usage as JSON:
+/// {"input":{"totalTokens":N,"cachedTokens":N},"output":{"totalTokens":N,"reasoningTokens":N}}
+///
+/// The session total is exactly the sum of every response's usage, so callers
+/// that run one request at a time get per-request usage by reading this before
+/// and after. Returns nil only if encoding fails; free the result with FMFreeString.
+@_cdecl("FMLanguageModelSessionGetUsageJSON")
+public func FMLanguageModelSessionGetUsageJSON(
+  session: FMLanguageModelSessionRef
+) -> UnsafeMutablePointer<CChar>? {
+  let session = Unmanaged<LanguageModelSession>.fromOpaque(session).takeUnretainedValue()
+  let usage = session.usage
+  let object: [String: [String: Int]] = [
+    "input": [
+      "totalTokens": usage.input.totalTokenCount,
+      "cachedTokens": usage.input.cachedTokenCount,
+    ],
+    "output": [
+      "totalTokens": usage.output.totalTokenCount,
+      "reasoningTokens": usage.output.reasoningTokenCount,
+    ],
+  ]
+  guard let data = try? JSONSerialization.data(withJSONObject: object),
+        let json = String(data: data, encoding: .utf8)
+  else {
+    return nil
+  }
+  return json.withCString { cString in
+    return UnsafeMutablePointer(strdup(cString))
+  }
+}

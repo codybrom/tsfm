@@ -4,6 +4,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
+import type { Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -20,7 +21,7 @@ import {
 } from "./tools.js";
 import { Stream } from "./stream.js";
 import { Responses } from "./responses.js";
-import { reorderJson, nowSeconds, CompatError } from "./utils.js";
+import { reorderJson, nowSeconds, CompatError, toCompletionUsage } from "./utils.js";
 import type {
   ChatCompletionCreateParams,
   ChatCompletion,
@@ -150,14 +151,16 @@ class Completions {
       // Tools present → use structured output with tool schema
       if (tools && tools.length > 0) {
         const schema = buildToolSchema(tools);
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
         const result = parseToolResponse(parsed);
 
         if (result.type === "tool_call" && result.toolCall) {
-          return buildCompletion(null, "tool_calls", [result.toolCall]);
+          return buildCompletion(null, "tool_calls", [result.toolCall], usage);
         }
-        return buildCompletion(result.content as string, "stop");
+        return buildCompletion(result.content as string, "stop", undefined, usage);
       }
 
       // json_schema response format
@@ -167,13 +170,15 @@ class Completions {
           json_schema: { schema?: JsonSchema };
         };
         const schema = rf.json_schema.schema ?? { type: "object" };
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
-        return buildCompletion(reorderJson(content.toJson(), schema), "stop");
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
+        return buildCompletion(reorderJson(content.toJson(), schema), "stop", undefined, usage);
       }
 
       // Plain text
-      const text = await session.respond(prompt, { options });
-      return buildCompletion(text, "stop");
+      const { content, usage } = await session.respond(prompt, { options });
+      return buildCompletion(content, "stop", undefined, usage);
     } catch (err) {
       if (err instanceof ExceededContextWindowSizeError) {
         return buildCompletion("", "length");
@@ -223,7 +228,7 @@ class Completions {
         // Tools or structured output with streaming: buffer the full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
+          const { content } = await session.respondWithJsonSchema(prompt, schema, { options });
           const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
           const result = parseToolResponse(parsed);
 
@@ -338,6 +343,7 @@ function buildCompletion(
   content: string | null,
   finishReason: "stop" | "length" | "tool_calls" | "content_filter",
   toolCalls?: ChatCompletion["choices"][0]["message"]["tool_calls"],
+  usage?: Usage,
 ): ChatCompletion {
   return {
     id: makeId(),
@@ -356,7 +362,7 @@ function buildCompletion(
         finish_reason: finishReason,
       },
     ],
-    usage: null,
+    usage: usage ? toCompletionUsage(usage) : null,
     system_fingerprint: null,
   };
 }
