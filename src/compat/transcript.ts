@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { JsonObject } from "../schema.js";
 import type { ChatCompletionMessageParam, ChatCompletionMessageToolCall } from "./types.js";
+import { describeToolCall, toolResultPrompt } from "./utils.js";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -129,7 +130,9 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
           : `[Tool result]: ${content}`,
       );
     }
-    normalized = [...messages, { role: "user" as const, content: parts.join("\n") }];
+    const request = messages.slice(0, toolStart).findLast((m) => m.role === "user");
+    const content = toolResultPrompt(parts, request ? extractText(request.content) : null);
+    normalized = [...messages, { role: "user" as const, content }];
   }
 
   const lastMsg = normalized[normalized.length - 1];
@@ -161,7 +164,9 @@ export function messagesToTranscript(messages: ChatCompletionMessageParam[]): Tr
     } else if (msg.role === "assistant") {
       let text: string;
       if (msg.tool_calls && msg.tool_calls.length > 0) {
-        text = JSON.stringify(msg.tool_calls);
+        text = (msg.tool_calls as ChatCompletionMessageToolCall[])
+          .map((tc) => describeToolCall(tc.function.name, tc.function.arguments))
+          .join("\n");
       } else {
         text = extractText(msg.content);
       }

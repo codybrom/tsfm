@@ -86,8 +86,8 @@ describe("messagesToTranscript", () => {
     expect(result.prompt).toBe("And 3+3?");
   });
 
-  // 6. Assistant with tool_calls → response with stringified tool_calls
-  it("assistant with tool_calls stringifies the tool_calls as content", () => {
+  // 6. Assistant with tool_calls → response describing the calls in plain text
+  it("assistant with tool_calls describes the calls in plain text", () => {
     const toolCalls = [
       { id: "call_1", type: "function" as const, function: { name: "myFn", arguments: "{}" } },
     ];
@@ -100,7 +100,27 @@ describe("messagesToTranscript", () => {
     const parsed = JSON.parse(result.transcriptJson);
     const assistantEntry = parsed.transcript.entries[1];
     expect(assistantEntry.role).toBe("response");
-    expect(assistantEntry.contents[0].text).toBe(JSON.stringify(toolCalls));
+    expect(assistantEntry.contents[0].text).toBe("Calling myFn with {}.");
+  });
+
+  // The model echoes raw tool_calls JSON from its history back as an answer
+  it("describes multiple tool calls one per line, never as JSON", () => {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "Do both" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "call_a", type: "function", function: { name: "tool_a", arguments: '{"x":1}' } },
+          { id: "call_b", type: "function", function: { name: "tool_b", arguments: "{}" } },
+        ],
+      },
+      { role: "user", content: "Next" },
+    ];
+    const parsed = JSON.parse(messagesToTranscript(messages).transcriptJson);
+    const text = parsed.transcript.entries[1].contents[0].text;
+    expect(text).toBe('Calling tool_a with {"x":1}.\nCalling tool_b with {}.');
+    expect(text).not.toContain("call_a");
   });
 
   // 7. Tool message → user entry with resolved tool name
@@ -269,7 +289,37 @@ describe("messagesToTranscript", () => {
       { role: "tool", tool_call_id: "unknown", content: "result" },
     ];
     const result = messagesToTranscript(messages);
-    expect(result.prompt).toBe("[Tool result]: result");
+    expect(result.prompt).toBe(
+      "[Tool result]: result\n\nUse the tool result to respond to the request: Do something",
+    );
+  });
+
+  // Without the request restated, the model often answers something unrelated
+  it("restates the request that led to the tool call in the tool-result prompt", () => {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "user", content: "Earlier question" },
+      { role: "assistant", content: "Earlier answer" },
+      { role: "user", content: 'Look up code "alpha"' },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [
+          { id: "call_1", type: "function", function: { name: "lookup", arguments: "{}" } },
+        ],
+      },
+      { role: "tool", tool_call_id: "call_1", content: "XRAY-7749" },
+    ];
+    expect(messagesToTranscript(messages).prompt).toBe(
+      '[Tool result for lookup]: XRAY-7749\n\nUse the tool result to respond to the request: Look up code "alpha"',
+    );
+  });
+
+  it("tool-result prompt is just the results when no user message precedes them", () => {
+    const messages: ChatCompletionMessageParam[] = [
+      { role: "system", content: "Be brief" },
+      { role: "tool", tool_call_id: "unknown", content: "result" },
+    ];
+    expect(messagesToTranscript(messages).prompt).toBe("[Tool result]: result");
   });
 
   // unknown role is silently ignored

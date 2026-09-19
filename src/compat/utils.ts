@@ -61,3 +61,25 @@ export class CompatError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Render a past tool call as a transcript response entry.
+ *
+ * Plain text rather than the OpenAI JSON shape: given a raw tool_calls array in
+ * its history, the model tends to echo that JSON back as its final answer.
+ */
+export function describeToolCall(name: string, args: string): string {
+  return `Calling ${name} with ${args}.`;
+}
+
+/**
+ * Build the prompt for a request that ends in tool results.
+ *
+ * The results alone read as a new, unrelated user turn, and the model often
+ * answers something else. Restating the request that led to the tool call
+ * keeps the reply on it.
+ */
+export function toolResultPrompt(results: string[], request: string | null): string {
+  const text = results.join("\n");
+  return request ? `${text}\n\nUse the tool result to respond to the request: ${request}` : text;
+}

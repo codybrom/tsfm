@@ -743,6 +743,15 @@ describe("Responses API compat layer", () => {
       const prompt = mockFns.FMComposedPromptAddText.mock.calls[0][1] as string;
       expect(prompt).toContain("Tool result");
       expect(prompt).toContain("Rainy, 55F");
+      expect(prompt).toContain("Use the tool result to respond to the request: Get weather");
+
+      // The function_call is described in plain text, not echoed as JSON
+      const json = mockFns.FMTranscriptCreateFromJSONString.mock.calls[0][0] as string;
+      const entries = JSON.parse(json).transcript.entries;
+      expect(entries.map((e: { contents: { text: string }[] }) => e.contents[0].text)).toContain(
+        'Calling get_weather with {"city":"NYC"}.',
+      );
+      expect(json).not.toContain("call_2");
       client.close();
     });
   });

@@ -17,7 +17,13 @@ import {
   type ToolModelOutput,
 } from "./tools.js";
 import { ResponseStream } from "./responses-stream.js";
-import { reorderJson, nowSeconds, CompatError } from "./utils.js";
+import {
+  reorderJson,
+  nowSeconds,
+  CompatError,
+  describeToolCall,
+  toolResultPrompt,
+} from "./utils.js";
 import type {
   ResponseCreateParams,
   Response,
@@ -227,10 +233,11 @@ function inputToTranscript(
         name != null ? `[Tool result for ${name}]: ${out.output}` : `[Tool result]: ${out.output}`,
       );
     }
-    normalized = [
-      ...input,
-      { role: "user" as const, content: parts.join("\n") } as EasyInputMessage,
-    ];
+    const request = (input.slice(0, start) as EasyInputMessage[]).findLast(
+      (m) => m.role === "user",
+    );
+    const content = toolResultPrompt(parts, request ? extractInputText(request.content) : null);
+    normalized = [...input, { role: "user" as const, content } as EasyInputMessage];
   }
 
   // Find the last user message to use as prompt
@@ -272,18 +279,7 @@ function inputToTranscript(
       }
     } else if ((item as ResponseFunctionToolCall).type === "function_call") {
       const fc = item as ResponseFunctionToolCall;
-      entries.push(
-        makeEntry(
-          "response",
-          JSON.stringify([
-            {
-              id: fc.call_id,
-              type: "function",
-              function: { name: fc.name, arguments: fc.arguments },
-            },
-          ]),
-        ),
-      );
+      entries.push(makeEntry("response", describeToolCall(fc.name, fc.arguments)));
     } else if ((item as FunctionCallOutput).type === "function_call_output") {
       const fco = item as FunctionCallOutput;
       const name = resolveCallName(fco.call_id, input);

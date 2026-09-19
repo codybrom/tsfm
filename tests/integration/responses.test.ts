@@ -1,6 +1,12 @@
 import { describe, it, expect, afterAll } from "vitest";
 import Client from "../../src/compat/index.js";
-import type { Response, ResponseStreamEvent } from "../../src/compat/responses-types.js";
+import type {
+  FunctionTool,
+  Response,
+  ResponseOutputFunctionToolCall,
+  ResponseStreamEvent,
+} from "../../src/compat/responses-types.js";
+import { retryAttempts } from "./helpers/retry.js";
 
 const client = new Client();
 afterAll(() => client.close());
@@ -303,4 +309,72 @@ describe("Responses API — standalone", () => {
     expect(parsed.name).toContain("Alice");
     expect(parsed.age).toBe(25);
   });
+
+  it(
+    "multi-turn function calling flow (input → function_call → function_call_output → text)",
+    { timeout: 40_000 },
+    async () => {
+      const tools: FunctionTool[] = [
+        {
+          type: "function",
+          name: "lookup_code",
+          description: "Looks up a secret code for a given key. Always use this tool.",
+          parameters: {
+            type: "object",
+            properties: { key: { type: "string" } },
+            required: ["key"],
+          },
+        },
+      ];
+      const instructions =
+        "You MUST call the lookup_code tool when asked about codes. Never guess.";
+      const request = 'Use the lookup_code tool with key "alpha".';
+
+      const { successes } = await retryAttempts(
+        async () => {
+          const localClient = new Client();
+          try {
+            // Step 1: Get model to call the tool
+            const step1 = (await localClient.responses.create({
+              instructions,
+              input: request,
+              tools,
+            })) as Response;
+            const call = step1.output.find((o) => o.type === "function_call") as
+              ResponseOutputFunctionToolCall | undefined;
+            if (!call) {
+              return { success: false, detail: "Model did not call tool" };
+            }
+
+            // Step 2: Send the function output back and get the final response
+            const step2 = (await localClient.responses.create({
+              instructions,
+              input: [
+                { role: "user", content: request },
+                {
+                  type: "function_call",
+                  name: call.name,
+                  arguments: call.arguments,
+                  call_id: call.call_id,
+                },
+                { type: "function_call_output", call_id: call.call_id, output: "XRAY-7749" },
+              ],
+              tools,
+            })) as Response;
+
+            const reply = step2.output_text;
+            if (reply.includes("XRAY-7749")) {
+              return { success: true, detail: `reply: "${reply.slice(0, 80)}"` };
+            }
+            return { success: false, detail: `reply missing code: "${reply.slice(0, 100)}"` };
+          } finally {
+            localClient.close();
+          }
+        },
+        { maxAttempts: 5, requiredSuccesses: 1, label: "responses multi-turn tools" },
+      );
+
+      expect(successes).toBeGreaterThanOrEqual(1);
+    },
+  );
 });
