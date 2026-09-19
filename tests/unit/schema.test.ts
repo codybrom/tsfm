@@ -17,6 +17,7 @@ import {
   GenerationSchemaProperty,
   afmSchemaFormat,
   generable,
+  jsonNestingDepth,
   type JsonSchema,
 } from "../../src/schema.js";
 import type { NativePointer } from "../../src/bindings.js";
@@ -123,6 +124,15 @@ describe("afmSchemaFormat", () => {
     expect(props.empty).toBeNull();
   });
 
+  it("titles each $defs entry with its key, replacing any other title", () => {
+    const result = afmSchemaFormat({
+      $defs: { Person: { title: "Someone", type: "object", properties: {} } },
+      type: "object",
+      properties: { p: { $ref: "#/$defs/Person" } },
+    });
+    expect((result.$defs as Record<string, JsonSchema>).Person.title).toBe("Person");
+  });
+
   it("recursively normalizes $defs entries", () => {
     const result = afmSchemaFormat({
       $defs: {
@@ -137,7 +147,8 @@ describe("afmSchemaFormat", () => {
       },
     });
     const defs = result.$defs as Record<string, Record<string, unknown>>;
-    expect(defs.Inner.title).toBe("Object");
+    // Apple resolves "#/$defs/Inner" by title, so the title is the key.
+    expect(defs.Inner.title).toBe("Inner");
     expect(defs.Inner.required).toEqual([]);
     expect(defs.Inner.additionalProperties).toBe(false);
     expect(defs.Inner["x-order"]).toEqual(["name"]);
@@ -710,6 +721,86 @@ describe("generable", () => {
     expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("Outer", null);
     expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("inner", null);
     expect(mockFns.FMGenerationSchemaAddReferenceSchema).toHaveBeenCalled();
+    // Typed by the reference schema's name; "object" is an undefined reference.
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "inner",
+      null,
+      "inner",
+      false,
+    );
+  });
+
+  it("names nested reference schemas by path, so repeated keys don't collide", () => {
+    generable("Order", {
+      address: { type: "object", properties: {} },
+      shipping: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      billing: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      shipping_address: { type: "object", properties: {} },
+    });
+    const names = mockFns.FMGenerationSchemaCreate.mock.calls.map((c) => (c as unknown[])[0]);
+    expect(names).toEqual([
+      "Order",
+      "address",
+      "shipping",
+      "shipping_address",
+      "billing",
+      "billing_address",
+      "shipping_address_2",
+    ]);
+    // Each property is typed by its own reference schema.
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
+    expect(types).toContainEqual(["address", "shipping_address"]);
+    expect(types).toContainEqual(["address", "billing_address"]);
+    expect(types).toContainEqual(["shipping_address", "shipping_address_2"]);
+  });
+
+  it("keeps reference schema names out of the scalar type names and \\w", () => {
+    generable("Root", {
+      string: { type: "object", properties: {} },
+      bool: { type: "array", items: { type: "object", properties: {} } },
+      "ship-to": { type: "array", items: { type: "object", properties: {} } },
+    });
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
+    expect(types).toEqual([
+      ["string", "string_2"],
+      ["bool", "array<bool_2>"],
+      ["ship-to", "array<ship_to>"],
+    ]);
+  });
+
+  it("registers every nested reference schema on the root", () => {
+    const original = mockFns.FMGenerationSchemaCreate.getMockImplementation();
+    mockFns.FMGenerationSchemaCreate.mockImplementation(
+      ((name: string) => `schema:${name}`) as never,
+    );
+    try {
+      generable("Root", {
+        a: { type: "object", properties: { b: { type: "object", properties: {} } } },
+        list: {
+          type: "array",
+          items: { type: "object", properties: { c: { type: "object", properties: {} } } },
+        },
+      });
+      // The framework resolves references only from the schema a request uses.
+      const parents = mockFns.FMGenerationSchemaAddReferenceSchema.mock.calls.map(
+        (c) => (c as unknown[])[0],
+      );
+      expect(parents).toEqual(["schema:Root", "schema:Root", "schema:Root", "schema:Root"]);
+    } finally {
+      mockFns.FMGenerationSchemaCreate.mockImplementation(original!);
+    }
   });
 
   it("creates reference schemas for arrays of objects", () => {
@@ -786,5 +877,19 @@ describe("generable", () => {
     void _note;
 
     expect(movie).toBeDefined();
+  });
+});
+
+describe("jsonNestingDepth", () => {
+  it("counts nested objects and arrays", () => {
+    expect(jsonNestingDepth(1)).toBe(0);
+    expect(jsonNestingDepth({})).toBe(1);
+    expect(jsonNestingDepth({ a: [{ b: {} }] })).toBe(4);
+  });
+
+  it("stops counting past the limit, without recursing", () => {
+    let deep: unknown = {};
+    for (let i = 0; i < 100_000; i++) deep = { a: deep };
+    expect(jsonNestingDepth(deep, 10)).toBe(11);
   });
 });

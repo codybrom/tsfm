@@ -14,7 +14,8 @@ export type PropertyType = "string" | "integer" | "number" | "boolean" | "array"
  * Compound type names used by the C bridge. Includes scalar types plus
  * array variants like `"array<string>"`, `"array<integer>"`, etc.
  */
-export type NativeTypeName = PropertyType | `array<${string}>`;
+/** A scalar type, `array<T>`, or the name of a reference schema. */
+export type NativeTypeName = PropertyType | `array<${string}>` | (string & {});
 
 type JsonPrimitive = string | number | boolean | null | undefined;
 
@@ -343,29 +344,87 @@ function arrayElementTypeName(def: PropertyDef): string {
   return def.type; // "string" | "integer" | "number" | "boolean"
 }
 
+/** Where a property sits while `generable()` builds a schema. */
+interface SchemaBuildContext {
+  /** The schema passed to the request; every reference schema is registered on it. */
+  root: GenerationSchema;
+  /** Reference schema names already used under `root`. */
+  usedNames: Set<string>;
+  /** Property names from the root to the property's parent. */
+  path: string[];
+}
+
+/**
+ * Type names the bridge reads as scalars. A reference schema with one of these
+ * names would be built as that scalar instead.
+ */
+const RESERVED_TYPE_NAMES = [
+  "string",
+  "number",
+  "float",
+  "double",
+  "integer",
+  "int",
+  "boolean",
+  "bool",
+];
+
+/**
+ * The name for a nested object's reference schema: its property path joined
+ * with "_" (`shipping_address`), so objects under the same key in different
+ * places don't collide. The framework resolves references by name. Characters
+ * other than letters, digits and "_" become "_", because the bridge matches
+ * `array<Name>` with `\w+`. A name that is reserved or already taken gets a
+ * numeric suffix.
+ */
+function referenceName(ctx: SchemaBuildContext, key: string): string {
+  const base = [...ctx.path, key].join("_").replace(/\W/g, "_") || "_";
+  let name = base;
+  for (let n = 2; ctx.usedNames.has(name); n++) name = `${base}_${n}`;
+  ctx.usedNames.add(name);
+  return name;
+}
+
+/** Builds a nested object's reference schema and registers it on the root. */
+function addReferenceSchema(ctx: SchemaBuildContext, key: string, def: ObjectPropertyDef): string {
+  const name = referenceName(ctx, key);
+  const nested = new GenerationSchema(name, def.description);
+  const inner = { ...ctx, path: [...ctx.path, key] };
+  for (const [childKey, childDef] of Object.entries(def.properties)) {
+    addPropertyDef(nested, childKey, childDef, inner);
+  }
+  // The framework resolves references only from the schema passed to the
+  // request, not from the reference schemas themselves.
+  ctx.root.addReferenceSchema(nested);
+  return name;
+}
+
 /** Recursively adds a property definition to a GenerationSchema. */
-function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef): void {
+function addPropertyDef(
+  schema: GenerationSchema,
+  name: string,
+  def: PropertyDef,
+  ctx: SchemaBuildContext,
+): void {
   if (def.type === "object") {
-    const nested = new GenerationSchema(name, def.description);
-    for (const [key, nestedDef] of Object.entries(def.properties)) {
-      addPropertyDef(nested, key, nestedDef);
-    }
-    schema.addReferenceSchema(nested);
-    schema.addProperty(new GenerationSchemaProperty(name, "object", { optional: def.optional }));
+    // The property's type is the reference schema's name, as for arrays of
+    // objects below. Typing it "object" leaves an undefined reference.
+    const typeName = addReferenceSchema(ctx, name, def);
+    schema.addProperty(
+      new GenerationSchemaProperty(name, typeName, {
+        description: def.description,
+        optional: def.optional,
+      }),
+    );
   } else if (def.type === "array") {
     // Build compound type name like "array<string>" or "array<Name>" to match
     // the convention expected by Apple's C bridge (see python-apple-fm-sdk).
-    const elementType = arrayElementTypeName(def.items);
-    const typeName: NativeTypeName = `array<${elementType === "object" ? name : elementType}>`;
-    if (def.items.type === "object") {
-      const itemSchema = new GenerationSchema(name, def.items.description);
-      for (const [key, nestedDef] of Object.entries(def.items.properties)) {
-        addPropertyDef(itemSchema, key, nestedDef);
-      }
-      schema.addReferenceSchema(itemSchema);
-    }
+    const elementType =
+      def.items.type === "object"
+        ? addReferenceSchema(ctx, name, def.items)
+        : arrayElementTypeName(def.items);
     schema.addProperty(
-      new GenerationSchemaProperty(name, typeName, {
+      new GenerationSchemaProperty(name, `array<${elementType}>`, {
         description: def.description,
         optional: def.optional,
         guides: def.guides,
@@ -406,8 +465,13 @@ export function generable<const T extends Record<string, PropertyDef>>(
   description?: string,
 ): Generable<T> {
   const schema = new GenerationSchema(name, description);
+  const ctx: SchemaBuildContext = {
+    root: schema,
+    usedNames: new Set([name, ...RESERVED_TYPE_NAMES]),
+    path: [],
+  };
   for (const [key, def] of Object.entries(properties)) {
-    addPropertyDef(schema, key, def);
+    addPropertyDef(schema, key, def, ctx);
   }
   return {
     schema,
@@ -421,6 +485,37 @@ export function generable<const T extends Record<string, PropertyDef>>(
 // ---------------------------------------------------------------------------
 // JSON Schema normalization for Apple Foundation Models C API
 // ---------------------------------------------------------------------------
+
+/**
+ * The deepest JSON nesting a schema may have. Apple's framework decodes a
+ * schema recursively on a background thread with a small stack, and a schema
+ * nested a few hundred levels deep overflows it, which kills the process
+ * (Swift can't catch a stack overflow). Real schemas are nowhere near this.
+ *
+ * @internal
+ */
+export const MAX_SCHEMA_DEPTH = 128;
+
+/**
+ * Returns how deeply `value` nests objects and arrays, counting up to `limit`
+ * and stopping there. Iterative, so hostile input can't overflow the JS stack.
+ *
+ * @internal
+ */
+export function jsonNestingDepth(value: unknown, limit = Infinity): number {
+  let deepest = 0;
+  const stack: Array<[unknown, number]> = [[value, 1]];
+  while (stack.length > 0) {
+    const [node, depth] = stack.pop()!;
+    if (node === null || typeof node !== "object") continue;
+    if (depth > deepest) {
+      deepest = depth;
+      if (deepest > limit) return deepest;
+    }
+    for (const child of Object.values(node)) stack.push([child, depth + 1]);
+  }
+  return deepest;
+}
 
 /**
  * Normalize a JSON Schema object for the Foundation Models C API.
@@ -440,7 +535,12 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
     const defs = result.$defs as Record<string, JsonSchema>;
     const normalized: Record<string, JsonSchema> = {};
     for (const [key, value] of Object.entries(defs)) {
-      normalized[key] = value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+      // Apple resolves "#/$defs/<key>" by the definition's title, so the title
+      // must be its key; otherwise every $ref is an undefined reference.
+      normalized[key] =
+        value && typeof value === "object"
+          ? afmSchemaFormat({ ...value, title: key }, false)
+          : value;
     }
     result.$defs = normalized;
   }
