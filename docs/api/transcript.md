@@ -11,7 +11,7 @@ const transcript = session.transcript;
 ```
 
 ::: warning
-Access the transcript before calling `session.dispose()`. The transcript reads from the native session pointer.
+Export the transcript before calling `session.dispose()`. The transcript reads from the native session, and throws `FoundationModelsError` once the session is disposed.
 :::
 
 ## Methods

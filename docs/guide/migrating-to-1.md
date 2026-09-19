@@ -93,6 +93,19 @@ and `reasoningLevel`. It's opt-in and needs a host signed with Apple's PCC
 entitlement; plain `node` can't use it. See
 [Private Cloud Compute](/guide/private-cloud-compute).
 
+## Safer lifetimes and schemas
+
+- Reading a session's transcript after `session.dispose()` throws
+  `FoundationModelsError`. It used to read freed memory and could crash.
+- Creating a session with a disposed `SystemLanguageModel` throws. It used to
+  fall back to the default model silently.
+- Nested objects in `generable()` work. They used to fail with an undefined
+  reference.
+- `$ref` to `$defs` in JSON schemas resolves. Each definition's `title` is set
+  to its key, which Apple requires.
+- Schemas Apple's framework can't build throw `InvalidGenerationSchemaError`
+  instead of `GenerationError` with code 255.
+
 ## Also new
 
 - `npx tsfm doctor` checks whether a machine can run tsfm.

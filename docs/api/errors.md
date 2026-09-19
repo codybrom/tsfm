@@ -44,7 +44,7 @@ FoundationModelsError
 | `RateLimitedError` | 7 | Too many requests |
 | `ConcurrentRequestsError` | 8 | Session already responding |
 | `RefusalError` | 9 | Model declined to answer |
-| `InvalidGenerationSchemaError` | 10 | Malformed schema |
+| `InvalidGenerationSchemaError` | 10 | Malformed schema, including an undefined `$ref` or a JSON schema nested more than 128 levels deep |
 | `InvalidArgumentError` | 11 | The native bridge rejected an argument, such as a null pointer |
 | `TimeoutError` | 12 | The model didn't finish in time¹ |
 | `UnsupportedCapabilityError` | 13 | The request needs a capability the model doesn't have¹ |

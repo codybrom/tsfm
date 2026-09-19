@@ -110,5 +110,5 @@ resumed.dispose();
 ```
 
 ::: warning
-You must access `session.transcript` *before* calling `session.dispose()`. Transcripts are read from the native session pointer and will be lost when dispose runs.
+You must export `session.transcript` *before* calling `session.dispose()`. Transcripts are read from the native session, and after dispose `toJson()`, `toDict()` and `entries()` throw `FoundationModelsError`.
 :::
