@@ -30,7 +30,11 @@ jobs:
     # Must be macOS: prepublishOnly runs scripts/build-native.sh, which compiles
     # the Swift bridge and needs Xcode 26.4+. On a Linux runner this fails deep
     # in the build rather than at publish time.
-    runs-on: macos-26
+    #
+    # xcode-27 builds against the macOS 27 SDK, which prompt attachments need.
+    # The deployment target stays macOS 26, and the Verify step below fails the
+    # publish if the dylib would not load there.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
 
@@ -71,8 +75,7 @@ jobs:
 
       - name: Verify the native library made it into the package
         run: |
-          test -f native/libFoundationModels.dylib || { echo "::error::dylib missing"; exit 1; }
-          file native/libFoundationModels.dylib
+          bash scripts/verify-native.sh --attachments
           npm pack --dry-run
 
       - name: Publish to npm

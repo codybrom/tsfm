@@ -46,9 +46,9 @@ await session.respond({
 });
 ```
 
-Attachments require **macOS 27** at runtime, and a native library built against
-the macOS 27 SDK. The bundled library is built on macOS 26, so today every
-attachment is rejected with a `PromptAttachmentError`:
+Attachments require **macOS 27** at runtime. The bundled library is built
+against the macOS 27 SDK and still loads on macOS 26, where each attachment is
+rejected with a `PromptAttachmentError`:
 
 ```ts
 try {
@@ -60,8 +60,9 @@ try {
 }
 ```
 
-Rebuilding on an Xcode that ships the macOS 27 SDK enables them with no code
-change. Plain string prompts are unaffected.
+If you build the library from source, use Xcode 27 or later. An older Xcode
+builds a library without attachment support, and every attachment is rejected
+with `unsupported-sdk`. Plain string prompts are unaffected.
 
 ### `respondWithSchema()`
 
