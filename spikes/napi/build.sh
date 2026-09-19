@@ -3,7 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 root="$(cd ../.. && pwd)"
-node_include="$(dirname "$(dirname "$(readlink -f "$(command -v node)")")")/include/node"
+# Ask Node where it lives: macOS readlink only gained -f in 12.3, and version
+# managers put node behind symlinks.
+node_include="$(node -p 'require("path").resolve(require("fs").realpathSync(process.execPath), "../../include/node")')"
 mkdir -p build
 # For the editor's clang (clangd and SourceKit-LSP read this). Gitignored: it
 # holds this machine's paths.

@@ -239,8 +239,15 @@ static char *get_string(napi_env env, napi_value value) {
     return NULL;
   }
   char *text = malloc(length + 1);
-  if (!text) return NULL;
-  napi_get_value_string_utf8(env, value, text, length + 1, &length);
+  if (!text) {
+    napi_throw_error(env, NULL, "tsfm-napi: out of memory");
+    return NULL;
+  }
+  if (napi_get_value_string_utf8(env, value, text, length + 1, &length) != napi_ok) {
+    free(text);
+    napi_throw_error(env, NULL, "tsfm-napi: couldn't read the string");
+    return NULL;
+  }
   return text;
 }
 
@@ -255,6 +262,11 @@ static napi_value create_session(napi_env env, napi_callback_info info) {
     if (type == napi_string && !(instructions = get_string(env, argv[0]))) return NULL;
   }
   SessionBox *box = calloc(1, sizeof(SessionBox));
+  if (!box) {
+    free(instructions);
+    napi_throw_error(env, NULL, "tsfm-napi: out of memory");
+    return NULL;
+  }
   box->ref = FMLanguageModelSessionCreateFromSystemLanguageModel(NULL, instructions, NULL, 0);
   free(instructions);
   napi_value handle;
@@ -286,6 +298,10 @@ static napi_value dispose_session(napi_env env, napi_callback_info info) {
 static Request *start_request(napi_env env, SessionBox *box, napi_value js_callback,
                               bool is_stream) {
   Request *r = calloc(1, sizeof(Request));
+  if (!r) {
+    napi_throw_error(env, NULL, "tsfm-napi: out of memory");
+    return NULL;
+  }
   atomic_init(&r->refs, 2);  // native side + threadsafe function
   r->is_stream = is_stream;
   r->env = env;
