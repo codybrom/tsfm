@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { SystemLanguageModel } from "../core.js";
+import { PrivateCloudComputeLanguageModel } from "../pcc.js";
 import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
-import type { Usage } from "../response.js";
+import { emptyUsage, type ResponseStream, type Usage } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -21,6 +22,13 @@ import {
 } from "./tools.js";
 import { Stream } from "./stream.js";
 import { Responses } from "./responses.js";
+import {
+  SYSTEM_MODEL,
+  PCC_MODEL,
+  compatModelName,
+  type CompatModel,
+  type CompatModelName,
+} from "./models.js";
 import { reorderJson, nowSeconds, CompatError, toCompletionUsage } from "./utils.js";
 import type {
   ChatCompletionCreateParams,
@@ -35,7 +43,11 @@ export { Responses } from "./responses.js";
 export * from "./types.js";
 export * from "./responses-types.js";
 
-export const MODEL_DEFAULT = "SystemLanguageModel";
+export const MODEL_DEFAULT = SYSTEM_MODEL;
+export { SYSTEM_MODEL, PCC_MODEL, type CompatModelName } from "./models.js";
+
+/** Returns the model instance for a model name. */
+type ModelProvider = (name: CompatModelName) => CompatModel;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -63,9 +75,9 @@ function makeId(): string {
 // ---------------------------------------------------------------------------
 
 class Completions {
-  private _getModel: () => SystemLanguageModel;
+  private _getModel: ModelProvider;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: ModelProvider) {
     this._getModel = getModel;
   }
 
@@ -130,14 +142,17 @@ class Completions {
 
     // Create session from transcript
     const transcript = Transcript.fromJson(transcriptStr);
-    const model = this._getModel();
+    const modelName = compatModelName(params.model);
+    const model = this._getModel(modelName);
     const session = LanguageModelSession.fromTranscript(transcript, { model });
 
     if (params.stream) {
-      return this._createStream(session, prompt, options, tools);
+      const includeUsage = params.stream_options?.include_usage === true;
+      return this._createStream(session, prompt, options, modelName, includeUsage, tools);
     }
 
-    return this._createCompletion(session, prompt, options, params, tools);
+    const completion = await this._createCompletion(session, prompt, options, params, tools);
+    return { ...completion, model: modelName };
   }
 
   private async _createCompletion(
@@ -215,27 +230,51 @@ class Completions {
     session: LanguageModelSession,
     prompt: string,
     options: GenerationOptions,
+    modelName: CompatModelName,
+    includeUsage: boolean,
     tools?: ChatCompletionTool[],
   ): Stream {
     const id = makeId();
     const created = nowSeconds();
+    const chunk = (
+      delta: ChatCompletionChunk["choices"][0]["delta"],
+      finishReason: ChatCompletionChunk["choices"][0]["finish_reason"],
+    ): ChatCompletionChunk => ({
+      ...makeChunk(id, created, delta, finishReason),
+      model: modelName,
+    });
+
+    // The request's usage, once known. A text stream sets it even when it
+    // ends with an error that maps to a finish_reason.
+    let usage: Usage | undefined;
 
     async function* generate(): AsyncGenerator<ChatCompletionChunk> {
+      yield* generateChoices();
+      if (includeUsage) {
+        yield {
+          ...chunk({}, null),
+          choices: [],
+          usage: toCompletionUsage(usage ?? emptyUsage()),
+        };
+      }
+    }
+
+    async function* generateChoices(): AsyncGenerator<ChatCompletionChunk> {
+      let stream: ResponseStream | undefined;
       try {
         // First chunk: role announcement
-        yield makeChunk(id, created, { role: "assistant", content: "" }, null);
+        yield chunk({ role: "assistant", content: "" }, null);
 
         // Tools or structured output with streaming: buffer the full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
-          const { content } = await session.respondWithJsonSchema(prompt, schema, { options });
-          const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
+          const response = await session.respondWithJsonSchema(prompt, schema, { options });
+          usage = response.usage;
+          const parsed = JSON.parse(response.content.toJson()) as ToolModelOutput;
           const result = parseToolResponse(parsed);
 
           if (result.type === "tool_call" && result.toolCall) {
-            yield makeChunk(
-              id,
-              created,
+            yield chunk(
               {
                 tool_calls: [
                   {
@@ -251,37 +290,40 @@ class Completions {
               },
               null,
             );
-            yield makeChunk(id, created, {}, "tool_calls");
+            yield chunk({}, "tool_calls");
           } else {
-            yield makeChunk(id, created, { content: result.content as string }, null);
-            yield makeChunk(id, created, {}, "stop");
+            yield chunk({ content: result.content as string }, null);
+            yield chunk({}, "stop");
           }
           return;
         }
 
         // Plain text streaming
-        for await (const delta of session.streamResponse(prompt, { options })) {
-          yield makeChunk(id, created, { content: delta }, null);
+        stream = session.streamResponse(prompt, { options });
+        for await (const delta of stream) {
+          yield chunk({ content: delta }, null);
         }
+        usage = stream.usage;
 
         // Final chunk
-        yield makeChunk(id, created, {}, "stop");
+        yield chunk({}, "stop");
       } catch (err) {
+        usage = stream?.usage;
         // Map errors to finish_reason chunks
         if (err instanceof ExceededContextWindowSizeError) {
-          yield makeChunk(id, created, {}, "length");
+          yield chunk({}, "length");
           return;
         }
         if (err instanceof RefusalError) {
-          yield makeChunk(id, created, { refusal: err.message }, null);
-          yield makeChunk(id, created, {}, "stop");
+          yield chunk({ refusal: err.message }, null);
+          yield chunk({}, "stop");
           return;
         }
         if (err instanceof RateLimitedError) {
           throw new CompatError(err.message, 429);
         }
         if (err instanceof GuardrailViolationError) {
-          yield makeChunk(id, created, {}, "content_filter");
+          yield chunk({}, "content_filter");
           return;
         }
         throw err;
@@ -295,7 +337,7 @@ class Completions {
 class Chat {
   completions: Completions;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: ModelProvider) {
     this.completions = new Completions(getModel);
   }
 }
@@ -313,21 +355,35 @@ class Chat {
  * output, and tool calling. Each call is stateless: the input is replayed
  * into a native transcript, generation runs, and the session is auto-disposed.
  *
- * Call `close()` when done to release the underlying model.
+ * Requests use the on-device model unless `model` is
+ * `"PrivateCloudComputeLanguageModel"`, which needs Apple's PCC entitlement on
+ * the host process (see the Private Cloud Compute guide).
+ *
+ * Call `close()` when done to release the underlying models.
  */
 export default class Client {
   chat: Chat;
   responses: Responses;
   private _model: SystemLanguageModel;
+  private _pccModel: PrivateCloudComputeLanguageModel | null = null;
 
   constructor() {
     this._model = new SystemLanguageModel();
-    this.chat = new Chat(() => this._model);
-    this.responses = new Responses(() => this._model);
+    const getModel: ModelProvider = (name) => (name === PCC_MODEL ? this._pcc() : this._model);
+    this.chat = new Chat(getModel);
+    this.responses = new Responses(getModel);
+  }
+
+  /** Created on first use, so clients that stay on-device never touch PCC. */
+  private _pcc(): PrivateCloudComputeLanguageModel {
+    this._pccModel ??= new PrivateCloudComputeLanguageModel();
+    return this._pccModel;
   }
 
   close(): void {
     this._model.dispose();
+    this._pccModel?.dispose();
+    this._pccModel = null;
   }
 
   [Symbol.dispose](): void {

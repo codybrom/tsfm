@@ -431,6 +431,118 @@ describe("Chat API compat layer", () => {
     });
   });
 
+  describe("streaming — include_usage", () => {
+    it("ends with a usage chunk when include_usage is true", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+
+        const last = chunks[chunks.length - 1];
+        expect(last.choices).toEqual([]);
+        expect(last.usage).toEqual({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+          total_tokens: 67,
+          prompt_tokens_details: { cached_tokens: 24 },
+          completion_tokens_details: { reasoning_tokens: 0 },
+        });
+        // Every other chunk has usage: null, and the one before it finishes the choice.
+        expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("stop");
+        client.close();
+      } finally {
+        restore();
+      }
+    });
+
+    it("sends no usage chunk by default", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        stream: true,
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      expect(chunks.every((c) => c.usage === null && c.choices.length === 1)).toBe(true);
+      client.close();
+    });
+
+    it("still reports usage after a mapped error", async () => {
+      // Status 1 = ExceededContextWindowSizeError
+      simulateStreamError(1, "Context window exceeded");
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
+      expect(chunks[chunks.length - 1].usage).not.toBeNull();
+      client.close();
+    });
+  });
+
+  describe("Private Cloud Compute", () => {
+    it("uses the PCC model and passes reasoning_effort as reasoning_level", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "PrivateCloudComputeLanguageModel",
+        reasoning_effort: "high",
+      });
+
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).toHaveBeenCalledTimes(1);
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string;
+      expect(JSON.parse(optionsJson)).toMatchObject({ reasoning_level: "deep" });
+
+      client.close();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-pcc-pointer");
+    });
+
+    it("creates the PCC model once and only when asked for", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      await client.chat.completions.create({ messages: basicMessages });
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).not.toHaveBeenCalled();
+
+      const pcc = { messages: basicMessages, model: "PrivateCloudComputeLanguageModel" };
+      await client.chat.completions.create(pcc);
+      await client.chat.completions.create(pcc);
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).toHaveBeenCalledTimes(1);
+      client.close();
+    });
+
+    it("names the PCC model on stream chunks", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "PrivateCloudComputeLanguageModel",
+        stream: true,
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      expect(chunks.every((c) => c.model === "PrivateCloudComputeLanguageModel")).toBe(true);
+      client.close();
+    });
+  });
+
   describe("tools — non-streaming", () => {
     it("returns tool_calls when model decides to call a tool", async () => {
       simulateStructuredSuccess({

@@ -1,5 +1,6 @@
 import { SamplingMode, type GenerationOptions } from "../options.js";
 import type { ChatCompletionCreateParams } from "./types.js";
+import { compatModelName, mapReasoningEffort, warnOnUnknownModel } from "./models.js";
 
 /** Params accepted for type compat but not supported by Apple Foundation Models. Warned at runtime. */
 const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
@@ -15,11 +16,9 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
   "store",
   "metadata",
   "prediction",
-  "reasoning_effort",
   "audio",
   "modalities",
   "user",
-  "stream_options",
   "verbosity",
   "web_search_options",
   "prompt_cache_key",
@@ -31,17 +30,22 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
 
 /**
  * Maps ChatCompletionCreateParams into tsfm's GenerationOptions.
- * Emits console.warn for unsupported params and non-standard model names.
+ * Emits console.warn for unsupported params and unknown model names.
+ *
+ * `reasoning_effort` maps to `reasoningLevel` when `model` is
+ * `"PrivateCloudComputeLanguageModel"`; the on-device model doesn't reason.
  */
 export function mapParams(params: Partial<ChatCompletionCreateParams>): GenerationOptions {
   const options: GenerationOptions = {};
 
-  // Warn on non-standard model names
-  if (params.model !== undefined && params.model !== "SystemLanguageModel") {
-    console.warn(
-      `[tsfm compat] Model "${params.model}" is not supported. Use "SystemLanguageModel" or omit the model field.`,
-    );
-  }
+  warnOnUnknownModel(params.model);
+
+  const reasoningLevel = mapReasoningEffort(
+    params.reasoning_effort,
+    compatModelName(params.model),
+    "reasoning_effort",
+  );
+  if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;
 
   // temperature — independent of sampling mode
   if (params.temperature != null) {
@@ -77,6 +81,16 @@ export function mapParams(params: Partial<ChatCompletionCreateParams>): Generati
       `[tsfm compat] Parameter "tool_choice" value "${typeof params.tool_choice === "string" ? params.tool_choice : "object"}" is not supported. ` +
         `Apple Foundation Models always uses "auto" tool selection. The parameter will be ignored.`,
     );
+  }
+
+  // Only include_usage is supported; Chat Completions has no other stream option.
+  const streamOptions = params.stream_options as Record<string, unknown> | null | undefined;
+  for (const key of Object.keys(streamOptions ?? {})) {
+    if (key !== "include_usage" && streamOptions?.[key] != null) {
+      console.warn(
+        `[tsfm compat] Parameter "stream_options.${key}" is not supported and will be ignored.`,
+      );
+    }
   }
 
   // Warn on unsupported params that are non-null

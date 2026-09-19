@@ -218,6 +218,7 @@ export type ChatCompletionChunk = {
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
-  usage: null;
+  /** Set only on the final chunk, when `stream_options.include_usage` is true; its `choices` is empty. */
+  usage: CompletionUsage | null;
   system_fingerprint: null;
 };

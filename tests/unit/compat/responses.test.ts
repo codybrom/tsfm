@@ -428,6 +428,44 @@ describe("Responses API compat layer", () => {
     });
   });
 
+  describe("Private Cloud Compute", () => {
+    it("uses the PCC model and maps reasoning.effort to reasoning_level", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      const result = await client.responses.create({
+        input: "test",
+        model: "PrivateCloudComputeLanguageModel",
+        reasoning: { effort: "low" },
+      });
+
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string;
+      expect(JSON.parse(optionsJson)).toMatchObject({ reasoning_level: "light" });
+      client.close();
+    });
+
+    it("warns and ignores reasoning for the on-device model, and on reasoning.summary", async () => {
+      simulateRespondSuccess("Hi");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const client = new Client();
+      const result = await client.responses.create({
+        input: "test",
+        reasoning: { effort: "high", summary: "auto" },
+      });
+
+      expect(result.model).toBe("SystemLanguageModel");
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"reasoning.effort"'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"reasoning.summary"'));
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string | null;
+      expect(optionsJson ? JSON.parse(optionsJson) : {}).not.toHaveProperty("reasoning_level");
+      warnSpy.mockRestore();
+      client.close();
+    });
+  });
+
   describe("unsupported param warnings", () => {
     it("warns on unsupported model name", async () => {
       simulateRespondSuccess("test");
