@@ -34,17 +34,8 @@ jobs:
       - run: npx vitest run tests/unit --coverage
 
   build-dylib:
-    # macos-26 builds against the macOS 26 SDK (no attachments). xcode-27 builds
-    # the way publish.yml does: macOS 27 SDK with attachments, still loadable on 26.
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-26
-            verify-args: ""
-          - runner: xcode-27
-            verify-args: --attachments
-    runs-on: ${{ matrix.runner }}
+    # Builds the way publish.yml does: Xcode 27, macOS 27 SDK and deployment target.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
       - name: Build native dylib from source
@@ -53,5 +44,5 @@ jobs:
           bash scripts/build-native.sh
       - name: Verify dylib
         run: |
-          bash scripts/verify-native.sh ${{ matrix.verify-args }}
+          bash scripts/verify-native.sh
           otool -L native/libFoundationModels.dylib
