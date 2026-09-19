@@ -53,7 +53,7 @@ console.log(completion.choices[0].message.content);
 client.close();
 ```
 
-If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is that the `model` param can be omitted or set to `"SystemLanguageModel"`
+If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute).
 
 ## What TSFM Supports
 
@@ -69,7 +69,37 @@ Both APIs support the same core capabilities:
 | `temperature`, `max_output_tokens` | `temperature`, `max_output_tokens` | `temperature`, `max_tokens` / `max_completion_tokens` | Full |
 | `top_p`, `seed` | `top_p`, `seed` | `top_p`, `seed` | Full |
 | Image/audio content | `input_image`, `input_file` | Image URLs | Not supported (warns) |
-| `usage` / token counts | `usage` | `usage` | Full, except Chat Completions streaming (`stream_options.include_usage` isn't supported yet) |
+| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full |
+| Reasoning effort | `reasoning: { effort }` | `reasoning_effort` | Private Cloud Compute only |
+
+### Private Cloud Compute
+
+Set `model` to `"PrivateCloudComputeLanguageModel"` to send a request to Apple's
+[Private Cloud Compute](/guide/private-cloud-compute) model instead of the
+on-device one. The process running your code needs Apple's PCC entitlement;
+without it, the request throws `PrivateCloudComputeEntitlementError`. The client
+creates the PCC model the first time a request asks for it, and `close()`
+releases it.
+
+PCC can reason before it answers. The reasoning effort maps to `reasoningLevel`:
+
+| Effort | `reasoningLevel` |
+| --- | --- |
+| `"minimal"`, `"low"` | `"light"` |
+| `"medium"` | `"moderate"` |
+| `"high"`, `"xhigh"` | `"deep"` |
+| `"none"` | not set |
+
+```ts
+const completion = await client.chat.completions.create({
+  model: "PrivateCloudComputeLanguageModel",
+  reasoning_effort: "medium",
+  messages: [{ role: "user", content: "Plan a three-day trip to Kyoto." }],
+});
+```
+
+The on-device model doesn't reason, so a reasoning effort sent to it is ignored
+with a warning. `reasoning.summary` isn't supported.
 
 ---
 
@@ -335,6 +365,22 @@ for await (const chunk of stream) {
 }
 ```
 
+To get the request's token usage, set `stream_options: { include_usage: true }`.
+The stream then ends with one more chunk whose `choices` is empty and whose
+`usage` is set; every other chunk has `usage: null`.
+
+```ts
+const stream = await client.chat.completions.create({
+  messages: [{ role: "user", content: "Tell me a story" }],
+  stream: true,
+  stream_options: { include_usage: true },
+});
+
+for await (const chunk of stream) {
+  if (chunk.usage) console.log(chunk.usage.total_tokens);
+}
+```
+
 The `Stream` object supports:
 
 - **`for await...of`** — iterates chunks, auto-closes on completion or `break`
@@ -448,6 +494,7 @@ Under the hood, tool calling uses structured output with a discriminated schema.
 | `max_tokens` / `max_completion_tokens` | `GenerationOptions.maximumResponseTokens` (`max_completion_tokens` takes priority) |
 | `top_p` | `SamplingMode.random({ probabilityThreshold })` |
 | `seed` | `SamplingMode.random({ seed })` |
+| `reasoning_effort` | `GenerationOptions.reasoningLevel` (Private Cloud Compute only; see [above](#private-cloud-compute)) |
 
 ```ts
 const response = await client.chat.completions.create({

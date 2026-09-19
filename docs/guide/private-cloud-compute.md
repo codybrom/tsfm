@@ -67,6 +67,13 @@ const { limitReached, approachingLimit, resetDate } = model.quotaUsage;
 When the quota runs out, requests fail with `PrivateCloudComputeQuotaExceededError`.
 Users can raise their limit with iCloud+.
 
+## With the Chat and Responses APIs
+
+The compatibility client sends a request to PCC when its `model` is
+`"PrivateCloudComputeLanguageModel"`, and maps `reasoning_effort` (or
+`reasoning.effort`) to `reasoningLevel`. See
+[Chat API: Private Cloud Compute](/guide/chat-api#private-cloud-compute).
+
 ## Errors
 
 | Error | When |

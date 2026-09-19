@@ -8,7 +8,7 @@ import Client, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/chat";
 
 ## Client
 
-Main client class. Provides Chat-style and Responses-style API interfaces backed by on-device Apple Intelligence.
+Main client class. Provides Chat-style and Responses-style API interfaces backed by on-device Apple Intelligence, or by Private Cloud Compute when a request sets `model: "PrivateCloudComputeLanguageModel"`.
 
 ### Constructor
 
@@ -29,7 +29,7 @@ No arguments. No API key needed.
 
 #### `close()`
 
-Releases the native model pointer. Call when you're done with the client.
+Releases the native models (the on-device model, and the Private Cloud Compute model if a request used it). Call when you're done with the client.
 
 ```ts
 client.close(): void
@@ -62,7 +62,7 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `input` | `string \| ResponseInputItem[]` | Yes | Text prompt or array of input items |
-| `model` | `string` | No | Ignored. Always uses on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. Other names warn and use the on-device model. |
 | `instructions` | `string` | No | System instructions |
 | `stream` | `boolean` | No | Enable streaming |
 | `temperature` | `number` | No | Sampling temperature |
@@ -72,8 +72,9 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | `tools` | `FunctionTool[]` | No | Tool definitions |
 | `tool_choice` | `string \| object` | No | Accepted but ignored |
 | `text` | `ResponseTextConfig` | No | Structured output configuration |
+| `reasoning` | `{ effort?, summary? }` | No | `effort` maps to `reasoningLevel` for Private Cloud Compute; ignored with a warning for the on-device model. `summary` isn't supported. |
 
-All other params (`previous_response_id`, `conversation`, `store`, `truncation`, `metadata`, `reasoning`, etc.) are accepted but ignored with a runtime warning.
+All other params (`previous_response_id`, `conversation`, `store`, `truncation`, `metadata`, etc.) are accepted but ignored with a runtime warning.
 
 ---
 
@@ -186,7 +187,7 @@ Only `json_schema` triggers constrained generation.
   id: string;                    // "resp_<uuid>"
   object: "response";
   created_at: number;            // Unix timestamp (seconds)
-  model: string;                 // "SystemLanguageModel"
+  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel"
   output: ResponseOutputItem[];
   output_text: string;           // convenience: concatenated text from output messages
   status: "completed" | "failed" | "incomplete";
@@ -331,8 +332,10 @@ Request parameters for `create()`.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `messages` | `ChatCompletionMessageParam[]` | Yes | Conversation messages |
-| `model` | `string` | No | Ignored. Always uses on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. Other names warn and use the on-device model. |
 | `stream` | `boolean` | No | Enable streaming |
+| `stream_options` | `{ include_usage?: boolean }` | No | With `include_usage`, the stream ends with a chunk that carries `usage` |
+| `reasoning_effort` | `string` | No | Maps to `reasoningLevel` for Private Cloud Compute; ignored with a warning for the on-device model |
 | `temperature` | `number` | No | Sampling temperature |
 | `max_tokens` | `number` | No | Maximum response tokens |
 | `max_completion_tokens` | `number` | No | Same as `max_tokens` (takes priority) |
@@ -474,7 +477,7 @@ Only `json_schema` triggers constrained generation. `text` and `json_object` are
   id: string;                    // "chatcmpl-<uuid>"
   object: "chat.completion";
   created: number;               // Unix timestamp (seconds)
-  model: string;                 // "SystemLanguageModel"
+  model: string;                 // "SystemLanguageModel" or "PrivateCloudComputeLanguageModel"
   choices: ChatCompletionChoice[];
   usage: CompletionUsage | null; // null if generation failed
   system_fingerprint: null;
@@ -540,7 +543,7 @@ The stream auto-closes on iteration completion, `break`, or error. A `Finalizati
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
-  usage: null;                   // streamed chunks don't carry usage yet
+  usage: CompletionUsage | null; // only on the final chunk, with stream_options.include_usage
   system_fingerprint: null;
 }
 ```
