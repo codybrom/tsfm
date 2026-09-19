@@ -487,8 +487,13 @@ export class LanguageModelSession {
       }
       if (fn && streamPointer) fn.FMRelease(streamPointer);
       if (fn && composedPrompt) fn.FMRelease(composedPrompt);
-      if (usageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
-      release();
+      try {
+        if (usageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
+      } finally {
+        // Always unlock the queue, even if reading usage fails, or every later
+        // request on this session would wait forever.
+        release();
+      }
     }
   }
 

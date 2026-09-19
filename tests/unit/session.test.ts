@@ -1130,6 +1130,28 @@ describe("LanguageModelSession", () => {
   });
 
   describe("streamResponse setup failure does not stall queue", () => {
+    it("releases the queue even if reading usage throws when a stream ends", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementationOnce(() => {
+        queueMicrotask(() => lastRegisteredCallback?.(0, null, 0, null));
+      });
+      const session = new LanguageModelSession();
+      // Reading usage works at the start of the stream, then fails at the end.
+      mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementationOnce(
+        () => null,
+      ).mockImplementationOnce(() => {
+        throw new Error("usage read failed");
+      });
+      await expect(session.streamResponse("Hi").collect()).rejects.toThrow("usage read failed");
+
+      // The queue must not stay locked.
+      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(() => {
+        setTimeout(() => lastRegisteredCallback?.(0, "after", 5, null), 0);
+        return "mock-task-pointer";
+      });
+      const { content } = await session.respond("Next");
+      expect(content).toBe("after");
+    });
+
     it("subsequent respond() succeeds after streamResponse setup throws", async () => {
       const session = new LanguageModelSession();
 
