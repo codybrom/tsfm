@@ -8,23 +8,7 @@ import Foundation
 import FoundationModels
 import FoundationModelsCDeclarations
 
-// MARK: - SystemLanguageModel extensions (requires Xcode 26.4+ to compile)
-
-// tokenCount(for:) is macOS 26.4 Beta only (no back-deployment) and requires
-// async bridging (takes Instructions, returns async throws Int).
-// Uncomment when targeting macOS 26.4+ runtime.
-
-// @_cdecl("FMSystemLanguageModelGetTokenCount")
-// public func FMSystemLanguageModelGetTokenCount(
-//   model: FMSystemLanguageModelRef,
-//   text: UnsafePointer<CChar>
-// ) -> Int32 {
-//   let model = Unmanaged<SystemLanguageModel>.fromOpaque(model).takeUnretainedValue()
-//   let string = String(cString: text)
-//   return Int32(model.tokenCount(for: Instructions(string)))
-// }
-
-// MARK: - SystemLanguageModel extensions (macOS 26.0+)
+// MARK: - SystemLanguageModel extensions
 
 @_cdecl("FMSystemLanguageModelGetSupportedLanguages")
 public func FMSystemLanguageModelGetSupportedLanguages(

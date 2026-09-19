@@ -7,6 +7,7 @@ import koffi from "koffi";
 import { fileURLToPath } from "url";
 import path from "path";
 import { existsSync } from "fs";
+import os from "os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -23,8 +24,25 @@ function findDylib(): string {
   throw new Error(
     `Could not find libFoundationModels.dylib.\n` +
       `Searched:\n${candidates.map((c) => `  - ${c}`).join("\n")}\n` +
-      `Run 'npm run build' to compile the native library. Requires macOS 26+, Xcode 26+.`,
+      `Run 'npm run build' to compile the native library (needs Xcode 27).`,
   );
+}
+
+/**
+ * A hint for a failed load. tsfm 1.x's library targets macOS 27, and dyld
+ * refuses it on older systems with an error that doesn't say so. macOS 26 runs
+ * Darwin 25, macOS 27 runs Darwin 27. This only explains a failure; it never
+ * blocks a load, so an unexpected kernel numbering can't lock anyone out.
+ */
+function unsupportedOSHint(): string {
+  if (process.platform !== "darwin") {
+    return "Apple Foundation Models only runs on macOS.\n";
+  }
+  const darwinMajor = Number(os.release().split(".")[0]);
+  if (Number.isFinite(darwinMajor) && darwinMajor < 27) {
+    return "tsfm 1.x requires macOS 27. On macOS 26, use tsfm-sdk@0.x.\n";
+  }
+  return "";
 }
 
 let _lib: ReturnType<typeof koffi.load> | null = null;
@@ -37,7 +55,8 @@ function lib() {
     } catch (e) {
       throw new Error(
         `Failed to load Foundation Models dylib at ${dylibPath}.\n` +
-          `Run 'npm run build' first. Requires macOS 26+, Xcode 26+.\n` +
+          unsupportedOSHint() +
+          `Run 'npm run build' first (needs Xcode 27).\n` +
           `Original error: ${e}`,
       );
     }
@@ -137,8 +156,7 @@ function defineFunctions() {
     // one must FMRelease it, including error and early-exit paths.
     FMComposedPromptInitialize: fn("void * FMComposedPromptInitialize()"),
     FMComposedPromptAddText: fn("void FMComposedPromptAddText(void * composedPrompt, str text)"),
-    // Attachment support is compiled behind FM_HAS_MACOS_27_SDK and gated on a
-    // macOS 27 runtime, so on a 26.x build this always reports UnsupportedSDK.
+    // Can't fail on macOS 27; the out-parameter is kept for ABI stability.
     FMComposedPromptAddAttachment: fn(
       "bool FMComposedPromptAddAttachment(void * composedPrompt, str imagePath, str label, _Out_ int * outError)",
     ),
@@ -237,11 +255,6 @@ function defineFunctions() {
     FMSystemLanguageModelGetContextSize: fn(
       "int FMSystemLanguageModelGetContextSize(void * model)",
     ),
-
-    // macOS 26.4+ runtime only — uncomment when targeting 26.4+
-    // FMSystemLanguageModelGetTokenCount: fn(
-    //   "int FMSystemLanguageModelGetTokenCount(void * model, str text)",
-    // ),
 
     FMSystemLanguageModelGetSupportedLanguages: fn(
       "void * FMSystemLanguageModelGetSupportedLanguages(void * model)",

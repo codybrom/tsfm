@@ -30,10 +30,9 @@ export type PromptAttachmentFailure = "unsupported-os" | "unsupported-sdk" | "un
 /**
  * Raised when an attachment cannot be added to a prompt.
  *
- * Attachments are a macOS 27 feature: the C bridge compiles them only against
- * the macOS 27 SDK and gates them on a macOS 27 runtime. The bundled dylib is
- * built against the 27 SDK, so it reports `unsupported-os` on macOS 26, and a
- * dylib built with an older SDK reports `unsupported-sdk`.
+ * tsfm 1.x requires macOS 27, where attachments are always available, so the
+ * bundled library never reports `unsupported-os` or `unsupported-sdk`. Those
+ * reasons remain in the type for code written against 0.x.
  */
 export class PromptAttachmentError extends FoundationModelsError {
   readonly reason: PromptAttachmentFailure;
