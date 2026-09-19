@@ -97,6 +97,14 @@ call past the limit isn't run, and the request fails with
 `ToolCallLimitExceededError`. The session keeps working, and each request gets a
 fresh limit.
 
+::: warning Sharing a tool between sessions
+A tool instance can be passed to several sessions. If two of them respond at the
+same time, the tool can't tell which request a call belongs to, so each call
+counts against both requests' limits. A request can then fail before making its
+own `maximumToolCalls` calls; it never makes more. Give each session its own tool
+instance when requests run concurrently and the limit matters.
+:::
+
 ## Error Handling
 
 If `call()` throws, it's wrapped in a `ToolCallError`:
