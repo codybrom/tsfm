@@ -20,6 +20,16 @@ npm install tsfm-sdk
 
 Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 27.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
 
+To check that everything tsfm needs is in place, run:
+
+```bash
+npx tsfm doctor
+```
+
+It reports the macOS version, whether the native library loads, the on-device
+model's availability and variant, and Private Cloud Compute availability. It only
+reads; it doesn't change anything.
+
 npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
 
 ## Quick Start

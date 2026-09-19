@@ -92,6 +92,12 @@ and `reasoningLevel`. It's opt-in and needs a host signed with Apple's PCC
 entitlement; plain `node` can't use it. See
 [Private Cloud Compute](/guide/private-cloud-compute).
 
+## Also new
+
+- `npx tsfm doctor` checks whether a machine can run tsfm.
+- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities`.
+- Transcripts can contain `reasoning` entries from Private Cloud Compute.
+
 ## Errors
 
 - `GenerationErrorCode` is a regular `enum` now, not a `const enum`. Comparisons
