@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Several ways to crash the host process:
+  - A number where a string was expected (a prompt, instructions, an attachment path, a schema or property name, a guide value) was passed to native code as a pointer. It now throws `TypeError`.
+  - Breaking out of a stream early, or a stream timing out, let the cancelled native stream call a callback that had already been released.
+  - A JSON schema nested about 200 levels deep overflowed the framework's stack. Schemas deeper than 128 levels now throw `InvalidGenerationSchemaError`.
+  - Reading a session's transcript after `dispose()` read freed memory. It now throws `FoundationModelsError`.
+- Nested object properties in `generable()` failed with an undefined reference. Arrays of objects were unaffected. Keys shared by objects in different places, keys named like a scalar type such as `string`, and keys with characters like `-` also produced wrong or failing schemas.
+- `$ref` to `$defs` in JSON schemas never resolved, because the framework looks up a definition by its title. Each definition's `title` is now set to its key.
+- A session created with a disposed `SystemLanguageModel` silently used the default model. It now throws.
+
 ## [0.5.1] - 2026-09-18
 
 ### Fixed
