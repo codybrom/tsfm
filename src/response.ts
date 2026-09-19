@@ -31,25 +31,46 @@ export function emptyUsage(): Usage {
   };
 }
 
-/** @internal Parses the bridge's usage JSON, falling back to zeros. */
+let _warnedMalformedUsage = false;
+
+/**
+ * @internal Parses the bridge's usage JSON.
+ *
+ * `null` means no usage to report (e.g. a disposed session) and reads as zeros.
+ * Malformed or incomplete JSON can only come from a bridge bug: it also reads as
+ * zeros, so a response that succeeded isn't lost over its telemetry, but it
+ * warns once so the bug doesn't hide behind plausible-looking numbers.
+ */
 export function parseUsage(json: string | null): Usage {
-  if (!json) return emptyUsage();
+  if (json === null) return emptyUsage();
+  const count = (v: unknown): number | null =>
+    typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
+  let raw: Partial<Usage> | null = null;
   try {
-    const raw = JSON.parse(json) as Partial<Usage>;
-    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-    return {
-      input: {
-        totalTokens: n(raw.input?.totalTokens),
-        cachedTokens: n(raw.input?.cachedTokens),
-      },
-      output: {
-        totalTokens: n(raw.output?.totalTokens),
-        reasoningTokens: n(raw.output?.reasoningTokens),
-      },
-    };
+    raw = JSON.parse(json) as Partial<Usage>;
   } catch {
+    // Handled below as malformed.
+  }
+  const values = [
+    count(raw?.input?.totalTokens),
+    count(raw?.input?.cachedTokens),
+    count(raw?.output?.totalTokens),
+    count(raw?.output?.reasoningTokens),
+  ];
+  if (values.some((v) => v === null)) {
+    if (!_warnedMalformedUsage) {
+      _warnedMalformedUsage = true;
+      console.warn(
+        `[tsfm] Unexpected token usage from the native bridge; reporting zeros: ${json}`,
+      );
+    }
     return emptyUsage();
   }
+  const [inputTotal, inputCached, outputTotal, outputReasoning] = values as number[];
+  return {
+    input: { totalTokens: inputTotal, cachedTokens: inputCached },
+    output: { totalTokens: outputTotal, reasoningTokens: outputReasoning },
+  };
 }
 
 /**
