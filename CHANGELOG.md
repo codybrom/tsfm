@@ -266,6 +266,7 @@ tsfm 1.0 targets macOS 27. It adds token usage, tool-calling modes, opt-in Priva
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
+[1.0.0]: https://github.com/codybrom/tsfm/compare/v0.5.1...feat/v1
 [0.5.1]: https://github.com/codybrom/tsfm/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/codybrom/tsfm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/codybrom/tsfm/compare/v0.3.1...v0.4.0
