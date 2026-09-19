@@ -165,6 +165,47 @@ describe("Tool", () => {
   });
 
   describe("tool call handler", () => {
+    it("releases the arguments once call() resolves", async () => {
+      const tool = new TestTool();
+      tool._register();
+      capturedCallbacks[0]("ok-ref", 1);
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("ok-ref"));
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        "result",
+      );
+    });
+
+    it("releases the arguments once call() rejects", async () => {
+      class Rejecting extends TestTool {
+        async call(): Promise<string> {
+          throw new Error("nope");
+        }
+      }
+      const tool = new Rejecting();
+      tool._register();
+      capturedCallbacks[0]("reject-ref", 2);
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("reject-ref"));
+    });
+
+    it("releases the arguments when call() throws synchronously", () => {
+      class Throwing extends TestTool {
+        call(): Promise<string> {
+          throw new Error("sync boom");
+        }
+      }
+      const tool = new Throwing();
+      tool._register();
+      capturedCallbacks[0]("sync-ref", 3);
+      expect(mockContentDispose).toHaveBeenCalledWith("sync-ref");
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        3,
+        "Tool callback error: sync boom",
+      );
+    });
+
     it("calls FMBridgedToolFinishCall with the result on success", async () => {
       const tool = new TestTool();
       tool._register();

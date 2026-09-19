@@ -15,6 +15,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - **Breaking:** `respond()`, `respondWithSchema()` and `respondWithJsonSchema()` return a `Response` whose `.content` is the old return value and whose `.usage` is the request's token usage (`null` on macOS 26).
 - **Breaking:** `streamResponse()` returns a `ResponseStream`. It iterates text deltas as before, can be iterated once, and adds `.usage` once finished and a `collect()` method.
 - **Breaking:** a request may make at most 32 tool calls by default. Past `maximumToolCalls` it fails with `ToolCallLimitExceededError` instead of calling another tool.
+- A tool's `args` are released once its `call()` settles, instead of waiting for garbage collection. Read what you need from them before `call()` returns or rejects.
 - **Breaking:** `GenerationErrorCode` is a regular `enum` instead of a `const enum`. Comparisons still work; it now exists at runtime.
 - **Breaking:** on macOS 27, regex guides are checked against what the on-device model supports before a request is sent. Unsupported syntax, such as character classes like `[a-z]`, throws `UnsupportedGuideError` naming the construct and, where there is one, a replacement. Private Cloud Compute requests aren't checked, because PCC supports more.
 - Errors from the macOS 27 framework map to typed errors instead of `GenerationError` with code 255.
