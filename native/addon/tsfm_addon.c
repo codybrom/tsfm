@@ -29,7 +29,7 @@
 #include "FoundationModels.h"
 
 // Status codes shared with src/errors.ts (GenerationErrorCode).
-enum { STATUS_OK = 0, STATUS_UNKNOWN = 255 };
+enum { STATUS_OK = 0, STATUS_CANCELLED = 20, STATUS_UNKNOWN = 255 };
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -51,33 +51,37 @@ static void throw_last_error(napi_env env, const char *what) {
   napi_throw_error(env, NULL, message);
 }
 
+// The js_* helpers never return an indeterminate value: a napi call that fails
+// (only with a pending exception or out of memory) leaves NULL, and js_bool,
+// js_int and js_string fall back to null, so a failure can't put a garbage
+// pointer into a property, an array or a promise. set_prop skips a NULL value.
 static napi_value js_null(napi_env env) {
-  napi_value v;
-  napi_get_null(env, &v);
+  napi_value v = NULL;
+  if (napi_get_null(env, &v) != napi_ok) return NULL;
   return v;
 }
 
 static napi_value js_undefined(napi_env env) {
-  napi_value v;
-  napi_get_undefined(env, &v);
+  napi_value v = NULL;
+  if (napi_get_undefined(env, &v) != napi_ok) return NULL;
   return v;
 }
 
 static napi_value js_bool(napi_env env, bool b) {
-  napi_value v;
-  napi_get_boolean(env, b, &v);
+  napi_value v = NULL;
+  if (napi_get_boolean(env, b, &v) != napi_ok) return js_null(env);
   return v;
 }
 
 static napi_value js_int(napi_env env, int32_t n) {
-  napi_value v;
-  napi_create_int32(env, n, &v);
+  napi_value v = NULL;
+  if (napi_create_int32(env, n, &v) != napi_ok) return js_null(env);
   return v;
 }
 
 static napi_value js_string(napi_env env, const char *s) {
   if (!s) return js_null(env);
-  napi_value v;
+  napi_value v = NULL;
   if (napi_create_string_utf8(env, s, NAPI_AUTO_LENGTH, &v) != napi_ok) return js_null(env);
   return v;
 }
@@ -89,8 +93,19 @@ static napi_value js_string_take(napi_env env, char *s) {
   return v;
 }
 
+/// Sets a property; a NULL object or value (a failed js_* helper) is skipped
+/// rather than handed to the engine.
 static void set_prop(napi_env env, napi_value obj, const char *name, napi_value value) {
+  if (!obj || !value) return;
   napi_set_named_property(env, obj, name, value);
+}
+
+/// A fresh object, or null if the engine can't allocate one, so a result is
+/// always a real value to return or resolve with.
+static napi_value js_object(napi_env env) {
+  napi_value v = NULL;
+  if (napi_create_object(env, &v) != napi_ok) return js_null(env);
+  return v;
 }
 
 static bool is_nullish(napi_env env, napi_value v) {
@@ -99,8 +114,10 @@ static bool is_nullish(napi_env env, napi_value v) {
   return t == napi_null || t == napi_undefined;
 }
 
-/// Copies a JS string argument (embedded NULs included). With `nullable`, null
-/// and undefined give NULL. Otherwise throws a TypeError naming `name`.
+/// Copies a JS string argument as NUL-terminated UTF-8. The copy holds every
+/// byte, but the bridge reads it as a C string, so anything after an embedded
+/// NUL is dropped there. With `nullable`, null and undefined give NULL.
+/// Otherwise throws a TypeError naming `name`.
 static bool get_string(napi_env env, napi_value v, const char *name, bool nullable, char **out) {
   *out = NULL;
   if (nullable && is_nullish(env, v)) return true;
@@ -316,8 +333,7 @@ static bool get_handle(napi_env env, napi_value v, Kind kind, bool nullable, Han
 
 /// { value, status, description } for calls with out-parameter errors.
 static napi_value make_result(napi_env env, napi_value value, int status, char *description) {
-  napi_value obj;
-  napi_create_object(env, &obj);
+  napi_value obj = js_object(env);
   set_prop(env, obj, "value", value ? value : js_null(env));
   set_prop(env, obj, "status", js_int(env, status));
   set_prop(env, obj, "description", js_string_take(env, description));
@@ -587,6 +603,10 @@ static void request_tsfn_finalize(napi_env env, void *data, void *hint) {
 static void call_js_ignoring_exceptions(napi_env env, napi_value fn, size_t argc,
                                         const napi_value *argv) {
   napi_value undefined = js_undefined(env);
+  if (!undefined) return;
+  for (size_t i = 0; i < argc; i++) {
+    if (!argv[i]) return;  // a js_* helper failed; don't hand the engine a NULL
+  }
   napi_call_function(env, undefined, fn, argc, argv, NULL);
   bool pending = false;
   napi_is_exception_pending(env, &pending);
@@ -609,8 +629,9 @@ static void request_call_js(napi_env env, napi_value js_callback, void *context,
     napi_value argv[2] = {js_int(env, m->status), js_string(env, m->text)};
     call_js_ignoring_exceptions(env, js_callback, 2, argv);
   } else if (r->deferred) {
-    napi_value result;
-    napi_create_object(env, &result);
+    // js_object falls back to null, which still settles the promise: JavaScript
+    // then fails reading it instead of waiting forever.
+    napi_value result = js_object(env);
     set_prop(env, result, "status", js_int(env, m->status));
     if (r->kind == R_TEXT) {
       set_prop(env, result, "text", js_string(env, m->text));
@@ -674,8 +695,18 @@ static Request *request_start(napi_env env, RequestKind kind, napi_value js_call
     throw_last_error(env, "creating a threadsafe function");
     return NULL;
   }
-  napi_add_env_cleanup_hook(env, request_env_teardown, r);
-  r->hook_registered = true;
+  // The hook is what cuts native callbacks off at env teardown; without it a
+  // later callback could reach a torn-down function, so a request that can't
+  // register one doesn't start (the promise is never settled; the caller gets
+  // the thrown error, as when the function itself can't be created).
+  r->hook_registered = napi_add_env_cleanup_hook(env, request_env_teardown, r) == napi_ok;
+  if (!r->hook_registered) {
+    napi_release_threadsafe_function(r->tsfn, napi_tsfn_abort);  // its finalizer unrefs
+    r->tsfn = NULL;
+    request_unref(r);  // the native side's reference: no native call is made
+    throw_last_error(env, "registering a cleanup hook");
+    return NULL;
+  }
   if (retained) {
     FMRetain(retained);
     r->retained = retained;
@@ -703,6 +734,20 @@ static void request_set_task(Request *r, const void *task) {
   if (finished && task) FMRelease(task);
 }
 
+/// Cancels a one-shot request's native task, if it's still running. The task
+/// then ends with a cancellation and makes its own final call, which releases
+/// everything the request holds.
+static void request_cancel_task(Request *r) {
+  pthread_mutex_lock(&g_lock);
+  const void *task = r->finished ? NULL : r->task;
+  if (task) FMRetain(task);
+  pthread_mutex_unlock(&g_lock);
+  if (task) {
+    FMTaskCancel(task);
+    FMRelease(task);
+  }
+}
+
 /// A JS handle for cancelling `r`, holding a reference to it.
 static napi_value request_handle(napi_env env, Request *r) {
   atomic_fetch_add(&r->refs, 1);
@@ -717,16 +762,23 @@ static napi_value request_handle(napi_env env, Request *r) {
   return v;
 }
 
-/// [promise, request] for a started one-shot request.
+/// [promise, request] for a started one-shot request. If the pair can't be
+/// built, the native call has already been made: the task is cancelled so it
+/// ends promptly (its own final call releases the session and settles the
+/// promise nobody can see), rather than running on with no way to stop it.
+/// It must not be ended from here: the running task will make that call.
 static napi_value request_pair(napi_env env, napi_value promise, Request *r) {
   napi_value handle = request_handle(env, r);
+  napi_value pair = NULL;
+  bool ok = handle != NULL && napi_create_array_with_length(env, 2, &pair) == napi_ok &&
+            napi_set_element(env, pair, 0, promise) == napi_ok &&
+            napi_set_element(env, pair, 1, handle) == napi_ok;
+  if (!ok) {
+    request_cancel_task(r);
+    throw_last_error(env, "returning the request");
+  }
   request_unref(r);  // the caller's reference, held across the native call
-  if (!handle) return NULL;
-  napi_value pair;
-  napi_create_array_with_length(env, 2, &pair);
-  napi_set_element(env, pair, 0, promise);
-  napi_set_element(env, pair, 1, handle);
-  return pair;
+  return ok ? pair : NULL;
 }
 
 // ---------------------------------------------------------------------------
@@ -948,8 +1000,7 @@ static napi_value SystemLanguageModelCreate(napi_env env, napi_callback_info inf
 }
 
 static napi_value availability(napi_env env, bool available, int reason) {
-  napi_value obj;
-  napi_create_object(env, &obj);
+  napi_value obj = js_object(env);
   set_prop(env, obj, "available", js_bool(env, available));
   set_prop(env, obj, "reason", available ? js_null(env) : js_int(env, reason));
   return obj;
@@ -1525,14 +1576,7 @@ static napi_value RequestCancel(napi_env env, napi_callback_info info) {
     release_stream_once(r);
     return js_undefined(env);
   }
-  pthread_mutex_lock(&g_lock);
-  const void *task = r->finished ? NULL : r->task;
-  if (task) FMRetain(task);
-  pthread_mutex_unlock(&g_lock);
-  if (task) {
-    FMTaskCancel(task);
-    FMRelease(task);
-  }
+  request_cancel_task(r);
   return js_undefined(env);
 }
 
@@ -1733,8 +1777,17 @@ static napi_value BridgedToolCreate(napi_env env, napi_callback_info info) {
   }
   // A tool shouldn't keep the process alive; its requests do.
   napi_unref_threadsafe_function(env, b->tsfn);
-  napi_add_env_cleanup_hook(env, tool_env_teardown, b);
-  b->hook_registered = true;
+  b->hook_registered = napi_add_env_cleanup_hook(env, tool_env_teardown, b) == napi_ok;
+  if (!b->hook_registered) {
+    // Same reasoning as in request_start: no tool without a way to cut it off.
+    napi_release_threadsafe_function(b->tsfn, napi_tsfn_abort);  // its finalizer unrefs
+    b->tsfn = NULL;
+    tool_unref(b);  // Swift's reference: the tool is never created
+    free(name);
+    free(description);
+    throw_last_error(env, "registering a cleanup hook");
+    return NULL;
+  }
 
   int status = STATUS_OK;
   char *error_description = NULL;
@@ -1829,13 +1882,47 @@ static napi_value Release(napi_env env, napi_callback_info info) {
   return js_undefined(env);
 }
 
+/// Settles a one-shot request's promise as cancelled, in the shape its kind
+/// resolves with, so src/ maps it to CancelledError. Main thread only.
+static void request_settle_cancelled(napi_env env, Request *r) {
+  if (!r->deferred) return;
+  napi_value result = js_object(env);
+  set_prop(env, result, "status", js_int(env, STATUS_CANCELLED));
+  napi_value message = js_string(env, "The process is exiting");
+  if (r->kind == R_TEXT) {
+    set_prop(env, result, "text", message);
+  } else if (r->kind == R_STRUCTURED) {
+    set_prop(env, result, "content", js_null(env));
+    set_prop(env, result, "message", message);
+  } else {
+    set_prop(env, result, "count", js_int(env, 0));
+    set_prop(env, result, "message", message);
+  }
+  if (result) napi_resolve_deferred(env, r->deferred, result);
+  r->deferred = NULL;
+}
+
 /// Shutdown(): called on process "exit", which skips Node-API's env cleanup
 /// hooks. Cuts every request and tool off from JavaScript; native callbacks
-/// after this are absorbed (tool calls fail).
+/// after this are absorbed. Every in-flight one-shot promise is settled as
+/// cancelled, and every tool call JavaScript hasn't answered is failed, so no
+/// Swift continuation stays suspended holding its response, session and model.
+/// Neither settling nor failing happens under g_lock.
 static napi_value Shutdown(napi_env env, napi_callback_info info) {
   (void)info;
   EnvState *state = env_state(env);
   if (!state) return js_undefined(env);
+
+  // Under the lock: cut the channels and collect what's left to settle. Each
+  // request is ref'd so a native side finishing concurrently can't free it
+  // before it's settled below. A pending tool call's tool is alive (Swift is
+  // inside it), so its pointer stays valid until the call is answered.
+  typedef struct { FMBridgedToolRef tool; unsigned int id; } CallToFail;
+  Request **requests = NULL;
+  size_t request_count = 0, request_cap = 0;
+  CallToFail *calls = NULL;
+  size_t call_count = 0, call_cap = 0;
+
   pthread_mutex_lock(&g_lock);
   state->shutdown = true;
   while (state->requests) {
@@ -1843,14 +1930,54 @@ static napi_value Shutdown(napi_env env, napi_callback_info info) {
     if (r->tsfn) napi_release_threadsafe_function(r->tsfn, napi_tsfn_abort);
     r->tsfn = NULL;
     request_list_remove(r);
+    if (!r->deferred) continue;
+    if (request_count == request_cap) {
+      size_t cap = request_cap ? request_cap * 2 : 8;
+      Request **grown = realloc(requests, cap * sizeof *grown);
+      if (!grown) continue;  // out of memory: this promise stays pending
+      requests = grown;
+      request_cap = cap;
+    }
+    atomic_fetch_add(&r->refs, 1);
+    requests[request_count++] = r;
   }
   while (state->tools) {
     ToolBox *b = state->tools;
     if (b->tsfn) napi_release_threadsafe_function(b->tsfn, napi_tsfn_abort);
     b->tsfn = NULL;
     tool_list_remove(b);
+    // Take the pending list so JavaScript can't answer a call failed below.
+    PendingCall *p = b->pending;
+    b->pending = NULL;
+    while (p) {
+      PendingCall *next = p->next;
+      if (call_count == call_cap) {
+        size_t cap = call_cap ? call_cap * 2 : 8;
+        CallToFail *grown = realloc(calls, cap * sizeof *grown);
+        if (grown) {
+          calls = grown;
+          call_cap = cap;
+        }
+      }
+      // Out of memory: the call is dropped rather than left where JavaScript
+      // could answer it; Swift's continuation then waits, as before this fix.
+      if (call_count < call_cap) calls[call_count++] = (CallToFail){b->tool, p->id};
+      free(p);
+      p = next;
+    }
   }
   pthread_mutex_unlock(&g_lock);
+
+  // Outside the lock: these call into the engine and into Swift.
+  for (size_t i = 0; i < request_count; i++) {
+    request_settle_cancelled(env, requests[i]);
+    request_unref(requests[i]);
+  }
+  free(requests);
+  for (size_t i = 0; i < call_count; i++) {
+    FMBridgedToolFailCall(calls[i].tool, calls[i].id, STATUS_UNKNOWN, TOOL_GONE);
+  }
+  free(calls);
   return js_undefined(env);
 }
 

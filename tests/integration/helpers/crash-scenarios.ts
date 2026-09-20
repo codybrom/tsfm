@@ -96,6 +96,38 @@ const scenarios: Record<string, () => Promise<void>> = {
     process.exit(0);
   },
 
+  // FMShutdown() with work in flight, called directly rather than at exit so
+  // the outcome is observable: every in-flight one-shot promise settles as
+  // CancelledError, and a tool call JavaScript never answered is failed, so
+  // the response waiting on it settles too instead of pinning its session.
+  async "shutdown-settles-work-in-flight"() {
+    let toolCalled!: () => void;
+    const called = new Promise<void>((resolve) => (toolCalled = resolve));
+    const tool = new NeverReturnsTool(() => toolCalled());
+    const toolSession = new LanguageModelSession({ tools: [tool] });
+    const viaTool = settle(
+      toolSession.respond("Look up the capital of Peru.", {
+        options: { toolCallingMode: "required" },
+      }),
+    );
+    const plain = new LanguageModelSession();
+    const text = settle(plain.respond(LONG_PROMPT));
+    const count = settle(new SystemLanguageModel().tokenCount({ instructions: "Be brief." }));
+    // Wait until the tool call is pending in JavaScript and the others are in flight.
+    await Promise.race([called, tick(10_000)]);
+    await tick(100);
+
+    getFunctions().FMShutdown();
+
+    const outcomes = await Promise.all(
+      [viaTool, text, count].map((p) => Promise.race([p, tick(15_000).then(() => "timed out")])),
+    );
+    console.log(`after FMShutdown: tool=${outcomes[0]}, text=${outcomes[1]}, count=${outcomes[2]}`);
+    toolSession.dispose();
+    plain.dispose();
+    tool.dispose();
+  },
+
   // --- Disposing with work in flight -----------------------------------------
 
   async "dispose-during-respond"() {
