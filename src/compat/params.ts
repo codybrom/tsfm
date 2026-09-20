@@ -101,9 +101,14 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
 
   // Only include_usage is supported; Chat Completions has no other stream option.
   const rawStreamOptions = params.stream_options;
-  if (rawStreamOptions != null && typeof rawStreamOptions !== "object") {
+  // typeof [] is "object", so arrays need their own check or they'd read as an
+  // options object with no keys and pass silently.
+  if (
+    rawStreamOptions != null &&
+    (typeof rawStreamOptions !== "object" || Array.isArray(rawStreamOptions))
+  ) {
     console.warn(
-      `[tsfm compat] Parameter "stream_options" must be an object; got ${typeof rawStreamOptions}. It will be ignored.`,
+      `[tsfm compat] Parameter "stream_options" must be an object; got ${Array.isArray(rawStreamOptions) ? "an array" : typeof rawStreamOptions}. It will be ignored.`,
     );
   } else if (rawStreamOptions) {
     const streamOptions = ownParams(rawStreamOptions) as Record<string, unknown>;

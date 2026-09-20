@@ -168,6 +168,7 @@ describe("mapParams", () => {
   it.each([
     ["a string", "yes", /"stream_options" must be an object; got string/],
     ["a number", 3, /"stream_options" must be an object; got number/],
+    ["an array", ["include_usage"], /"stream_options" must be an object; got an array/],
   ])("warns when stream_options is %s", (_name, value, message) => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: value } as never);
