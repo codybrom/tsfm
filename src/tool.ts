@@ -92,7 +92,13 @@ export abstract class Tool {
     const onCall = (contentRef: NativePointer | null, callId: number) => {
       const owner = self.deref();
       const tool = current();
-      if (!owner || !tool) return;
+      if (!owner || !tool) {
+        // Disposed, or collected before its finalizer ran. The addon fails the
+        // call either way -- on release, or when the handle is finalized -- but
+        // the arguments are ours now, so release them rather than wait for GC.
+        if (contentRef) fn.FMRelease(contentRef);
+        return;
+      }
       // The arguments are released once the call settles, on every path.
       let content: GeneratedContent | null = null;
       try {

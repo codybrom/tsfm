@@ -88,10 +88,14 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
   }
 
   let core: typeof import("../index.js") | null = null;
+  // Tracks whether the library itself loaded, so a failure after that is
+  // reported under its own label instead of contradicting the "loaded" row.
+  let loaded = false;
   try {
     core = await import("../index.js");
     const model = new core.SystemLanguageModel();
     checks.push({ label: "Native library", ok: true, detail: "loaded" });
+    loaded = true;
 
     const availability = model.isAvailable();
     checks.push({
@@ -126,7 +130,7 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
     pcc.dispose();
   } catch (err) {
     checks.push({
-      label: "Native library",
+      label: loaded ? "Model checks" : "Native library",
       ok: false,
       detail: err instanceof Error ? err.message.split("\n").slice(0, 3).join(" ") : String(err),
     });

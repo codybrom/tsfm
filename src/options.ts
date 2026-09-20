@@ -1,3 +1,4 @@
+import { InvalidArgumentError } from "./errors.js";
 export type SamplingModeType = "greedy" | "random";
 
 export interface SamplingMode {
@@ -132,6 +133,13 @@ export function serializeOptions(options: GenerationOptions | undefined): string
   const obj: SerializedOptions = {};
 
   if (options.temperature !== undefined) {
+    // typeof first: "0.5" >= 0 && "0.5" <= 1 is true, and the bridge's
+    // `as? Double` would then drop it silently.
+    if (typeof options.temperature !== "number") {
+      throw new InvalidArgumentError(
+        `'temperature' must be a number, got ${typeof options.temperature}`,
+      );
+    }
     // Apple documents the range as 0 to 1 inclusive.
     if (!(options.temperature >= 0 && options.temperature <= 1)) {
       throw new Error("'temperature' must be a number between 0 and 1 inclusive");
