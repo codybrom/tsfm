@@ -569,17 +569,46 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
   return formatSchema(schema, isRoot, [], used);
 }
 
-/** Every title already in the schema, at any depth. */
-function collectTitles(node: unknown, into: Set<string>): void {
+let _warnedDuplicateTitle = false;
+
+/** Records one title, warning the first time a schema reuses one. */
+function noteTitle(title: string, into: Set<string>, seen: Set<string>): void {
+  if (seen.has(title) && !_warnedDuplicateTitle) {
+    _warnedDuplicateTitle = true;
+    console.warn(
+      `[tsfm] Two objects in this schema are titled "${title}". The model keys object types by ` +
+        `title, so one will take the other's shape. Give them distinct titles.`,
+    );
+  }
+  seen.add(title);
+  into.add(title);
+}
+
+/**
+ * Every title already in the schema, at any depth. Two objects sharing one is
+ * reported: the framework keys object types by title, so the second silently
+ * takes the first's shape, and a written title can't be renamed here because a
+ * $ref may point at it.
+ */
+function collectTitles(node: unknown, into: Set<string>, seen = new Set<string>()): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
-    for (const item of node) collectTitles(item, into);
+    for (const item of node) collectTitles(item, into, seen);
     return;
   }
   const record = node as Record<string, unknown>;
-  if (typeof record.title === "string" && record.title) into.add(record.title);
+  // A $defs entry is titled by its key, so the key is a title even though it
+  // isn't written as one; Apple resolves "#/$defs/<key>" that way.
+  if (record.$defs && typeof record.$defs === "object" && !Array.isArray(record.$defs)) {
+    for (const key of Object.keys(record.$defs as Record<string, unknown>)) {
+      noteTitle(key, into, seen);
+    }
+  }
+  if (typeof record.title === "string" && record.title) {
+    noteTitle(record.title, into, seen);
+  }
   for (const [key, value] of Object.entries(record)) {
-    if (key !== "title") collectTitles(value, into);
+    if (key !== "title") collectTitles(value, into, seen);
   }
 }
 

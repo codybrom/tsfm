@@ -114,6 +114,19 @@ describe("afmSchemaFormat", () => {
     expect(result.title).toBe("Object");
   });
 
+  it("warns when two objects in a schema share a written title", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    afmSchemaFormat({
+      type: "object",
+      $defs: { Address: { type: "object", properties: {} } },
+      properties: {
+        billing: { title: "Address", type: "object", properties: {} },
+      },
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('titled "Address"'));
+    warn.mockRestore();
+  });
+
   it("gives each inline nested object its own title", () => {
     const result = afmSchemaFormat({
       type: "object",
