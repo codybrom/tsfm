@@ -71,21 +71,28 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
     }
     parts = [own.text, ...attachments];
   }
-  for (const part of parts) {
-    if (typeof part === "string") continue;
+  // Returns fresh attachments built from own properties only: a polluted
+  // Object.prototype must not be able to attach a file the caller never named,
+  // and re-reading the caller's object later would find it again.
+  return parts.map((part) => {
+    if (typeof part === "string") return part;
     if (
       part === null ||
       typeof part !== "object" ||
+      !Object.hasOwn(part, "path") ||
       typeof (part as Record<string, unknown>).path !== "string"
     ) {
       throw new TypeError(`Every prompt part must be text or an attachment with a "path"`);
     }
-    const label = (part as Record<string, unknown>).label;
+    const record = part as Record<string, unknown>;
+    const label = Object.hasOwn(record, "label") ? record.label : undefined;
     if (label != null && typeof label !== "string") {
       throw new TypeError(`An attachment's "label" must be a string, got ${typeof label}`);
     }
-  }
-  return parts as Array<string | PromptAttachment>;
+    // label is always an own property, even when absent: a literal without it
+    // would read a polluted Object.prototype.label at use.
+    return { path: record.path as string, label: label as string | undefined };
+  });
 }
 
 /**
@@ -141,6 +148,7 @@ export function composePrompt(
       if (typeof part === "string") {
         fn.FMComposedPromptAddText(composed, part);
       } else {
+        // part came from promptParts, so path and label are its own.
         const error = fn.FMComposedPromptAddAttachment(composed, part.path, part.label ?? null);
         if (error !== 0) throw attachmentError(error, part.path);
       }

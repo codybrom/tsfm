@@ -165,6 +165,23 @@ describe("composePrompt", () => {
     expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
   });
 
+  it("refuses an attachment whose path or label comes from the prototype", () => {
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    proto.path = image;
+    proto.label = "inherited";
+    try {
+      // An empty object would otherwise attach a file the caller never named.
+      expect(() => composePrompt(fn, { content: [{}] } as never)).toThrow(/with a "path"/);
+      // An attachment that brings its own path doesn't inherit the label.
+      composePrompt(fn, { content: [{ path: image }] });
+      const [, , label] = mockFns.FMComposedPromptAddAttachment.mock.calls.at(-1) ?? [];
+      expect(label).toBeNull();
+    } finally {
+      delete proto.path;
+      delete proto.label;
+    }
+  });
+
   it("reads the shape from the prompt's own properties, not the prototype", () => {
     const polluted = Object.create({ content: [{ path: "/nope.png" }] }) as { text: string };
     polluted.text = "Hello";
