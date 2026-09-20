@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "build": "bash scripts/build-native.sh && tsc -p tsconfig.build.json",
+    "build": "bash scripts/build-native.sh && tsc -p tsconfig.build.json && chmod +x dist/cli/doctor.js",
     "prepublishOnly": "npm run build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "lint": "eslint src/ tests/ examples/ scripts/",

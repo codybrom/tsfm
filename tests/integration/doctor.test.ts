@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
-  chmodSync,
   copyFileSync,
   mkdtempSync,
   mkdirSync,
   rmSync,
   symlinkSync,
   realpathSync,
+  statSync,
+  cpSync,
+  existsSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -19,13 +21,14 @@ let install: string;
 // native/, dependencies, and an executable bin symlink.
 beforeAll(() => {
   install = realpathSync(mkdtempSync(path.join(tmpdir(), "tsfm-doctor-")));
-  // The project's compiler, whichever package provides it.
-  const tsc = spawnSync(
-    path.join(root, "node_modules/.bin/tsc"),
-    ["-p", path.join(root, "tsconfig.build.json"), "--outDir", path.join(install, "dist")],
-    { encoding: "utf8" },
-  );
-  if (tsc.status !== 0) throw new Error(`tsc failed:\n${tsc.stdout}${tsc.stderr}`);
+  // Copy what the build produced, rather than compiling again: the point is to
+  // run the artifact that ships, file modes included. Recompiling here hid a
+  // missing execute bit, because the test then set one of its own.
+  const built = path.join(root, "dist");
+  if (!existsSync(path.join(built, "cli/doctor.js"))) {
+    throw new Error(`No build to test: ${built}/cli/doctor.js is missing. Run npm run build.`);
+  }
+  cpSync(built, path.join(install, "dist"), { recursive: true });
   copyFileSync(path.join(root, "package.json"), path.join(install, "package.json"));
   mkdirSync(path.join(install, "native"));
   symlinkSync(
@@ -34,7 +37,6 @@ beforeAll(() => {
   );
   symlinkSync(path.join(root, "native/tsfm.node"), path.join(install, "native/tsfm.node"));
   symlinkSync(path.join(root, "node_modules"), path.join(install, "node_modules"));
-  chmodSync(path.join(install, "dist/cli/doctor.js"), 0o755);
   mkdirSync(path.join(install, "bin"));
   symlinkSync("../dist/cli/doctor.js", path.join(install, "bin/tsfm"));
 }, 120_000);
@@ -42,6 +44,13 @@ beforeAll(() => {
 afterAll(() => rmSync(install, { recursive: true, force: true }));
 
 describe("tsfm doctor (integration)", () => {
+  it("is built executable, so npm's bin symlink runs it", () => {
+    // The build sets this: tsc emits 0644, and a published package whose bin
+    // isn't executable fails with "permission denied".
+    const mode = statSync(path.join(root, "dist/cli/doctor.js")).mode & 0o111;
+    expect(mode).not.toBe(0);
+  });
+
   it("runs as the published bin, through npm's symlink", () => {
     const result = spawnSync(path.join(install, "bin/tsfm"), ["doctor"], {
       encoding: "utf8",
