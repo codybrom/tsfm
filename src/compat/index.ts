@@ -29,13 +29,7 @@ import {
   type CompatModel,
   type CompatModelName,
 } from "./models.js";
-import {
-  reorderJson,
-  nowSeconds,
-  CompatError,
-  throwAsCompatError,
-  toCompletionUsage,
-} from "./utils.js";
+import { reorderJson, nowSeconds, throwAsCompatError, toCompletionUsage } from "./utils.js";
 import type {
   ChatCompletionCreateParams,
   ChatCompletion,

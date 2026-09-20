@@ -8,7 +8,6 @@ import type { Usage, ResponseStream as ModelResponseStream } from "../response.j
 import {
   ExceededContextWindowSizeError,
   RefusalError,
-  RateLimitedError,
   GuardrailViolationError,
 } from "../errors.js";
 import {
@@ -28,7 +27,6 @@ import {
 import {
   reorderJson,
   nowSeconds,
-  CompatError,
   throwAsCompatError,
   describeToolCall,
   formatToolResult,
