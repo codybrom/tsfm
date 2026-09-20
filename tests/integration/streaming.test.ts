@@ -8,6 +8,16 @@ const describeIfAvailable = available ? describe : describe.skip;
 afterAll(() => model.dispose());
 
 describeIfAvailable("streaming (integration)", () => {
+  it("can cancel a stream and make another request on the same session", async () => {
+    using session = new LanguageModelSession();
+    const stream = session.streamResponse("Count from 1 to 100.");
+    for await (const _chunk of stream) {
+      session.cancel();
+    }
+    const response = await session.respond("Say hello in one word.");
+    expect(response.content.length).toBeGreaterThan(0);
+  }, 30_000);
+
   it("yields string chunks", async () => {
     const session = new LanguageModelSession();
     const chunks: string[] = [];

@@ -70,7 +70,8 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `$ref` to `$defs` in JSON schemas never resolved, because the framework looks up a definition by its title. Each definition's `title` is now set to its key.
 - A session created with a disposed `SystemLanguageModel` silently used the default model. It now throws.
 - A tool call could hang when the tool answered before the bridge was ready to receive the answer.
-- A stream always releases the session's request lock, even if reading its usage fails.
+- A stream always releases the session's request lock, even if native cleanup or reading its usage fails. Cancelling a stream no longer releases its handle before cleanup, which threw "The request has been released" and left later requests waiting forever.
+- A synchronous `FailRequestError` from a tool stops the request just like a rejected Promise. Concurrent sessions sharing a tool each receive their own invocation's original error as the request's cause, even when the error messages match.
 - The native library's load-failure hint reads the macOS version from `SystemVersion.plist` instead of guessing from the Darwin version.
 - Chat Completions: a streamed tool request that ended in a mapped error reported zero usage.
 - Disposing a tool while the model was waiting on one of its calls left the response waiting forever. Its pending calls now fail.
@@ -93,7 +94,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `quotaUsage` throws `FoundationModelsError` if the bridge returns quota JSON it can't parse, instead of a raw `SyntaxError`.
 - Chat and Responses APIs release the transcript they built when the session can't be created, instead of leaving it to the garbage collector.
 - Prototype pollution in prompt inputs: properties on prompt objects (e.g. `{ text: "..." }`) could inherit `attachments` or `text` from `Object.prototype`. Explicit `Object.hasOwn()` checks now guard against prototype pollution.
-- Stream cancellation now tracks the active native request handle, ensuring `session.cancel()` cancels in-flight streaming requests immediately via `FMRequestCancel` and releases native handles.
+- Stream cancellation tracks the active native request handle. `session.cancel()` signals the native request immediately; stream cleanup releases the handle and the session's queue lock.
 
 ## [0.5.1] - 2026-09-18
 

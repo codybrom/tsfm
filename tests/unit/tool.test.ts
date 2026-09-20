@@ -17,7 +17,9 @@ const { mockFns, capturedCallbacks } = vi.hoisted(() => {
         },
       ),
       FMBridgedToolFinishCall: vi.fn(() => true),
-      FMBridgedToolFailCall: vi.fn(() => true),
+      FMBridgedToolFailCall: vi.fn(
+        (_tool: unknown, _id: number, _code: number, _message: string) => true,
+      ),
       FMRelease: vi.fn(),
     },
     capturedCallbacks,
@@ -72,7 +74,7 @@ vi.mock("../../src/errors.js", () => ({
 }));
 
 import { Tool } from "../../src/tool.js";
-import { ToolCallBudget } from "../../src/tool-budget.js";
+import { parseToolFailure, ToolCallBudget } from "../../src/tool-budget.js";
 import { FailRequestError } from "../../src/errors.js";
 import { GenerationSchema } from "../../src/schema.js";
 
@@ -207,7 +209,7 @@ describe("Tool", () => {
       await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("reject-ref"));
     });
 
-    it("releases the arguments when call() throws synchronously", () => {
+    it("releases the arguments when call() throws synchronously", async () => {
       class Throwing extends TestTool {
         call(): Promise<string> {
           throw new Error("sync boom");
@@ -216,11 +218,11 @@ describe("Tool", () => {
       const tool = new Throwing();
       tool._register();
       capturedCallbacks[0]("sync-ref", 3);
-      expect(mockContentDispose).toHaveBeenCalledWith("sync-ref");
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("sync-ref"));
       expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
         "mock-tool-pointer",
         3,
-        "Tool callback error: sync boom",
+        "Tool 'test-tool' failed: sync boom",
       );
     });
 
@@ -426,11 +428,13 @@ describe("Tool", () => {
         "mock-tool-pointer",
         1,
         22,
-        "no such record",
+        expect.stringContaining("] no such record"),
       );
       // Answered exactly once, and only by failing it.
       expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
-      expect(budget.failure).toEqual({ toolName: "lookup", cause: tool.failure });
+      const message = mockFns.FMBridgedToolFailCall.mock.calls[0][3];
+      const { id } = parseToolFailure(message);
+      expect(budget.failures.get(id!)).toEqual({ toolName: "lookup", cause: tool.failure });
       expect(mockContentDispose).toHaveBeenCalledWith("ref-1");
     });
 
@@ -456,7 +460,7 @@ describe("Tool", () => {
         "Tool 'lookup' failed: timeout",
       );
       expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
-      expect(budget.failure).toBeNull();
+      expect(budget.failures.size).toBe(0);
     });
 
     it("doesn't answer through a released handle when the tool is disposed mid-call", async () => {

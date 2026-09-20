@@ -8,7 +8,7 @@
 import { getFunctions, type NativePointer } from "./bindings.js";
 import { GenerationSchema, GeneratedContent } from "./schema.js";
 import { statusToError, ToolCallError, FailRequestError, GenerationErrorCode } from "./errors.js";
-import type { ToolCallBudget } from "./tool-budget.js";
+import { recordToolFailure, type ToolCallBudget } from "./tool-budget.js";
 
 export abstract class Tool {
   abstract readonly name: string;
@@ -26,7 +26,9 @@ export abstract class Tool {
    * generation does **not** fail. To fail the whole request instead, throw
    * `FailRequestError`: the request then rejects with
    * `RequestFailedByToolError` naming this tool, with the `FailRequestError`
-   * as its `cause`.
+   * as its `cause`. Synchronous throws and rejected Promises behave alike.
+   * When concurrent sessions share this tool, each request receives the error
+   * from its own invocation, even if the failures have identical messages.
    *
    * `args` contains the structured arguments the model supplied, shaped
    * according to `argumentsSchema`. It's released once `call()` settles, so
@@ -131,8 +133,10 @@ export abstract class Tool {
         } catch (err) {
           console.warn(`[tsfm] Tool '${owner.name}' onCall handler threw:`, err);
         }
-        owner
-          .call(args)
+        // Convert a synchronous throw to a rejection too: both must use the
+        // same FailRequestError handling below.
+        Promise.resolve()
+          .then(() => owner.call(args))
           .then((result) => {
             // Name the tool and the type here; the addon would only say it
             // expected a string for "output". Thrown, so the catch below still
@@ -150,15 +154,15 @@ export abstract class Tool {
             const answering = current();
             if (err instanceof FailRequestError) {
               // Failing the call ends the response with REQUEST_FAILED_BY_TOOL.
-              // Only the message crosses the bridge; the session reads the
-              // tool's name and the error from the request's budget.
-              for (const b of budgets) b.failure ??= { toolName: owner.name, cause: err };
+              // The marker survives both text and structured native errors,
+              // so concurrent sessions sharing this tool get their own cause.
               if (answering) {
+                const message = recordToolFailure(budgets, owner.name, err);
                 fn.FMBridgedToolFailCall(
                   answering,
                   callId,
                   GenerationErrorCode.REQUEST_FAILED_BY_TOOL,
-                  err.message,
+                  message,
                 );
               }
               return;

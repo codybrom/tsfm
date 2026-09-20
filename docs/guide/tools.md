@@ -127,9 +127,14 @@ class WeatherTool extends Tool {
 }
 ```
 
-To fail the whole request instead, catch the error in `call()` and decide
-there: return a message the model can act on, or dispose the tool, which fails
-its pending calls and ends the response.
+To fail the whole request instead, throw `FailRequestError` from `call()`.
+The request rejects with `RequestFailedByToolError`, whose `toolName` identifies
+the tool and whose `cause` is the original `FailRequestError`. Synchronous throws
+and rejected Promises behave alike; see [Failing the request](/api/tool#failing-the-request).
+
+If concurrent sessions share a tool, each failed request keeps the error from
+its own invocation, including when the messages are identical. The shared
+[tool call limit](#tool-call-limit) still applies as described above.
 
 ## Cleanup
 

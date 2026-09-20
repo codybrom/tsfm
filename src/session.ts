@@ -84,11 +84,12 @@ function assertModelNotDisposed(
 
 /**
  * A request's rejection, with the tool's name and error filled in when a tool
- * failed it with FailRequestError (see ToolCallBudget.failure).
+ * failed it with FailRequestError (see ToolCallBudget.failures).
  */
 function withToolFailure(err: unknown, budget: ToolCallBudget): unknown {
-  if (err instanceof RequestFailedByToolError && budget.failure && !err.toolName) {
-    err._attach(budget.failure.toolName, budget.failure.cause);
+  if (err instanceof RequestFailedByToolError && err._failureId && !err.toolName) {
+    const failure = budget.failures.get(err._failureId);
+    if (failure) err._attach(failure.toolName, failure.cause);
   }
   return err;
 }
@@ -261,21 +262,27 @@ export class LanguageModelSession {
   }
 
   /**
-   * Request cancellation of any in-progress generation and reset the session
-   * to idle.
+   * Request cancellation of the generation currently running. Requests waiting
+   * in the session's queue are not removed.
    *
    * **Cancellation is advisory:** the native task is signalled, but an
    * in-flight callback may still fire and resolve or reject the pending Promise
    * after `cancel()` returns. Callers should discard any result that arrives
    * after calling `cancel()`.
+   *
+   * For streams, cancellation unblocks a waiting iterator; iteration ends on
+   * its next step. The stream's cleanup releases the request and queue lock,
+   * so the session can be used again. `collect()` returns the text received so
+   * far. For one-shot requests, await settlement before treating cancellation
+   * as complete; a stopped request rejects with `CancelledError`.
    */
   cancel(): void {
     if (this._disposed) return;
     if (this._activeTask) {
       const fn = getFunctions();
       fn.FMRequestCancel(this._activeTask);
-      // The request's own finally releases it too; release is idempotent.
-      fn.FMRelease(this._activeTask);
+      // The request's finally owns the handle. In particular, stream cleanup
+      // still needs to cancel it before releasing it and unlocking the queue.
       this._activeTask = null;
     }
     // Unblock any waiting stream consumer so the generator can exit.
@@ -543,25 +550,29 @@ export class LanguageModelSession {
       if (idleTimer) clearTimeout(idleTimer);
       const stoppedEarly = !streamDone;
       streamDone = true; // late chunks are ignored from here
-      if (fn && request) {
-        // Cancelling a stream that already ended is a no-op; otherwise the
-        // native task ends and its final call is absorbed by the addon.
-        fn.FMRequestCancel(request);
-        fn.FMRelease(request);
-      }
-      if (fn && stoppedEarly && this._nativeSession) {
-        // Reset the session after an early break so subsequent calls
-        // don't stall waiting for the cancelled stream to finish.
-        fn.FMLanguageModelSessionReset(this._nativeSession);
-      }
-      if (fn && composedPrompt) fn.FMRelease(composedPrompt);
-      if (budget) this._returnToolBudget(budget);
       try {
-        if (readUsageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
+        if (fn && request) {
+          // Cancelling a stream that already ended is a no-op; otherwise the
+          // native task ends and its final call is absorbed by the addon.
+          try {
+            fn.FMRequestCancel(request);
+          } finally {
+            fn.FMRelease(request);
+          }
+        }
       } finally {
-        // Always unlock the queue, even if reading usage fails, or every later
-        // request on this session would wait forever.
-        release();
+        try {
+          if (fn && composedPrompt) fn.FMRelease(composedPrompt);
+          if (fn && stoppedEarly && this._nativeSession) {
+            // Reset after an early break before subsequent requests start.
+            fn.FMLanguageModelSessionReset(this._nativeSession);
+          }
+          if (readUsageBefore) onFinished(usageBetween(usageBefore, this._readUsage()));
+        } finally {
+          if (budget) this._returnToolBudget(budget);
+          // Always unlock, even if native cleanup or reading usage fails.
+          release();
+        }
       }
     }
   }

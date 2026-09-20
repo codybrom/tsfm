@@ -159,7 +159,10 @@ the cancellation takes effect, and a stopped request rejects with
 `CancelledError`. A request waiting on a
 `Tool.call()` can't be interrupted until the tool answers; if the tool never
 settles, `tool.dispose()` ends it. Queued requests wait for the cancelled one to
-settle. See [Cancellation](/guide/sessions#cancellation).
+settle. For streams, `cancel()` unblocks the iterator and iteration ends normally
+on its next step; `collect()` returns the text received so far. Stream cleanup
+releases the queue lock so later requests can run on the same session.
+See [Cancellation](/guide/sessions#cancellation).
 
 ```ts
 cancel(): void

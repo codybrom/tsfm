@@ -71,7 +71,13 @@ Cancel an in-progress request with `cancel()`:
 
 ```ts
 const promise = session.respond("Tell me a long story");
-session.cancel();
+// From a later user action or timeout, once generation has started:
+const timer = setTimeout(() => session.cancel(), 5000);
+try {
+  await promise; // May reject with CancelledError.
+} finally {
+  clearTimeout(timer);
+}
 ```
 
 `cancel()` asks the native task to stop. It returns immediately and the pending
@@ -84,7 +90,9 @@ promise settles later. What to expect:
   `tool.dispose()` ends the request, by failing its pending calls.
 - Requests queued behind the cancelled one wait until it settles; `cancel()`
   doesn't remove them from the queue.
-- For streams, the consumer loop exits on its next iteration; see
+- For streams, cancellation unblocks a waiting iterator and the consumer loop
+  exits on its next iteration. Cleanup releases the queue so later requests can
+  run on the same session; see
   [Streaming](/guide/streaming#cancellation).
 
 ## Checking State

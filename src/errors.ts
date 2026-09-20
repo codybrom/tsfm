@@ -1,3 +1,5 @@
+import { parseToolFailure } from "./tool-budget.js";
+
 /**
  * Status codes from the native bridge. A regular enum, not a `const enum`, so it
  * exists at runtime and callers don't compile the numbers into their own code.
@@ -265,6 +267,7 @@ export class TranscriptMutationWhileRespondingError extends GenerationError {
  * `RequestFailedByToolError`, which names the tool and carries this error as
  * its `cause`. Any other error a tool throws is sent back to the model as the
  * tool's output and generation continues.
+ * Applies both to a synchronous throw from `call()` and a rejected Promise.
  *
  * ```ts
  * async call(args) {
@@ -286,12 +289,16 @@ export class FailRequestError extends Error {
  * `cause` (the `FailRequestError`) are set for requests made through a
  * session; with `toolCallingMode: "required"`, this is how a tool ends the
  * request.
+ * A tool shared by concurrent sessions preserves each failed invocation's
+ * original error as the corresponding request's `cause`.
  */
 export class RequestFailedByToolError extends GenerationError {
   /** The tool that failed the request, once known. */
   toolName: string | null = null;
   /** The `FailRequestError` the tool threw, once known. */
   declare cause?: Error;
+  /** @internal Correlates the native failure with its original JavaScript cause. */
+  _failureId: string | null = null;
 
   constructor(msg = "A tool failed the request") {
     super(msg);
@@ -425,8 +432,14 @@ export function statusToError(status: number, detail?: string | null): Generatio
       return new TranscriptMutationWhileRespondingError(
         `The transcript was changed while the session was responding${suffix}`,
       );
-    case GenerationErrorCode.REQUEST_FAILED_BY_TOOL:
-      return new RequestFailedByToolError(`A tool failed the request${suffix}`);
+    case GenerationErrorCode.REQUEST_FAILED_BY_TOOL: {
+      const { id, message } = parseToolFailure(detail ?? "");
+      const error = new RequestFailedByToolError(
+        `A tool failed the request${message ? `: ${message}` : ""}`,
+      );
+      error._failureId = id;
+      return error;
+    }
     case GenerationErrorCode.CANCELLED:
       // The bridge's detail is just "Operation cancelled" / "Stream cancelled",
       // which would read twice in one sentence.

@@ -14,3 +14,4 @@ docs/.vitepress/cache
 .env.local
 spikes/napi/build
 spikes/napi/compile_flags.txt
+docs/.vitepress/.temp/

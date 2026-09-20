@@ -84,17 +84,29 @@ const { content: next } = await session.respond("Summarize what you said");
 
 ## Cancellation
 
-Call `session.cancel()` to stop a stream mid-generation. The stream iterator will terminate on the next iteration:
+Call `session.cancel()` to stop a stream mid-generation. A waiting iterator is
+unblocked, and iteration ends on its next step. Cleanup releases the request and
+the session's queue lock, allowing later requests to run:
 
 ```ts
 // From another context (e.g. a timeout or user action)
-setTimeout(() => session.cancel(), 5000);
+const timer = setTimeout(() => session.cancel(), 5000);
 
-for await (const chunk of session.streamResponse("Write a long essay")) {
-  process.stdout.write(chunk);
+try {
+  for await (const chunk of session.streamResponse("Write a long essay")) {
+    process.stdout.write(chunk);
+  }
+} finally {
+  clearTimeout(timer);
 }
-// Loop exits after cancel() fires — session is still usable
+
+const { content: next } = await session.respond("Say hello.");
 ```
+
+Cancellation ends stream iteration normally; `collect()` returns the text
+received so far. A one-shot request stopped by cancellation rejects with
+`CancelledError`. See [Cancellation](/guide/sessions#cancellation) for requests
+waiting on tools.
 
 ::: tip
 Once the first snapshot has arrived, a stream that goes 30 seconds without another one ends with a `GenerationError` ("Stream idle timeout") rather than hanging. The timer isn't armed before the first snapshot, so a slow tool call or a long wait for the model at the start doesn't trip it.

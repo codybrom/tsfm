@@ -86,6 +86,18 @@ try {
 }
 ```
 
+## Tool failures
+
+Throw `FailRequestError` from `Tool.call()` to stop a text, structured or streaming
+request. A synchronous throw and a rejected Promise both produce
+`RequestFailedByToolError`. Its `toolName` and `cause` belong to the invocation
+that failed this request, including when concurrent sessions share the tool and
+their errors have identical messages. The `cause` is the original error object,
+so its own `cause` is preserved too. See [Failing the request](/api/tool#failing-the-request).
+
+Other errors from `call()` are returned to the model as tool output, and generation
+continues.
+
 ## GenerationErrorCode
 
 Enum mapping status codes to error types:

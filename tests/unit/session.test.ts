@@ -91,7 +91,7 @@ import {
   UnsupportedGuideError,
 } from "../../src/errors.js";
 import { GenerationSchema, type JsonSchema } from "../../src/schema.js";
-import type { ToolCallBudget } from "../../src/tool-budget.js";
+import { recordToolFailure, type ToolCallBudget } from "../../src/tool-budget.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -411,7 +411,7 @@ describe("LanguageModelSession", () => {
       (session as unknown as { _activeTask: unknown })._activeTask = "mock-task";
       session.cancel();
       expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-task");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-task");
+      expect(mockFns.FMRelease).not.toHaveBeenCalledWith("mock-task");
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
   });
@@ -1100,8 +1100,8 @@ describe("LanguageModelSession", () => {
     });
     const cause = new FailRequestError("no such record");
     const failFromNative = (tool: ReturnType<typeof failingTool>) => {
-      for (const budget of tool._budgets) budget.failure = { toolName: "lookup", cause };
-      lastRegisteredCallback?.(22, "no such record", 14, null);
+      const message = recordToolFailure(tool._budgets, "lookup", cause);
+      lastRegisteredCallback?.(22, message, message.length, null);
     };
 
     it("rejects respond() with the tool's name and cause", async () => {
@@ -1267,6 +1267,61 @@ describe("LanguageModelSession", () => {
       expect(chunks).toEqual([]);
       expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-stream-pointer");
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-stream-pointer");
+    });
+
+    it("keeps a cancelled stream's handle alive through cleanup and unlocks the queue", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
+      const released = new Set<unknown>();
+      mockFns.FMRelease.mockImplementation((handle) => {
+        released.add(handle);
+      });
+      mockFns.FMRequestCancel.mockImplementation((handle) => {
+        if (released.has(handle)) throw new Error("The request has been released");
+      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(
+        textRequest(() => lastRegisteredCallback?.(0, "after cancel")),
+      );
+      const session = new LanguageModelSession();
+      try {
+        const stream = session.streamResponse("Hi");
+        const pending = stream.collect();
+        await vi.waitFor(() =>
+          expect(mockFns.FMLanguageModelSessionStreamResponse).toHaveBeenCalled(),
+        );
+        const next = session.respond("Again");
+        session.cancel();
+        session.cancel();
+        await expect(pending).resolves.toMatchObject({ content: "" });
+        await expect(next).resolves.toMatchObject({ content: "after cancel" });
+        expect(released.has("mock-stream-pointer")).toBe(true);
+      } finally {
+        mockFns.FMRelease.mockImplementation(() => {});
+        mockFns.FMRequestCancel.mockImplementation(() => {});
+        session.dispose();
+      }
+    });
+
+    it("unlocks the stream queue even when native cancellation throws during cleanup", async () => {
+      mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {
+        queueMicrotask(() => lastRegisteredCallback?.(0, "Hello"));
+      });
+      mockFns.FMRequestCancel.mockImplementationOnce(() => {
+        throw new Error("cleanup failed");
+      });
+      mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(
+        textRequest(() => lastRegisteredCallback?.(0, "after cleanup")),
+      );
+      const session = new LanguageModelSession();
+      try {
+        const iterator = session.streamResponse("Hi")[Symbol.asyncIterator]();
+        await expect(iterator.next()).resolves.toMatchObject({ value: "Hello" });
+        await expect(iterator.return!()).rejects.toThrow("cleanup failed");
+        expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-stream-pointer");
+        expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-composed-prompt");
+        await expect(session.respond("Again")).resolves.toMatchObject({ content: "after cleanup" });
+      } finally {
+        session.dispose();
+      }
     });
 
     it("treats null pointer as end-of-stream signal", async () => {

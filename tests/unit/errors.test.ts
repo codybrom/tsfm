@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { recordToolFailure } from "../../src/tool-budget.js";
 import {
   statusToError,
   GenerationErrorCode,
@@ -167,6 +168,23 @@ describe("statusToError", () => {
     expect(err.cause).toBe(cause);
     expect(err.message).toBe("Tool 'lookup' failed the request: no such record");
   });
+
+  it.each([false, true])(
+    "hides the failure marker without a matching budget (JSON: %s)",
+    (json) => {
+      const failure = new FailRequestError('No record "alpha"\nTry again');
+      const wire = recordToolFailure([], "lookup", failure);
+      const detail = json ? JSON.stringify(wire) : wire;
+      const error = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, detail);
+      expect(error).toBeInstanceOf(RequestFailedByToolError);
+      expect(error.message).toBe(
+        `A tool failed the request: ${json ? JSON.stringify(failure.message) : failure.message}`,
+      );
+      expect((error as RequestFailedByToolError)._failureId).toBeTruthy();
+      expect((error as RequestFailedByToolError).toolName).toBeNull();
+      expect(error.cause).toBeUndefined();
+    },
+  );
 
   it.each([
     [

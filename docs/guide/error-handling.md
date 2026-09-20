@@ -124,7 +124,15 @@ drops to a lesser model. Recorded behaviour is in
 
 ### ToolCallError
 
-Your tool's `call()` method threw during execution. The SDK wraps the original error with the tool name so you can identify which tool failed and why. Access the original error via `err.cause`.
+Your tool's `call()` method threw during execution. The SDK wraps the original
+error with the tool name and sends its message back to the model as tool output.
+The response continues; `ToolCallError` is not thrown by `respond()`.
+
+To stop generation, throw `FailRequestError` instead. Text, structured and
+streaming requests then reject with `RequestFailedByToolError`. Check its
+`toolName` and `cause` for the failing invocation. Synchronous throws and rejected
+Promises behave alike, and concurrent sessions sharing a tool each retain their
+own failure. See [Failing the request](/api/tool#failing-the-request).
 
 ## Catching All SDK Errors
 
