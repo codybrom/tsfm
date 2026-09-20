@@ -590,25 +590,37 @@ function noteTitle(title: string, into: Set<string>, seen: Set<string>): void {
  * takes the first's shape, and a written title can't be renamed here because a
  * $ref may point at it.
  */
-function collectTitles(node: unknown, into: Set<string>, seen = new Set<string>()): void {
+function collectTitles(
+  node: unknown,
+  into: Set<string>,
+  seen = new Set<string>(),
+  // A $defs entry's own title is ignored: formatSchema replaces it with the
+  // key, so counting both would report the same object twice.
+  skipOwnTitle = false,
+): void {
   if (!node || typeof node !== "object") return;
   if (Array.isArray(node)) {
     for (const item of node) collectTitles(item, into, seen);
     return;
   }
   const record = node as Record<string, unknown>;
+  const defs =
+    record.$defs && typeof record.$defs === "object" && !Array.isArray(record.$defs)
+      ? (record.$defs as Record<string, unknown>)
+      : null;
   // A $defs entry is titled by its key, so the key is a title even though it
   // isn't written as one; Apple resolves "#/$defs/<key>" that way.
-  if (record.$defs && typeof record.$defs === "object" && !Array.isArray(record.$defs)) {
-    for (const key of Object.keys(record.$defs as Record<string, unknown>)) {
+  if (defs) {
+    for (const [key, value] of Object.entries(defs)) {
       noteTitle(key, into, seen);
+      collectTitles(value, into, seen, true);
     }
   }
-  if (typeof record.title === "string" && record.title) {
+  if (!skipOwnTitle && typeof record.title === "string" && record.title) {
     noteTitle(record.title, into, seen);
   }
   for (const [key, value] of Object.entries(record)) {
-    if (key !== "title") collectTitles(value, into, seen);
+    if (key !== "title" && key !== "$defs") collectTitles(value, into, seen);
   }
 }
 

@@ -114,6 +114,19 @@ describe("afmSchemaFormat", () => {
     expect(result.title).toBe("Object");
   });
 
+  it("says nothing when a $defs entry's title matches its key", () => {
+    // formatSchema titles a $defs entry by its key, so a schema that writes the
+    // same title (as the compat tool schema does) has one object, not two.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    afmSchemaFormat({
+      type: "object",
+      $defs: { ToolCall: { title: "ToolCall", type: "object", properties: {} } },
+      properties: { tool_call: { $ref: "#/$defs/ToolCall" } },
+    });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("warns when two objects in a schema share a written title", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     afmSchemaFormat({
