@@ -111,6 +111,18 @@ describe("composePrompt", () => {
       expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
     });
 
+    it("reports a directory as unknown, not not-found", () => {
+      // The path exists; it just isn't a file. A caller retrying a missing
+      // path shouldn't confuse the two.
+      let err: unknown;
+      try {
+        composePrompt(fn, { content: [{ path: dir }] });
+      } catch (e) {
+        err = e;
+      }
+      expect((err as PromptAttachmentError).reason).toBe("unknown");
+    });
+
     it("treats a directory as not found", () => {
       expect(() =>
         composePrompt(fn, { content: [{ path: path.join(dir, "folder.png") }] }),

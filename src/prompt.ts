@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 import { getFunctions, type NativePointer } from "./bindings.js";
-import { PromptAttachmentError } from "./errors.js";
+import { PromptAttachmentError, type PromptAttachmentFailure } from "./errors.js";
 
 /** An image attached to a prompt. Requires macOS 27. */
 export interface PromptAttachment {
@@ -95,16 +95,25 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
  */
 function assertAttachmentExists(attachment: PromptAttachment): void {
   let problem: string | null = null;
+  // "not-found" only when the path really isn't there: a directory or an
+  // unreadable file is a different thing for a caller to handle.
+  let reason: PromptAttachmentFailure = "not-found";
   try {
-    if (!statSync(attachment.path).isFile()) problem = "it isn't a file";
+    if (!statSync(attachment.path).isFile()) {
+      problem = "it isn't a file";
+      reason = "unknown";
+    }
   } catch (err) {
-    problem =
-      (err as NodeJS.ErrnoException).code === "ENOENT"
-        ? "it doesn't exist"
-        : `it can't be read (${(err as NodeJS.ErrnoException).code ?? "unknown error"})`;
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      problem = "it doesn't exist";
+    } else {
+      problem = `it can't be read (${code ?? "unknown error"})`;
+      reason = "unknown";
+    }
   }
   if (problem) {
-    throw new PromptAttachmentError(`Cannot attach ${attachment.path}: ${problem}.`, "not-found");
+    throw new PromptAttachmentError(`Cannot attach ${attachment.path}: ${problem}.`, reason);
   }
 }
 
