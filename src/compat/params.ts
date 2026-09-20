@@ -43,7 +43,11 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
  * read after it is the caller's own.
  */
 export function ownParams<T extends object>(params: T): T {
-  return { ...params };
+  // Object.create(null), not a spread: a spread copies own properties but the
+  // copy still inherits from Object.prototype, so reading a key the caller
+  // didn't send would still find a polluted one. This copy has no prototype,
+  // so a missing key reads as undefined.
+  return Object.assign(Object.create(null) as T, params);
 }
 
 export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationOptions {

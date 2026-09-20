@@ -82,14 +82,17 @@ describeWithoutEntitlement("Private Cloud Compute without the entitlement (integ
     session.dispose();
   }, 30_000);
 
-  it("fails compat requests for the PCC model the same way", async () => {
+  it("fails compat requests for the PCC model with an HTTP status", async () => {
     using client = new Client();
+    // The compat layer speaks HTTP: a proxy built on it needs a status, not a
+    // raw SDK error it would report as 500. A missing entitlement is a
+    // configuration problem, so 403 rather than a retryable code.
     await expect(
       client.chat.completions.create({
         model: "PrivateCloudComputeLanguageModel",
         messages: [{ role: "user", content: "Say hi." }],
       }),
-    ).rejects.toBeInstanceOf(PrivateCloudComputeEntitlementError);
+    ).rejects.toMatchObject({ name: "CompatError", status: 403 });
   }, 30_000);
 
   it("still reads the context size", async () => {

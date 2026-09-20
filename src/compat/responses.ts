@@ -4,7 +4,7 @@ import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
 import { SamplingMode, type GenerationOptions } from "../options.js";
 import { ownParams } from "./params.js";
-import type { Usage } from "../response.js";
+import type { Usage, ResponseStream as ModelResponseStream } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
@@ -29,6 +29,7 @@ import {
   reorderJson,
   nowSeconds,
   CompatError,
+  throwAsCompatError,
   describeToolCall,
   formatToolResult,
   toolResultPrompt,
@@ -154,7 +155,7 @@ function mapResponseParams(raw: ResponseCreateParams): GenerationOptions {
     "reasoning.effort",
   );
   if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;
-  if (params.reasoning?.summary != null) {
+  if (params.reasoning && ownParams(params.reasoning).summary != null) {
     console.warn(
       `[tsfm compat] Parameter "reasoning.summary" is not supported and will be ignored.`,
     );
@@ -462,8 +463,10 @@ export class Responses {
       prompt += "\n\nRemember: if a tool can help answer this, use type tool_call.";
     }
 
-    const transcript = Transcript.fromJson(transcriptStr);
+    // Resolve the model first: _getModel throws for PCC on macOS 26, and
+    // doing it after fromJson would leak the transcript it just built.
     const model = this._getModel(compatModelName(params.model));
+    const transcript = Transcript.fromJson(transcriptStr);
     let session: LanguageModelSession;
     try {
       session = LanguageModelSession.fromTranscript(transcript, { model });
@@ -556,9 +559,7 @@ export class Responses {
       if (err instanceof RefusalError) {
         return buildResponse(params, [makeRefusalMessage(err.message)], "completed");
       }
-      if (err instanceof RateLimitedError) {
-        throw new CompatError(err.message, 429);
-      }
+      throwAsCompatError(err);
       if (err instanceof GuardrailViolationError) {
         return buildResponse(
           params,
@@ -584,6 +585,7 @@ export class Responses {
     let seq = 0;
 
     async function* generate(): AsyncGenerator<ResponseStreamEvent> {
+      let stream: ModelResponseStream | undefined;
       try {
         // response.created
         // OpenAI reports the response as in progress until it completes.
@@ -690,7 +692,8 @@ export class Responses {
         };
 
         let fullText = "";
-        const stream = session.streamResponse(prompt, { options });
+        // Hoisted so the catch can still read usage; see the same shape in index.ts.
+        stream = session.streamResponse(prompt, { options });
         for await (const delta of stream) {
           fullText += delta;
           yield {
@@ -740,7 +743,7 @@ export class Responses {
           "completed",
           null,
           undefined,
-          stream.usage,
+          stream?.usage,
         );
         yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
       } catch (err) {
@@ -751,19 +754,19 @@ export class Responses {
             "incomplete",
             { code: "max_output_tokens", message: err.message },
             "max_output_tokens",
+            // The stream counts what it produced before the error.
+            stream?.usage,
           );
           yield { type: "response.incomplete", response: resp, sequence_number: seq++ };
           return;
         }
         if (err instanceof RefusalError) {
           const msg = makeRefusalMessage(err.message);
-          const resp = buildResponse(params, [msg], "completed");
+          const resp = buildResponse(params, [msg], "completed", null, undefined, stream?.usage);
           yield { type: "response.completed", response: resp, sequence_number: seq++ };
           return;
         }
-        if (err instanceof RateLimitedError) {
-          throw new CompatError(err.message, 429);
-        }
+        throwAsCompatError(err);
         if (err instanceof GuardrailViolationError) {
           const resp = buildResponse(
             params,
@@ -771,6 +774,7 @@ export class Responses {
             "failed",
             { code: "content_filter", message: err.message },
             "content_filter",
+            stream?.usage,
           );
           yield { type: "response.failed", response: resp, sequence_number: seq++ };
           return;

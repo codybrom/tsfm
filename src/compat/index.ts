@@ -7,9 +7,9 @@ import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
 import { usageBetween, type ResponseStream, type Usage } from "../response.js";
 import {
+  FoundationModelsError,
   ExceededContextWindowSizeError,
   RefusalError,
-  RateLimitedError,
   GuardrailViolationError,
 } from "../errors.js";
 import { messagesToTranscript } from "./transcript.js";
@@ -29,7 +29,13 @@ import {
   type CompatModel,
   type CompatModelName,
 } from "./models.js";
-import { reorderJson, nowSeconds, CompatError, toCompletionUsage } from "./utils.js";
+import {
+  reorderJson,
+  nowSeconds,
+  CompatError,
+  throwAsCompatError,
+  toCompletionUsage,
+} from "./utils.js";
 import type {
   ChatCompletionCreateParams,
   ChatCompletion,
@@ -104,6 +110,11 @@ class Completions {
     // Own properties only; see ownParams.
     const params = ownParams(raw);
     const options = mapParams(params);
+    if (!Array.isArray(params.messages)) {
+      throw new FoundationModelsError(
+        `"messages" must be an array, got ${params.messages === undefined ? "nothing" : typeof params.messages}`,
+      );
+    }
     const { transcriptJson, prompt: rawPrompt } = messagesToTranscript(params.messages);
     let prompt = rawPrompt;
     let transcriptStr = transcriptJson;
@@ -132,8 +143,12 @@ class Completions {
       transcriptStr = JSON.stringify(parsed);
     }
 
+    // response_format's own type, not the prototype's: a polluted
+    // Object.prototype.type would otherwise put every request into JSON mode.
+    const responseFormat = params.response_format ? ownParams(params.response_format) : undefined;
+
     // Append JSON instruction to prompt for json_object mode
-    if (params.response_format?.type === "json_object") {
+    if (responseFormat?.type === "json_object") {
       prompt += "\n\nRespond with valid JSON only. No other text.";
     }
 
@@ -143,9 +158,11 @@ class Completions {
     }
 
     // Create session from transcript
-    const transcript = Transcript.fromJson(transcriptStr);
+    // Resolve the model first: _getModel throws for PCC on macOS 26, and
+    // doing it after fromJson would leak the transcript it just built.
     const modelName = compatModelName(params.model);
     const model = this._getModel(modelName);
+    const transcript = Transcript.fromJson(transcriptStr);
     let session: LanguageModelSession;
     try {
       session = LanguageModelSession.fromTranscript(transcript, { model });
@@ -172,6 +189,8 @@ class Completions {
     params: ChatCompletionCreateParams,
     tools?: ChatCompletionTool[],
   ): Promise<ChatCompletion> {
+    // Own properties only; see ownParams.
+    const responseFormat = params.response_format ? ownParams(params.response_format) : undefined;
     try {
       // Tools present → use structured output with tool schema
       if (tools && tools.length > 0) {
@@ -189,12 +208,13 @@ class Completions {
       }
 
       // json_schema response format
-      if (params.response_format?.type === "json_schema") {
-        const rf = params.response_format as {
+      if (responseFormat?.type === "json_schema") {
+        const rf = responseFormat as {
           type: "json_schema";
-          json_schema: { schema?: JsonSchema };
+          json_schema?: { schema?: JsonSchema };
         };
-        const schema = rf.json_schema.schema ?? { type: "object" };
+        // json_schema, or its schema, may be missing in a hand-built request.
+        const schema = rf.json_schema?.schema ?? { type: "object" };
         const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
           options,
         });
@@ -224,9 +244,7 @@ class Completions {
           ],
         };
       }
-      if (err instanceof RateLimitedError) {
-        throw new CompatError(err.message, 429);
-      }
+      throwAsCompatError(err);
       if (err instanceof GuardrailViolationError) {
         return buildCompletion(null, "content_filter");
       }
@@ -338,9 +356,7 @@ class Completions {
           yield chunk({}, "stop");
           return;
         }
-        if (err instanceof RateLimitedError) {
-          throw new CompatError(err.message, 429);
-        }
+        throwAsCompatError(err);
         if (err instanceof GuardrailViolationError) {
           yield chunk({}, "content_filter");
           return;
@@ -385,6 +401,7 @@ export default class Client {
   responses: Responses;
   private _model: SystemLanguageModel;
   private _pccModel: PrivateCloudComputeLanguageModel | null = null;
+  private _closed = false;
 
   constructor() {
     this._model = new SystemLanguageModel();
@@ -395,11 +412,18 @@ export default class Client {
 
   /** Created on first use, so clients that stay on-device never touch PCC. */
   private _pcc(): PrivateCloudComputeLanguageModel {
+    // Without this, a request arriving after close() would build a fresh
+    // native model that nothing will ever dispose. The on-device model
+    // already refuses, because disposing it makes it throw.
+    if (this._closed) {
+      throw new FoundationModelsError("This client is closed");
+    }
     this._pccModel ??= new PrivateCloudComputeLanguageModel();
     return this._pccModel;
   }
 
   close(): void {
+    this._closed = true;
     this._model.dispose();
     this._pccModel?.dispose();
     this._pccModel = null;

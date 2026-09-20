@@ -2,6 +2,13 @@ import type { JsonSchema, JsonObject } from "../schema.js";
 import type { Usage } from "../response.js";
 import type { CompletionUsage } from "./types.js";
 import type { ResponseUsage } from "./responses-types.js";
+import {
+  RateLimitedError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeEntitlementError,
+} from "../errors.js";
 
 /**
  * Reorder JSON keys to match the property order defined in a JSON schema.
@@ -63,6 +70,36 @@ export class CompatError extends Error {
     this.name = "CompatError";
     this.status = status;
   }
+}
+
+/**
+ * The HTTP status an SDK error should surface as, or null when it has no
+ * counterpart and the caller should handle it another way.
+ *
+ * Both compat layers share this: mapping them separately let the Private
+ * Cloud Compute errors reach only one of the two, so a quota a client could
+ * back off from answered 500 instead of 429.
+ */
+export function compatStatusFor(err: unknown): number | null {
+  if (err instanceof RateLimitedError || err instanceof PrivateCloudComputeQuotaExceededError) {
+    return 429;
+  }
+  if (
+    err instanceof PrivateCloudComputeUnavailableError ||
+    err instanceof PrivateCloudComputeNetworkError
+  ) {
+    return 503;
+  }
+  // The host process isn't signed for PCC: a configuration problem, not a
+  // transient one, so it must not read as retryable.
+  if (err instanceof PrivateCloudComputeEntitlementError) return 403;
+  return null;
+}
+
+/** Rethrows `err` as a CompatError when it has an HTTP counterpart. */
+export function throwAsCompatError(err: unknown): void {
+  const status = compatStatusFor(err);
+  if (status !== null) throw new CompatError((err as Error).message, status);
 }
 
 /**

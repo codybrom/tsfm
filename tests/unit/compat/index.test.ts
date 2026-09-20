@@ -1038,4 +1038,59 @@ describe("Chat API compat layer", () => {
       client.close();
     });
   });
+
+  describe("client lifetime", () => {
+    it("refuses PCC after close(), instead of building a model nothing disposes", async () => {
+      const client = new Client();
+      client.close();
+      await expect(
+        client.chat.completions.create({
+          model: "PrivateCloudComputeLanguageModel",
+          messages: basicMessages,
+        } as never),
+      ).rejects.toThrow(/closed/);
+    });
+  });
+
+  describe("malformed requests", () => {
+    it.each([
+      ["messages missing", {}, /"messages" must be an array, got nothing/],
+      ["messages not an array", { messages: "hi" }, /"messages" must be an array, got string/],
+    ])("rejects a request with %s", async (_name, params, message) => {
+      await expect(new Client().chat.completions.create(params as never)).rejects.toThrow(message);
+    });
+
+    it("treats response_format with no json_schema as a bare object", async () => {
+      // A hand-built request can omit it; this used to throw a TypeError.
+      simulateStructuredSuccess({ answer: 42 });
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: { type: "json_schema" } as never,
+      });
+      expect(result.choices[0].message.content).toBeDefined();
+      client.close();
+    });
+
+    it("ignores a response_format type supplied by the prototype", async () => {
+      simulateRespondSuccess("Hello");
+      const proto = Object.prototype as unknown as Record<string, unknown>;
+      proto.type = "json_object";
+      try {
+        const client = new Client();
+        await client.chat.completions.create({
+          messages: basicMessages,
+          response_format: { json_schema: { name: "x" } } as never,
+        });
+        // The JSON-mode instruction must not be appended off the prototype.
+        expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.not.stringContaining("Respond with valid JSON only"),
+        );
+        client.close();
+      } finally {
+        delete proto.type;
+      }
+    });
+  });
 });

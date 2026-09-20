@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mapParams } from "../../../src/compat/params.js";
+import { mapParams, ownParams } from "../../../src/compat/params.js";
+import { compatStatusFor, throwAsCompatError } from "../../../src/compat/utils.js";
+import {
+  RateLimitedError,
+  GuardrailViolationError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeEntitlementError,
+} from "../../../src/errors.js";
 import type { ChatCompletionCreateParams } from "../../../src/compat/types.js";
 import { SamplingMode } from "../../../src/options.js";
 
@@ -184,6 +193,20 @@ describe("mapParams", () => {
     warn.mockRestore();
   });
 
+  it("copies params without a prototype, so a missing key can't be inherited", () => {
+    // A spread copy would still inherit from Object.prototype: the copy must
+    // have none, or a polluted key reads through on every request.
+    const copy = ownParams({ model: "SystemLanguageModel" }) as Record<string, unknown>;
+    expect(Object.getPrototypeOf(copy)).toBeNull();
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    proto.response_format = { type: "json_object" };
+    try {
+      expect(ownParams({} as Record<string, unknown>).response_format).toBeUndefined();
+    } finally {
+      delete proto.response_format;
+    }
+  });
+
   it("takes the model from the params' own properties, not the prototype", () => {
     // A polluted prototype must not pick Private Cloud Compute for a caller.
     const polluted = Object.create({
@@ -196,5 +219,23 @@ describe("mapParams", () => {
     expect(options.reasoningLevel).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it.each([
+    ["PrivateCloudComputeQuotaExceededError", new PrivateCloudComputeQuotaExceededError(), 429],
+    ["PrivateCloudComputeUnavailableError", new PrivateCloudComputeUnavailableError(), 503],
+    ["PrivateCloudComputeNetworkError", new PrivateCloudComputeNetworkError(), 503],
+    ["PrivateCloudComputeEntitlementError", new PrivateCloudComputeEntitlementError(), 403],
+    ["RateLimitedError", new RateLimitedError(), 429],
+  ])("gives %s an HTTP status, so a proxy doesn't answer 500", (_name, err, status) => {
+    expect(compatStatusFor(err)).toBe(status);
+    expect(() => throwAsCompatError(err)).toThrow(
+      expect.objectContaining({ name: "CompatError", status }),
+    );
+  });
+
+  it("leaves an error with no HTTP counterpart alone", () => {
+    expect(compatStatusFor(new GuardrailViolationError())).toBeNull();
+    expect(() => throwAsCompatError(new GuardrailViolationError())).not.toThrow();
   });
 });
