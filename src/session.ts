@@ -503,6 +503,7 @@ export class LanguageModelSession {
         optionsJson,
         onChunk,
       );
+      this._activeTask = request;
       if (!request) {
         streamDone = true;
         throw new FoundationModelsError("The stream couldn't start; check the generation options.");
@@ -538,6 +539,7 @@ export class LanguageModelSession {
       }
     } finally {
       this._cancelStream = null;
+      if (this._activeTask === request) this._activeTask = null;
       if (idleTimer) clearTimeout(idleTimer);
       const stoppedEarly = !streamDone;
       streamDone = true; // late chunks are ignored from here

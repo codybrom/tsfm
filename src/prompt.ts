@@ -60,12 +60,13 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
     }
     parts = own.content;
   } else {
-    if (typeof own.text !== "string") {
+    if (!Object.hasOwn(own, "text") || typeof own.text !== "string") {
       throw new TypeError(`A prompt must be ${SHAPES}; this one has no "text"`);
     }
     // An explicit undefined or null reads as "no attachments", like the
-    // optional property it is.
-    const attachments = own.attachments ?? [];
+    // optional property it is. Only read attachments if it's an own property,
+    // so a polluted Object.prototype cannot inject files.
+    const attachments = Object.hasOwn(own, "attachments") ? (own.attachments ?? []) : [];
     if (!Array.isArray(attachments)) {
       throw new TypeError(`A prompt's "attachments" must be an array`);
     }

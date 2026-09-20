@@ -190,6 +190,24 @@ describe("composePrompt", () => {
     expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
   });
 
+  it("does not inherit attachments or text from Object.prototype", () => {
+    const proto = Object.prototype as unknown as Record<string, unknown>;
+    proto.attachments = [{ path: image }];
+    proto.text = "inherited text";
+    try {
+      // { text: "Hello" } must not attach the inherited attachments
+      composePrompt(fn, { text: "Hello" });
+      expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+      expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
+
+      // {} must not be accepted via inherited text
+      expect(() => composePrompt(fn, {} as never)).toThrow(/has no "text"/);
+    } finally {
+      delete proto.attachments;
+      delete proto.text;
+    }
+  });
+
   it.each([
     ["undefined", undefined],
     ["null", null],

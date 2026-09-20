@@ -1251,7 +1251,7 @@ describe("LanguageModelSession", () => {
       expect(mockFns.FMLanguageModelSessionReset).toHaveBeenCalledWith("mock-session-pointer");
     });
 
-    it("cancel() unblocks a waiting stream consumer", async () => {
+    it("cancel() unblocks a waiting stream consumer and cancels the native request", async () => {
       // The callback never fires — the stream blocks until cancel() is called.
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
 
@@ -1265,6 +1265,8 @@ describe("LanguageModelSession", () => {
         chunks.push(chunk);
       }
       expect(chunks).toEqual([]);
+      expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("mock-stream-pointer");
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-stream-pointer");
     });
 
     it("treats null pointer as end-of-stream signal", async () => {

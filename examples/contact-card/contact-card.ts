@@ -20,6 +20,7 @@ import {
   type InferSchema,
   type PropertyDef,
 } from "tsfm-sdk";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -208,4 +209,6 @@ async function main() {
   model.dispose();
 }
 
-main().catch(console.error);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(console.error);
+}
