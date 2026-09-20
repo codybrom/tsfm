@@ -116,6 +116,15 @@ export class Transcript {
     this._owned = false;
   }
 
+  /**
+   * @internal Whether this transcript owns its native object. False for one
+   * reached through `session.transcript`, and for one already handed to
+   * `fromTranscript()`.
+   */
+  get _ownsObject(): boolean {
+    return this._owned;
+  }
+
   /** @internal Update the native session after fromTranscript(). */
   _updateNativeSession(pointer: NativePointer): void {
     // fromTranscript() repoints this instance at the session it just built.

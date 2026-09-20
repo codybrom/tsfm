@@ -78,6 +78,7 @@ vi.mock("../../src/tool.js", () => ({
 }));
 
 import { LanguageModelSession } from "../../src/session.js";
+import { Transcript } from "../../src/transcript.js";
 import { PrivateCloudComputeLanguageModel } from "../../src/pcc.js";
 import {
   FailRequestError,
@@ -1032,6 +1033,9 @@ describe("LanguageModelSession", () => {
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
         _pointer: () => "mock-transcript-session-pointer",
+        // A transcript restored from JSON owns its object; one reached through
+        // session.transcript doesn't, and fromTranscript refuses that.
+        _ownsObject: true,
         _updateNativeSession: vi.fn(),
       };
 
@@ -1050,6 +1054,9 @@ describe("LanguageModelSession", () => {
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
         _pointer: () => "mock-transcript-session-pointer",
+        // A transcript restored from JSON owns its object; one reached through
+        // session.transcript doesn't, and fromTranscript refuses that.
+        _ownsObject: true,
         _updateNativeSession: vi.fn(),
       };
 
@@ -1062,6 +1069,9 @@ describe("LanguageModelSession", () => {
       const mockTranscript = {
         _nativeSession: "mock-transcript-session-pointer",
         _pointer: () => "mock-transcript-session-pointer",
+        // A transcript restored from JSON owns its object; one reached through
+        // session.transcript doesn't, and fromTranscript refuses that.
+        _ownsObject: true,
         _updateNativeSession: vi.fn(),
       };
       const mockTool = {
@@ -1165,6 +1175,7 @@ describe("LanguageModelSession", () => {
       const transcript = {
         _nativeSession: "t",
         _pointer: () => "t",
+        _ownsObject: true,
         _updateNativeSession: vi.fn(),
       } as never;
       expect(() => LanguageModelSession.fromTranscript(transcript, { tools })).toThrow(
@@ -1555,5 +1566,22 @@ describe("Private Cloud Compute sessions", () => {
       session.respond("x", { options: { reasoningLevel: "deep" } }),
     ).rejects.toBeInstanceOf(UnsupportedCapabilityError);
     expect(mockFns.FMLanguageModelSessionRespond).not.toHaveBeenCalled();
+  });
+
+  describe("fromTranscript guards", () => {
+    it("refuses a transcript that belongs to a live session", () => {
+      const session = new LanguageModelSession();
+      expect(() => LanguageModelSession.fromTranscript(session.transcript)).toThrow(
+        /belongs to a session/,
+      );
+      session.dispose();
+    });
+
+    it("accepts a transcript restored from JSON", () => {
+      const restored = Transcript.fromJson(
+        '{"type":"FoundationModels.Transcript","version":1,"transcript":{"entries":[]}}',
+      );
+      expect(LanguageModelSession.fromTranscript(restored)).toBeInstanceOf(LanguageModelSession);
+    });
   });
 });

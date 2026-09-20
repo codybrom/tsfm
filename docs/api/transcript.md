@@ -62,7 +62,21 @@ Safe to call more than once, and a no-op on the transcript reached through
 `session.transcript` — the session owns that pointer and frees it in
 `session.dispose()`.
 
-Passing a transcript to `LanguageModelSession.fromTranscript()` hands it over:
+Only a transcript you restored yourself can be passed to
+`LanguageModelSession.fromTranscript()`. The one reached through
+`session.transcript` belongs to that session — the bridge represents both as
+the same kind of native object — so handing it over would redirect the original
+session's transcript at the new session and break it when that session is
+disposed. tsfm refuses it with `FoundationModelsError`. To branch a
+conversation, export and restore:
+
+```ts
+const branch = LanguageModelSession.fromTranscript(
+  Transcript.fromJson(session.transcript.toJson()),
+);
+```
+
+Passing a restored transcript to `LanguageModelSession.fromTranscript()` hands it over:
 the instance releases its own C object and reads from the new session from then
 on (it is that session's `transcript`), and once that session is disposed the
 instance is detached and its methods throw `FoundationModelsError`. Export it

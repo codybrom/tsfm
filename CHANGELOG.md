@@ -72,6 +72,12 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - Chat Completions: a streamed tool request that ended in a mapped error reported zero usage.
 - Disposing a tool while the model was waiting on one of its calls left the response waiting forever. Its pending calls now fail.
 - `ServiceCrashedError` told you to restart the service with `launchctl kickstart`, which System Integrity Protection blocks on macOS 27. It now says to wait for macOS to restart it, or to log out or restart the Mac.
+- `LanguageModelSession.fromTranscript()` refuses a transcript that belongs to a live session. It used to repoint that session's transcript at the new one, so disposing the new session broke the original. Export and restore to branch a conversation: `fromTranscript(Transcript.fromJson(session.transcript.toJson()))`.
+- Private Cloud Compute failures reach the Chat Completions and Responses layers with an HTTP status: quota 429, unavailable and network 503, a missing entitlement 403. They used to rethrow with no status, so a proxy answered 500 for a quota a client could have backed off from.
+- `Client.close()` sticks: a later request for Private Cloud Compute used to build a native model nothing would dispose.
+- A Responses stream reports the usage it produced before an error, as the Chat layer already did.
+- `temperature` must be a number. `"0.5"` passed the range check, then the bridge dropped it and the request ran at the default with no error.
+- Two objects in one schema sharing a title are reported, rather than one silently taking the other's shape.
 - A `Tool` that was used by a session and never disposed was never garbage-collected, so it and its native tool leaked. Once nothing references it, it's collected and its native tool released.
 - A stream the native side couldn't start (for example with invalid options) passed a null stream on to native code. It now throws `FoundationModelsError`.
 - `UnsupportedCapabilityError.minimumRequiredMacOS` was `26` for token counting on macOS 26.0–26.3, which needs 26.4. It's now `26.4`.

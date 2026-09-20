@@ -208,6 +208,16 @@ export class LanguageModelSession {
 
     assertModelNotDisposed(opts.model);
     const source = transcript._pointer();
+    // A transcript that belongs to a session is that session's live view: the
+    // bridge represents both as a session handle, so repointing it below would
+    // silently redirect the original session's transcript at this one, and
+    // disposing this session would break it. Export and restore instead.
+    if (!transcript._ownsObject) {
+      throw new FoundationModelsError(
+        "This transcript belongs to a session. Export it first: " +
+          "LanguageModelSession.fromTranscript(Transcript.fromJson(session.transcript.toJson()))",
+      );
+    }
     const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
     const pointer = pcc
       ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
