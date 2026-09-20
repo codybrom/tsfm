@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { mockFns, capturedCallbacks } = vi.hoisted(() => {
-  const capturedCallbacks: Array<(contentRef: unknown, callId: number) => void> = [];
+  const capturedCallbacks: Array<
+    (contentRef: unknown, callId: number, cancelled?: boolean) => void
+  > = [];
   const ok = (value: unknown) => ({ value, status: 0, description: null });
   return {
     mockFns: {
@@ -56,6 +58,7 @@ vi.mock("../../src/schema.js", () => ({
 }));
 
 vi.mock("../../src/errors.js", () => ({
+  CancelledError: class extends Error {},
   GenerationErrorCode: { TOOL_CALL_LIMIT_EXCEEDED: 15, REQUEST_FAILED_BY_TOOL: 22 },
   FailRequestError: class extends Error {
     constructor(message: string, options?: { cause?: unknown }) {

@@ -11,7 +11,7 @@ abstract class Tool {
   abstract readonly name: string;
   abstract readonly description: string;
   abstract readonly argumentsSchema: GenerationSchema;
-  abstract call(args: GeneratedContent): Promise<string>;
+  abstract call(args: GeneratedContent, context: ToolCallContext): Promise<string>;
 }
 ```
 
@@ -20,7 +20,31 @@ abstract class Tool {
 | `name` | `string` | Unique tool identifier |
 | `description` | `string` | What the tool does (visible to the model) |
 | `argumentsSchema` | `GenerationSchema` | Schema defining the tool's arguments |
-| `call(args)` | `(GeneratedContent) => Promise<string>` | Handler invoked when the model calls this tool. `args` is released once `call()` settles, so read what you need from it before then. |
+| `call(args, context)` | `(GeneratedContent, ToolCallContext) => Promise<string>` | Handler invoked when the model calls this tool. `args` is released once `call()` settles, so read what you need from it before then. |
+
+## Cancellation
+
+`ToolCallContext` is exported from `tsfm-sdk`:
+
+```ts
+interface ToolCallContext {
+  readonly signal: AbortSignal;
+}
+```
+
+Each invocation gets its own signal. Request cancellation (including stopping
+a stream early) aborts that invocation's signal. `tool.dispose()` aborts every
+pending invocation of that tool. Cancelling one session does not abort calls
+from another session sharing the same tool. Notifications arrive asynchronously
+from the native request.
+
+Pass the signal to cancellable APIs such as `fetch()`, or check
+`signal.throwIfAborted()` between steps. Cancellation cannot forcibly interrupt
+JavaScript or undo side effects. Tools that ignore the signal may keep running,
+but their late results are ignored. Existing `call(args)` implementations remain
+valid. Arguments remain available until `call()` settles, even after cancellation.
+
+See [Cancellable tools](/guide/tools#cancellable-tools) for an example.
 
 ## Failing the request
 

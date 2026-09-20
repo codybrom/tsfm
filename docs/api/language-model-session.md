@@ -156,9 +156,10 @@ session.prewarm("Translate the following");
 
 Ask the in-progress request to stop. Advisory: the response may complete before
 the cancellation takes effect, and a stopped request rejects with
-`CancelledError`. A request waiting on a
-`Tool.call()` can't be interrupted until the tool answers; if the tool never
-settles, `tool.dispose()` ends it. Queued requests wait for the cancelled one to
+`CancelledError`. Cancellation also stops the native request while a
+`Tool.call()` is pending and aborts that invocation's `context.signal`. JavaScript
+tools must honor the signal to stop work. Any late result is ignored.
+Queued requests wait for the cancelled one to
 settle. For streams, `cancel()` unblocks the iterator and iteration ends normally
 on its next step; `collect()` returns the text received so far. Stream cleanup
 releases the queue lock so later requests can run on the same session.

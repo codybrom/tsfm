@@ -34,6 +34,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Added
 
+- Tools receive a per-invocation `ToolCallContext` with an `AbortSignal`. Pass it to `fetch()` or other cancellable APIs to stop work when the request is cancelled or the tool is disposed. Existing one-argument tool implementations remain supported. Cancellation cannot forcibly stop code that ignores the signal.
 - Token usage (macOS 27): `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts. `null` on macOS 26.
 - `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
 - `includeSchemaInPrompt` in `GenerationOptions` (default `true`): controls whether structured schema definitions are injected into the prompt text, allowing callers to omit schema text when already known to save tokens.
@@ -59,6 +60,8 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Fixed
 
+- Cancelling a stream while a tool was pending, reusing the session, and then completing or disposing the old tool could crash Node. Cancellation now removes the tool's native continuation, so late results are ignored. One-shot requests cancelled during a tool call reject with `CancelledError` without waiting for JavaScript's tool to finish.
+- Sessions now copy the supplied tools array. Mutating that array can no longer bypass `maximumToolCalls` or leave a spent budget attached to a tool.
 - Several ways to crash the host process:
   - A number where a string was expected (a prompt, instructions, an attachment path, a schema or property name, a guide value) was passed to native code as a pointer. It now throws `TypeError`.
   - A stream queued behind another request, when the session was disposed in between, passed a released session to native code.

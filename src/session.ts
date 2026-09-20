@@ -164,7 +164,7 @@ export class LanguageModelSession {
     if (opts === _FROM_POINTER) return; // shell instance — _init() called by fromTranscript
 
     const fn = getFunctions();
-    const tools = opts.tools ?? [];
+    const tools = [...(opts.tools ?? [])];
     tools.forEach((t) => t._register());
 
     const toolHandles = nativeTools(tools);
@@ -203,7 +203,7 @@ export class LanguageModelSession {
     opts: { model?: SystemLanguageModel | PrivateCloudComputeLanguageModel; tools?: Tool[] } = {},
   ): LanguageModelSession {
     const fn = getFunctions();
-    const tools = opts.tools ?? [];
+    const tools = [...(opts.tools ?? [])];
     tools.forEach((t) => t._register());
     const toolHandles = nativeTools(tools);
 

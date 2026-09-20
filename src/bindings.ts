@@ -216,13 +216,14 @@ export interface NativeFunctions {
   /**
    * Creates a tool. `onCall` receives each call's arguments (the caller owns
    * the content) and an id to answer with FMBridgedToolFinishCall or
-   * FMBridgedToolFailCall.
+   * FMBridgedToolFailCall. A cancellation notification has null content, the
+   * same call id, and `cancelled: true`; it must not be answered.
    */
   FMBridgedToolCreate(
     name: string,
     description: string,
     schema: NativePointer,
-    onCall: (content: NativePointer | null, callId: number) => void,
+    onCall: (content: NativePointer | null, callId: number, cancelled: boolean) => void,
   ): NativeResult<NativePointer>;
   /** Whether the call was still pending (a released tool fails its pending calls). */
   FMBridgedToolFinishCall(tool: NativePointer, callId: number, output: string): boolean;

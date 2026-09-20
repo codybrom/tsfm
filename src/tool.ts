@@ -7,8 +7,20 @@
 
 import { getFunctions, type NativePointer } from "./bindings.js";
 import { GenerationSchema, GeneratedContent } from "./schema.js";
-import { statusToError, ToolCallError, FailRequestError, GenerationErrorCode } from "./errors.js";
+import {
+  statusToError,
+  ToolCallError,
+  FailRequestError,
+  GenerationErrorCode,
+  CancelledError,
+} from "./errors.js";
 import { recordToolFailure, type ToolCallBudget } from "./tool-budget.js";
+
+/** Context for one tool invocation. Cancellation is cooperative. */
+export interface ToolCallContext {
+  /** Aborted when this invocation is cancelled or the tool is disposed. */
+  readonly signal: AbortSignal;
+}
 
 export abstract class Tool {
   abstract readonly name: string;
@@ -33,8 +45,13 @@ export abstract class Tool {
    * `args` contains the structured arguments the model supplied, shaped
    * according to `argumentsSchema`. It's released once `call()` settles, so
    * read what you need from it before then (e.g. `args.toObject()`).
+   *
+   * `context.signal` is specific to this invocation. Pass it to `fetch()` or
+   * check `signal.throwIfAborted()` to stop work when the request is cancelled
+   * or this tool is disposed. Existing implementations may ignore the second
+   * argument; JavaScript work is only stopped cooperatively.
    */
-  abstract call(args: GeneratedContent): Promise<string>;
+  abstract call(args: GeneratedContent, context: ToolCallContext): Promise<string>;
 
   /**
    * Optional callback fired at the start of each tool invocation, before
@@ -50,6 +67,7 @@ export abstract class Tool {
   _nativeTool: NativePointer | null = null;
   /** Counts registrations, so a call is only answered on the tool that received it. */
   private _registration = 0;
+  private _calls = new Map<number, AbortController>();
 
   /**
    * @internal Budgets of the requests currently using this tool. A call runs
@@ -91,7 +109,7 @@ export abstract class Tool {
       const tool = self.deref();
       return tool && tool._registration === registration ? tool._nativeTool : null;
     };
-    const onCall = (contentRef: NativePointer | null, callId: number) => {
+    const onCall = (contentRef: NativePointer | null, callId: number, cancelled = false) => {
       const owner = self.deref();
       const tool = current();
       if (!owner || !tool) {
@@ -99,6 +117,12 @@ export abstract class Tool {
         // call either way -- on release, or when the handle is finalized -- but
         // the arguments are ours now, so release them rather than wait for GC.
         if (contentRef) fn.FMRelease(contentRef);
+        return;
+      }
+      if (cancelled) {
+        const controller = owner._calls.get(callId);
+        owner._calls.delete(callId);
+        controller?.abort(new CancelledError());
         return;
       }
       // The arguments are released once the call settles, on every path.
@@ -125,6 +149,8 @@ export abstract class Tool {
           return;
         }
         for (const b of budgets) b.used++;
+        const controller = new AbortController();
+        owner._calls.set(callId, controller);
 
         // Fire onCall notification — informational only, must not block the
         // tool call even if it throws.
@@ -136,8 +162,12 @@ export abstract class Tool {
         // Convert a synchronous throw to a rejection too: both must use the
         // same FailRequestError handling below.
         Promise.resolve()
-          .then(() => owner.call(args))
+          .then(() => {
+            controller.signal.throwIfAborted();
+            return owner.call(args, { signal: controller.signal });
+          })
           .then((result) => {
+            if (controller.signal.aborted) return;
             // Name the tool and the type here; the addon would only say it
             // expected a string for "output". Thrown, so the catch below still
             // answers the call.
@@ -151,6 +181,7 @@ export abstract class Tool {
             if (answering) fn.FMBridgedToolFinishCall(answering, callId, result);
           })
           .catch((err: unknown) => {
+            if (controller.signal.aborted) return;
             const answering = current();
             if (err instanceof FailRequestError) {
               // Failing the call ends the response with REQUEST_FAILED_BY_TOOL.
@@ -171,7 +202,10 @@ export abstract class Tool {
             const toolErr = new ToolCallError(owner.name, cause);
             if (answering) fn.FMBridgedToolFinishCall(answering, callId, toolErr.message);
           })
-          .finally(() => args.dispose());
+          .finally(() => {
+            if (owner._calls.get(callId) === controller) owner._calls.delete(callId);
+            args.dispose();
+          });
       } catch (err: unknown) {
         content?.dispose();
         // If anything throws synchronously (e.g. GeneratedContent construction),
@@ -203,13 +237,19 @@ export abstract class Tool {
 
   /**
    * Releases the native tool. Calls the model made that haven't been answered
-   * yet are failed, so no response waits on them.
+   * yet are failed and their signals are aborted, so no response waits on them.
    */
   dispose(): void {
     if (this._nativeTool) {
       const tool = this._nativeTool;
       this._nativeTool = null;
-      getFunctions().FMRelease(tool);
+      const calls = [...this._calls.values()];
+      this._calls.clear();
+      try {
+        getFunctions().FMRelease(tool);
+      } finally {
+        for (const controller of calls) controller.abort(new CancelledError("Tool disposed"));
+      }
     }
   }
 

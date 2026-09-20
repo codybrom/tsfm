@@ -85,9 +85,9 @@ promise settles later. What to expect:
 
 - The response can still complete if the model finishes before the cancel is
   processed. A request that was stopped rejects with `CancelledError`.
-- A request waiting on a `Tool.call()` isn't interrupted: the native task can
-  only stop once the tool answers. If a tool never settles, only
-  `tool.dispose()` ends the request, by failing its pending calls.
+- A request waiting on a `Tool.call()` can be cancelled too. Its
+  `context.signal` is aborted so the tool can stop work cooperatively. A tool
+  that ignores the signal may keep running, but its eventual result is ignored. It cannot resume the cancelled generation after the session has been reused.
 - Requests queued behind the cancelled one wait until it settles; `cancel()`
   doesn't remove them from the queue.
 - For streams, cancellation unblocks a waiting iterator and the consumer loop

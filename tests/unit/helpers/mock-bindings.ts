@@ -21,7 +21,7 @@ export function started<T>(result: T): [Promise<T>, string] {
 }
 
 type OnChunk = (status: number, text: string | null) => void;
-type OnCall = (content: string | null, callId: number) => void;
+type OnCall = (content: string | null, callId: number, cancelled?: boolean) => void;
 
 /**
  * Mocks of the Node-API addon's exports (src/bindings.ts NativeFunctions).

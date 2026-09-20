@@ -855,6 +855,7 @@ static bool take_pending(ToolBox *b, unsigned int id) {
 typedef struct {
   FMGeneratedContentRef content;
   unsigned int id;
+  bool cancelled;
 } ToolMessage;
 
 static const char *TOOL_GONE = "The tool is no longer available; it was disposed or the process is exiting.";
@@ -874,6 +875,7 @@ static void on_tool_call(FMGeneratedContentRef content, unsigned int id, void *u
       b->pending = p;
       m->content = content;
       m->id = id;
+      m->cancelled = false;
       // The queued message holds a reference: tool_call_js can run after the
       // threadsafe function's finalizer dropped its own (at env teardown).
       atomic_fetch_add(&b->refs, 1);
@@ -900,9 +902,42 @@ static void on_tool_call(FMGeneratedContentRef content, unsigned int id, void *u
   }
 }
 
+// Swift sends cancellation after the call notification, using the same id.
+// Remove the pending call immediately so a queued invocation is never started
+// after cancellation, and late JS results cannot reach Swift.
+static void on_tool_cancel(unsigned int id, void *user_info) {
+  ToolBox *b = user_info;
+  pthread_mutex_lock(&g_lock);
+  bool pending = take_pending(b, id);
+  if (pending && b->tsfn && !b->closed) {
+    ToolMessage *m = calloc(1, sizeof(ToolMessage));
+    if (m) {
+      m->id = id;
+      m->cancelled = true;
+      atomic_fetch_add(&b->refs, 1);
+      if (napi_call_threadsafe_function(b->tsfn, m, napi_tsfn_nonblocking) != napi_ok) {
+        atomic_fetch_sub(&b->refs, 1);
+        free(m);
+      }
+    }
+  }
+  pthread_mutex_unlock(&g_lock);
+}
+
 static void tool_call_js(napi_env env, napi_value js_callback, void *context, void *data) {
   ToolBox *b = context;
   ToolMessage *m = data;
+  if (m->cancelled) {
+    if (env) {
+      napi_value id;
+      napi_create_uint32(env, m->id, &id);
+      napi_value argv[3] = {js_null(env), id, js_bool(env, true)};
+      call_js_ignoring_exceptions(env, js_callback, 3, argv);
+    }
+    free(m);
+    tool_unref(b);
+    return;
+  }
   if (env == NULL) {
     // Torn down with the call queued: nothing in JavaScript will answer it.
     pthread_mutex_lock(&g_lock);
@@ -933,8 +968,8 @@ static void tool_call_js(napi_env env, napi_value js_callback, void *context, vo
   }
   napi_value id;
   napi_create_uint32(env, m->id, &id);
-  napi_value argv[2] = {content, id};
-  call_js_ignoring_exceptions(env, js_callback, 2, argv);
+  napi_value argv[3] = {content, id, js_bool(env, false)};
+  call_js_ignoring_exceptions(env, js_callback, 3, argv);
   free(m);
   tool_unref(b);  // the message's reference
 }
@@ -1732,7 +1767,7 @@ static napi_value PrivateCloudComputeLanguageModelSupportsLocale(napi_env env,
 // ---------------------------------------------------------------------------
 // Exports: tools
 
-/// BridgedToolCreate(name, description, schema, onCall(content, callId))
+/// BridgedToolCreate(name, description, schema, onCall(content, callId, cancelled))
 ///   → { value: tool | null, status, description }
 static napi_value BridgedToolCreate(napi_env env, napi_callback_info info) {
   ARGS(4);
@@ -1792,7 +1827,7 @@ static napi_value BridgedToolCreate(napi_env env, napi_callback_info info) {
   int status = STATUS_OK;
   char *error_description = NULL;
   FMBridgedToolRef tool = FMBridgedToolCreateWithUserInfo(
-      name, description, schema->ptr, on_tool_call, b, on_tool_freed, &status, &error_description);
+      name, description, schema->ptr, on_tool_call, on_tool_cancel, b, on_tool_freed, &status, &error_description);
   free(name);
   free(description);
   if (!tool) {

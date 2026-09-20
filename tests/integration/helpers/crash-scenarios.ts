@@ -13,16 +13,21 @@ import {
   PrivateCloudComputeLanguageModel,
   LanguageModelSession,
   FailRequestError,
+  CancelledError,
   GenerationSchema,
   GenerationGuide,
+  GeneratedContent,
   Transcript,
   Tool,
   type GenerationOptions,
   type JsonSchema,
+  type ToolCallContext,
 } from "../../../src/index.js";
 import { getFunctions, type NativePointer } from "../../../src/bindings.js";
 import { Worker } from "node:worker_threads";
 import path from "node:path";
+import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 
 const LONG_PROMPT = "Write a 400-word story about a lighthouse keeper.";
 
@@ -61,7 +66,137 @@ class NeverReturnsTool extends Tool {
   }
 }
 
+// Cancel while JavaScript still owns a pending tool invocation, then start
+// another request before that invocation returns or the tool is disposed.
+// Previously the late continuation resumed the cancelled native generation
+// against the reused session and trapped inside FoundationModels.
+async function cancelWithPendingTool(
+  kind: "stream" | "text" | "schema" | "json",
+  disposeTool = false,
+): Promise<void> {
+  let called!: () => void;
+  const didCall = new Promise<void>((resolve) => (called = resolve));
+  let finishTool!: (output: string) => void;
+  let aborted!: () => void;
+  const didAbort = new Promise<void>((resolve) => (aborted = resolve));
+  class DeferredTool extends NeverReturnsTool {
+    override async call(_args?: GeneratedContent, context?: ToolCallContext): Promise<string> {
+      assert.ok(context);
+      context.signal.addEventListener("abort", aborted, { once: true });
+      const result = new Promise<string>((resolve) => (finishTool = resolve));
+      called();
+      return result;
+    }
+  }
+  using tool = new DeferredTool(() => {});
+  using session = new LanguageModelSession({ tools: [tool] });
+  const prompt = "Use lookup to find a fact.";
+  const options = { toolCallingMode: "required" } as const;
+  const schema = new GenerationSchema("Fact").property("fact", "string");
+  const pending =
+    kind === "stream"
+      ? session.streamResponse(prompt, { options }).collect()
+      : kind === "text"
+        ? session.respond(prompt, { options })
+        : kind === "schema"
+          ? session.respondWithSchema(prompt, schema, { options })
+          : session.respondWithJsonSchema(prompt, schema.toDict(), { options });
+  await Promise.race([
+    didCall,
+    pending.then(() => {
+      throw new Error("The request finished without invoking the tool");
+    }),
+  ]);
+  session.cancel();
+  if (kind === "stream") await pending;
+  else await assert.rejects(pending, CancelledError);
+  await didAbort;
+  const next = session.respond("Say hello in one word.", {
+    options: { toolCallingMode: "disallowed" },
+  });
+  // Handle a rejection immediately, even while waiting to answer the old tool.
+  const result = next.then(
+    (response) => ({ response }),
+    (error: unknown) => ({ error }),
+  );
+  await tick(100);
+  if (disposeTool) tool.dispose();
+  else finishTool("A day has 24 hours.");
+  const outcome = await result;
+  if ("error" in outcome) throw outcome.error;
+  assert.ok(outcome.response.content.length > 0);
+  // Let any late callback run before the scenario exits.
+  await tick(100);
+}
+
+// Both sessions share one native tool. Cancelling A must stop its JS timer
+// without touching B's signal or its work.
+async function cancelSharedTool(): Promise<void> {
+  const calls: Array<{ signal: AbortSignal; stopped: Promise<void> }> = [];
+  let called!: () => void;
+  let didCall = new Promise<void>((resolve) => (called = resolve));
+  class SharedTool extends Tool {
+    name = "lookup";
+    description = "Look up a fact. Always use this tool.";
+    argumentsSchema = new GenerationSchema("Args").property("query", "string");
+    async call(_args: GeneratedContent, { signal }: ToolCallContext): Promise<string> {
+      let stopped!: () => void;
+      calls.push({ signal, stopped: new Promise<void>((resolve) => (stopped = resolve)) });
+      called();
+      try {
+        return await delay(60_000, "answer", { signal });
+      } finally {
+        stopped();
+      }
+    }
+  }
+  using tool = new SharedTool();
+  using a = new LanguageModelSession({ tools: [tool] });
+  using b = new LanguageModelSession({ tools: [tool] });
+  const start = (session: LanguageModelSession) =>
+    session
+      .respond("Use lookup to find a fact.", {
+        options: { toolCallingMode: "required" },
+      })
+      .then(
+        () => {
+          throw new Error("Expected cancellation");
+        },
+        (error: unknown) => error,
+      );
+  const first = start(a);
+  await Promise.race([
+    didCall,
+    first.then((error) => {
+      throw error;
+    }),
+  ]);
+  didCall = new Promise<void>((resolve) => (called = resolve));
+  const second = start(b);
+  await Promise.race([
+    didCall,
+    second.then((error) => {
+      throw error;
+    }),
+  ]);
+  a.cancel();
+  assert.ok((await first) instanceof CancelledError);
+  await calls[0].stopped;
+  assert.equal(calls[0].signal.aborted, true);
+  assert.equal(calls[1].signal.aborted, false);
+  b.cancel();
+  assert.ok((await second) instanceof CancelledError);
+  await calls[1].stopped;
+  assert.equal(calls[1].signal.aborted, true);
+}
+
 const scenarios: Record<string, () => Promise<void>> = {
+  "cancel-shared-tool": cancelSharedTool,
+  "cancel-stream-reuse-late-tool": () => cancelWithPendingTool("stream"),
+  "cancel-stream-reuse-disposed-tool": () => cancelWithPendingTool("stream", true),
+  "cancel-text-reuse-late-tool": () => cancelWithPendingTool("text"),
+  "cancel-schema-reuse-late-tool": () => cancelWithPendingTool("schema"),
+  "cancel-json-reuse-late-tool": () => cancelWithPendingTool("json"),
   // --- Exiting with work in flight -----------------------------------------
 
   async "exit-during-respond"() {

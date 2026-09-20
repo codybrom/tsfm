@@ -644,6 +644,13 @@ private func mapGenerationErrorToStatusCode(_ error: LanguageModelSession.Genera
 /// The status code for a framework error, or nil when the error isn't one the
 /// framework defines (callers then report it as unknownError).
 private func frameworkStatusCode(for error: Error) -> Int32? {
+  // Cancelling a pending bridged tool resumes it with CancellationError;
+  // FoundationModels can wrap that in ToolCallError instead of propagating it.
+  if let error = error as? LanguageModelSession.ToolCallError,
+    error.underlyingError is CancellationError
+  {
+    return StatusCode.cancelled.rawValue
+  }
   // tsfm: a tool failed with FMBridgedToolFailCall; the framework wraps it.
   if let error = error as? LanguageModelSession.ToolCallError,
     let failure = error.underlyingError as? BridgedToolFailure
@@ -670,6 +677,11 @@ private func frameworkStatusCode(for error: Error) -> Int32? {
 /// tsfm: The message to report for a framework error. A tool failed with
 /// FMBridgedToolFailCall reports its own message, not the ToolCallError wrapper's.
 private func frameworkErrorDescription(for error: Error) -> String {
+  if let error = error as? LanguageModelSession.ToolCallError,
+    error.underlyingError is CancellationError
+  {
+    return "Operation cancelled"
+  }
   if let error = error as? LanguageModelSession.ToolCallError,
     let failure = error.underlyingError as? BridgedToolFailure
   {
@@ -2179,6 +2191,7 @@ final class BridgedTool: Tool {
 
   // tsfm: a closure, so a caller can pass context (see FMBridgedToolCreateWithUserInfo).
   let foreignCall: @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void
+  let foreignCancel: (@Sendable (CUnsignedInt) -> Void)?
   let outputContinuation = Mutex<[CUnsignedInt: CheckedContinuation<String, any Error>]>([:])
   let parameters: GenerationSchema
   // tsfm: runs when the tool is freed, to release the caller's context.
@@ -2189,12 +2202,14 @@ final class BridgedTool: Tool {
     description: String,
     parameters: GenerationSchema,
     foreignCall: @escaping @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void,
+    foreignCancel: (@Sendable (CUnsignedInt) -> Void)? = nil,
     onDeinit: (@Sendable () -> Void)? = nil
   ) {
     self.name = name
     self.description = description
     self.parameters = parameters
     self.foreignCall = foreignCall
+    self.foreignCancel = foreignCancel
     self.onDeinit = onDeinit
   }
 
@@ -2209,15 +2224,42 @@ final class BridgedTool: Tool {
   func call(arguments: GeneratedContent) async throws -> String {
     let arguments = GeneratedContentWrapper(content: arguments)
     let id = nextID()
-    return try await withCheckedThrowingContinuation { continuation in
-      // tsfm: register the continuation before calling out. Upstream called
-      // foreignCall first, so a caller that finished or failed the call
-      // synchronously (inside the callback) found nothing waiting, and the
-      // response hung forever.
-      outputContinuation.withLock {
-        $0[id] = continuation
+    // tsfm: Order notifications without holding a lock across foreign code,
+    // which may synchronously finish, fail, or cancel the call.
+    let notifications = Mutex((delivered: false, cancelled: false))
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation { continuation in
+        // Register before calling out, and check cancellation under the same
+        // lock used by onCancel. Cancellation before registration must not
+        // leave a continuation waiting forever.
+        let registered = outputContinuation.withLock { pending in
+          if Task.isCancelled { return false }
+          pending[id] = continuation
+          return true
+        }
+        if registered {
+          foreignCall(FMGeneratedContentRef(Unmanaged.passRetained(arguments).toOpaque()), id)
+          let cancelled = notifications.withLock {
+            $0.delivered = true
+            return $0.cancelled
+          }
+          if cancelled { foreignCancel?(id) }
+        } else {
+          continuation.resume(throwing: CancellationError())
+        }
       }
-      foreignCall(FMGeneratedContentRef(Unmanaged.passRetained(arguments).toOpaque()), id)
+    } onCancel: {
+      // A stream can finish cancelling before JavaScript's tool finishes.
+      // Remove its continuation now: late output must not resume work on a
+      // session that may already be responding to another prompt.
+      if let continuation = outputContinuation.withLock({ $0.removeValue(forKey: id) }) {
+        let delivered = notifications.withLock {
+          $0.cancelled = true
+          return $0.delivered
+        }
+        if delivered { foreignCancel?(id) }
+        continuation.resume(throwing: CancellationError())
+      }
     }
   }
 }
@@ -2266,12 +2308,14 @@ public func FMBridgedToolCreate(
 /// `userInfo` with each call, so one C function can serve many tools (the
 /// Node-API addon uses it to find the tool's JavaScript callback). When the tool
 /// is freed, `releaseUserInfo` is called with `userInfo`, once.
+/// `cancelled` receives the id when an invocation is cancelled, after `callable`.
 @_cdecl("FMBridgedToolCreateWithUserInfo")
 public func FMBridgedToolCreateWithUserInfo(
   name: UnsafePointer<CChar>,
   description: UnsafePointer<CChar>,
   parameters: FMGenerationSchemaRef,
   callable: @convention(c) (FMGeneratedContentRef, CUnsignedInt, UnsafeMutableRawPointer?) -> Void,
+  cancelled: (@convention(c) (CUnsignedInt, UnsafeMutableRawPointer?) -> Void)?,
   userInfo: UnsafeMutableRawPointer?,
   releaseUserInfo: (@convention(c) (UnsafeMutableRawPointer?) -> Void)?,
   outErrorCode: UnsafeMutablePointer<Int32>?,
@@ -2289,11 +2333,16 @@ public func FMBridgedToolCreateWithUserInfo(
     let foreignCall: @Sendable (FMGeneratedContentRef, CUnsignedInt) -> Void = { content, id in
       callable(content, id, context.pointer)
     }
+    var foreignCancel: (@Sendable (CUnsignedInt) -> Void)? = nil
+    if let cancelled {
+      foreignCancel = { cancelled($0, context.pointer) }
+    }
     let bridgedTool = BridgedTool(
       name: String(cString: name),
       description: String(cString: description),
       parameters: schema,
       foreignCall: foreignCall,
+      foreignCancel: foreignCancel,
       onDeinit: onDeinit
     )
     return FMBridgedToolRef(Unmanaged.passRetained(bridgedTool).toOpaque())

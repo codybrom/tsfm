@@ -50,6 +50,12 @@ const EXITS = [
 
 // Scenarios that finish on their own and print "survived".
 const SURVIVES = [
+  "cancel-shared-tool",
+  "cancel-stream-reuse-late-tool",
+  "cancel-stream-reuse-disposed-tool",
+  "cancel-text-reuse-late-tool",
+  "cancel-schema-reuse-late-tool",
+  "cancel-json-reuse-late-tool",
   "dispose-during-respond",
   "dispose-during-stream",
   "dispose-with-queued-requests",

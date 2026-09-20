@@ -39,7 +39,7 @@ class WeatherTool extends Tool {
 | `name` | `string` | Unique tool identifier |
 | `description` | `string` | What the tool does (shown to the model) |
 | `argumentsSchema` | `GenerationSchema` | Schema for the tool's arguments |
-| `call(args)` | `async (GeneratedContent) => string` | Handler that returns a string result |
+| `call(args, context)` | `async (GeneratedContent, ToolCallContext) => string` | Handler that returns a string result. Existing one-argument implementations also work |
 
 ## Using Tools in a Session
 
@@ -176,3 +176,37 @@ The model can call multiple tools in sequence within a single `respond()` call. 
 ## Chat API Tool Calling
 
 If you prefer the Chat API tool calling interface, the [compatibility layer](/guide/chat-api#tool-calling) supports `tools` with the standard `ChatCompletionTool` format. You define tools as JSON objects instead of extending the `Tool` class, and handle tool execution yourself between requests.
+
+## Cancellable tools
+
+Accept `ToolCallContext` as the second argument to stop external work when the
+request is cancelled. Existing tools with just `call(args)` still work.
+
+```ts
+import { Tool, GenerationSchema, GeneratedContent, type ToolCallContext } from "tsfm-sdk";
+
+class FetchPage extends Tool {
+  readonly name = "fetch_page";
+  readonly description = "Fetch a page from the documentation server.";
+  readonly argumentsSchema = new GenerationSchema("PageArgs").property("page", "string");
+
+  async call(args: GeneratedContent, { signal }: ToolCallContext): Promise<string> {
+    const page = encodeURIComponent(args.value<string>("page"));
+    const response = await fetch(`https://docs.example.com/pages/${page}`, { signal });
+    const text = await response.text();
+    signal.throwIfAborted();
+    return text;
+  }
+}
+```
+
+The signal belongs to one invocation, even when sessions share the same tool.
+`session.cancel()` and stopping a stream early cancel the relevant native
+request; its cancellation notification aborts the signal. `tool.dispose()`
+aborts all pending invocations of that tool.
+
+Cancellation is cooperative: pass the signal to APIs that support it, and check
+it before starting further work or side effects. Work that ignores the signal
+cannot be forcibly stopped, and already-completed side effects cannot be undone.
+Late results from a cancelled invocation are ignored. Its `args` stay valid until
+`call()` settles.

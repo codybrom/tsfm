@@ -57,7 +57,7 @@ export {
   type ReasoningLevel,
 } from "./options.js";
 
-export { Tool } from "./tool.js";
+export { Tool, type ToolCallContext } from "./tool.js";
 
 export {
   FoundationModelsError,
