@@ -25,6 +25,14 @@ describe("parseUsage", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it("previews a long malformed payload instead of logging all of it", async () => {
+    const { parseUsage } = await load();
+    parseUsage(`{"junk":"${"x".repeat(5000)}"}`);
+    const logged = warn.mock.calls[0]?.[0] as string;
+    expect(logged.length).toBeLessThan(400);
+    expect(logged).toContain("…");
+  });
+
   it("keeps null (usage unavailable, e.g. macOS 26) as null without warning", async () => {
     const { parseUsage, usageBetween } = await load();
     expect(parseUsage(null)).toBeNull();
