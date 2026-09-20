@@ -33,12 +33,13 @@ Returns `{ available: true }` or `{ available: false, reason: SystemLanguageMode
 Polls until the model is available or the timeout expires.
 
 ```ts
-waitUntilAvailable(timeoutMs?: number): Promise<AvailabilityResult>
+waitUntilAvailable(timeoutMs?: number, intervalMs?: number): Promise<AvailabilityResult>
 ```
 
 | Parameter | Default | Description |
 | --- | --- | --- |
 | `timeoutMs` | `30000` | Maximum wait time in milliseconds |
+| `intervalMs` | `500` | Polling interval in milliseconds |
 
 ### `supportsLocale()`
 
@@ -155,8 +156,9 @@ tool definition costs 83.
 | Value | Description |
 | --- | --- |
 | `APPLE_INTELLIGENCE_NOT_ENABLED` | Apple Intelligence is off |
-| `MODEL_NOT_READY` | Model assets still downloading |
 | `DEVICE_NOT_ELIGIBLE` | Hardware not supported |
+| `MODEL_NOT_READY` | Model assets still downloading |
+| `UNKNOWN` | Unknown failure reason (0xff) |
 
 ## Types
 

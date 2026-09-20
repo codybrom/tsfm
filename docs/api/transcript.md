@@ -32,6 +32,14 @@ Export the transcript as a dictionary object.
 toDict(): object
 ```
 
+### `entries()`
+
+Return the typed transcript entries from the native JSON.
+
+```ts
+entries(): TranscriptEntry[]
+```
+
 ### `dispose()`
 
 Release the C object backing a standalone transcript.
@@ -113,3 +121,40 @@ const session = LanguageModelSession.fromTranscript(transcript);
 ```
 
 See [LanguageModelSession.fromTranscript()](/api/language-model-session#fromtranscript) for full options.
+
+## Types
+
+### `TranscriptEntry`
+
+```ts
+interface TranscriptEntry {
+  id: string;
+  role: TranscriptEntryRole;
+  contents?: TranscriptContent[];
+  tools?: JsonObject[];
+  options?: JsonObject;
+  responseFormat?: JsonSchema;
+  contextOptions?: JsonObject;
+  toolCalls?: TranscriptToolCall[];
+  assets?: string[];
+  toolName?: string;
+  toolCallID?: string;
+  reasoning?: {
+    contents: TranscriptContent[];
+    signature?: string;
+  };
+  metadata?: JsonObject;
+}
+
+type TranscriptEntryRole = "instructions" | "user" | "response" | "tool" | "reasoning";
+
+type TranscriptContent =
+  | { type: "text"; text: string; id: string }
+  | { type: "structure"; id: string; structure: { source: string; content: JsonObject } };
+
+interface TranscriptToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+```

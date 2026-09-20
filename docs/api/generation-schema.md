@@ -106,10 +106,14 @@ value<T>(key: string): T
 
 ### `toObject()`
 
-Get the full result as a plain object:
+Get the full result as a plain object. Pass a type parameter to type the returned object according to your schema (defaults to `JsonObject`):
 
 ```ts
-toObject(): JsonObject
+toObject<T = JsonObject>(): T
+```
+
+```ts
+const result = content.toObject<{ name: string; age: number }>();
 ```
 
 ### `toJson()`
@@ -118,6 +122,14 @@ Get the raw JSON string of the generated content:
 
 ```ts
 toJson(): string
+```
+
+### `fromJson()`
+
+Create a `GeneratedContent` instance from a JSON string.
+
+```ts
+static fromJson(jsonString: string): GeneratedContent
 ```
 
 ### `isComplete`
