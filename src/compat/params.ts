@@ -107,7 +107,12 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
     );
   } else if (rawStreamOptions) {
     const streamOptions = ownParams(rawStreamOptions) as Record<string, unknown>;
-    if ("include_usage" in streamOptions && typeof streamOptions.include_usage !== "boolean") {
+    // An optional property present but undefined is how callers commonly spell
+    // "not set"; only an actual value of the wrong type is worth a warning.
+    if (
+      streamOptions.include_usage !== undefined &&
+      typeof streamOptions.include_usage !== "boolean"
+    ) {
       console.warn(
         `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean; got ${typeof streamOptions.include_usage}. It will be ignored.`,
       );

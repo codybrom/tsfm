@@ -175,6 +175,17 @@ describe("mapParams", () => {
     warn.mockRestore();
   });
 
+  it.each([
+    ["undefined", undefined],
+    ["absent", "absent"],
+  ])("says nothing when include_usage is %s", (_name, value) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const streamOptions = value === "absent" ? {} : { include_usage: value };
+    mapParams({ stream_options: streamOptions } as never);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("warns when include_usage isn't a boolean", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: { include_usage: "true" } } as never);
