@@ -95,19 +95,32 @@ function withToolFailure(err: unknown, budget: ToolCallBudget): unknown {
 }
 
 /**
- * The registered tools' native handles. Rejects a tool listed twice and two
+ * Creates session-owned registrations. Rejects a tool listed twice and two
  * tools with one name: the model addresses tools by name, so the framework
  * couldn't route such a call, and whether it fails or traps on the duplicate
  * isn't documented.
  */
-function nativeTools(tools: Tool[]): NativePointer[] {
+function bindTools(tools: Tool[]): Tool[] {
   const seen = new Map<string, Tool>();
-  return tools.map((t) => {
+  for (const t of tools) {
     const other = seen.get(t.name);
     if (other === t) throw new FoundationModelsError(`Tool '${t.name}' is listed more than once`);
     if (other)
       throw new FoundationModelsError(`Two tools are named '${t.name}'; names must be unique`);
     seen.set(t.name, t);
+  }
+  const bound: Tool[] = [];
+  try {
+    for (const tool of tools) bound.push(tool._bindToSession());
+    return bound;
+  } catch (error) {
+    for (const tool of bound) tool.dispose();
+    throw error;
+  }
+}
+
+function nativeTools(tools: Tool[]): NativePointer[] {
+  return tools.map((t) => {
     if (!t._nativeTool) throw new FoundationModelsError(`Tool '${t.name}' has been disposed`);
     return t._nativeTool;
   });
@@ -164,29 +177,32 @@ export class LanguageModelSession {
     if (opts === _FROM_POINTER) return; // shell instance — _init() called by fromTranscript
 
     const fn = getFunctions();
-    const tools = [...(opts.tools ?? [])];
-    tools.forEach((t) => t._register());
+    const tools = bindTools([...(opts.tools ?? [])]);
+    try {
+      const toolHandles = nativeTools(tools);
 
-    const toolHandles = nativeTools(tools);
+      assertModelNotDisposed(opts.model);
+      const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+      // Each model type has its own native constructor; the handles aren't interchangeable.
+      const pointer = pcc
+        ? fn.FMLanguageModelSessionCreateFromPrivateCloudComputeModel(
+            pcc._nativeModel!,
+            opts.instructions ?? null,
+            toolHandles,
+          )
+        : fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
+            (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
+            opts.instructions ?? null,
+            toolHandles,
+          );
 
-    assertModelNotDisposed(opts.model);
-    const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
-    // Each model type has its own native constructor; the handles aren't interchangeable.
-    const pointer = pcc
-      ? fn.FMLanguageModelSessionCreateFromPrivateCloudComputeModel(
-          pcc._nativeModel!,
-          opts.instructions ?? null,
-          toolHandles,
-        )
-      : fn.FMLanguageModelSessionCreateFromSystemLanguageModel(
-          (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
-          opts.instructions ?? null,
-          toolHandles,
-        );
-
-    if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
-    this._init(pointer, new Transcript(pointer), tools);
-    this._usesPrivateCloudCompute = pcc !== null;
+      if (!pointer) throw new FoundationModelsError("Failed to create LanguageModelSession");
+      this._init(pointer, new Transcript(pointer), tools);
+      this._usesPrivateCloudCompute = pcc !== null;
+    } catch (error) {
+      for (const tool of tools) tool.dispose();
+      throw error;
+    }
   }
 
   /**
@@ -203,44 +219,48 @@ export class LanguageModelSession {
     opts: { model?: SystemLanguageModel | PrivateCloudComputeLanguageModel; tools?: Tool[] } = {},
   ): LanguageModelSession {
     const fn = getFunctions();
-    const tools = [...(opts.tools ?? [])];
-    tools.forEach((t) => t._register());
-    const toolHandles = nativeTools(tools);
+    const tools = bindTools([...(opts.tools ?? [])]);
+    try {
+      const toolHandles = nativeTools(tools);
 
-    assertModelNotDisposed(opts.model);
-    const source = transcript._pointer();
-    // A transcript that belongs to a session is that session's live view: the
-    // bridge represents both as a session handle, so repointing it below would
-    // silently redirect the original session's transcript at this one, and
-    // disposing this session would break it. Export and restore instead.
-    if (!transcript._ownsObject) {
-      throw new FoundationModelsError(
-        "This transcript belongs to a session. Export it first: " +
-          "LanguageModelSession.fromTranscript(Transcript.fromJson(session.transcript.toJson()))",
-      );
-    }
-    const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
-    const pointer = pcc
-      ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
-          source,
-          pcc._nativeModel!,
-          toolHandles,
-        )
-      : fn.FMLanguageModelSessionCreateFromTranscript(
-          source,
-          (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
-          toolHandles,
+      assertModelNotDisposed(opts.model);
+      const source = transcript._pointer();
+      // A transcript that belongs to a session is that session's live view: the
+      // bridge represents both as a session handle, so repointing it below would
+      // silently redirect the original session's transcript at this one, and
+      // disposing this session would break it. Export and restore instead.
+      if (!transcript._ownsObject) {
+        throw new FoundationModelsError(
+          "This transcript belongs to a session. Export it first: " +
+            "LanguageModelSession.fromTranscript(Transcript.fromJson(session.transcript.toJson()))",
         );
+      }
+      const pcc = opts.model instanceof PrivateCloudComputeLanguageModel ? opts.model : null;
+      const pointer = pcc
+        ? fn.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel(
+            source,
+            pcc._nativeModel!,
+            toolHandles,
+          )
+        : fn.FMLanguageModelSessionCreateFromTranscript(
+            source,
+            (opts.model as SystemLanguageModel | undefined)?._nativeModel ?? null,
+            toolHandles,
+          );
 
-    if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
+      if (!pointer) throw new FoundationModelsError("Failed to create session from transcript");
 
-    const session = new LanguageModelSession(_FROM_POINTER);
-    session._init(pointer, transcript, tools);
-    session._usesPrivateCloudCompute = pcc !== null;
-    // Update the transcript's native session so future toJson() calls read
-    // from the new session rather than the original deserialized transcript.
-    transcript._updateNativeSession(pointer);
-    return session;
+      const session = new LanguageModelSession(_FROM_POINTER);
+      session._init(pointer, transcript, tools);
+      session._usesPrivateCloudCompute = pcc !== null;
+      // Update the transcript's native session so future toJson() calls read
+      // from the new session rather than the original deserialized transcript.
+      transcript._updateNativeSession(pointer);
+      return session;
+    } catch (error) {
+      for (const tool of tools) tool.dispose();
+      throw error;
+    }
   }
 
   /**
@@ -584,6 +604,7 @@ export class LanguageModelSession {
       _liveSessions.delete(this._weakRef);
       this._weakRef = null;
     }
+    for (const tool of this._tools) tool.dispose();
     // The transcript reads through the session's pointer, which is released below.
     this._transcript?._detach();
     if (this._nativeSession) {

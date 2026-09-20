@@ -60,6 +60,8 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Fixed
 
+- Concurrent sessions sharing a tool now enforce independent `maximumToolCalls` budgets. Disposing one session releases only its own tool registrations.
+
 - Cancelling a stream while a tool was pending, reusing the session, and then completing or disposing the old tool could crash Node. Cancellation now removes the tool's native continuation, so late results are ignored. One-shot requests cancelled during a tool call reject with `CancelledError` without waiting for JavaScript's tool to finish.
 - Sessions now copy the supplied tools array. Mutating that array can no longer bypass `maximumToolCalls` or leave a spent budget attached to a tool.
 - Several ways to crash the host process:

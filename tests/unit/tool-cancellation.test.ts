@@ -90,6 +90,28 @@ describe("tool invocation cancellation", () => {
     expect(fn.FMBridgedToolFinishCall).not.toHaveBeenCalled();
   });
 
+  it("isolates equal call IDs across sessions and aborts all registrations on tool disposal", async () => {
+    using tool = new CancellableTool();
+    using _first = tool._bindToSession();
+    using _second = tool._bindToSession();
+    const a = fn.FMBridgedToolCreate.mock.calls[0][3];
+    const b = fn.FMBridgedToolCreate.mock.calls[1][3];
+    a("a", 1);
+    b("b", 1);
+    await vi.waitFor(() => expect(tool.calls).toHaveLength(2));
+    a(null, 1, true);
+    expect(tool.calls[0].signal.aborted).toBe(true);
+    expect(tool.calls[1].signal.aborted).toBe(false);
+    tool.dispose();
+    expect(tool.calls[1].signal.aborted).toBe(true);
+    using _third = tool._bindToSession();
+    const c = fn.FMBridgedToolCreate.mock.calls[2][3];
+    c("c", 1);
+    await vi.waitFor(() => expect(tool.calls).toHaveLength(3));
+    b(null, 1, true);
+    expect(tool.calls[2].signal.aborted).toBe(false);
+  });
+
   it("doesn't invoke the body when onCall disposes the tool", async () => {
     using tool = new CancellableTool();
     tool.onCall = () => tool.dispose();

@@ -14,6 +14,7 @@ import {
   LanguageModelSession,
   FailRequestError,
   CancelledError,
+  ToolCallLimitExceededError,
   GenerationSchema,
   GenerationGuide,
   GeneratedContent,
@@ -190,7 +191,51 @@ async function cancelSharedTool(): Promise<void> {
   assert.equal(calls[1].signal.aborted, true);
 }
 
+async function sharedToolBudgets(): Promise<void> {
+  const started = Promise.withResolvers<void>();
+  let count = 0;
+  let firstSignal: AbortSignal | undefined;
+  class SharedTool extends NeverReturnsTool {
+    override async call(_args?: GeneratedContent, context?: ToolCallContext): Promise<string> {
+      assert.ok(context);
+      count++;
+      if (count === 1) {
+        firstSignal = context.signal;
+        started.resolve();
+        return delay(60_000, "fact", { signal: context.signal });
+      }
+      return "The capital of Peru is Lima.";
+    }
+  }
+  using tool = new SharedTool(() => {});
+  using a = new LanguageModelSession({ tools: [tool] });
+  using b = new LanguageModelSession({ tools: [tool] });
+  const first = a
+    .respond("Use lookup to find a fact.", {
+      options: { toolCallingMode: "required", maximumToolCalls: 1 },
+    })
+    .catch((error: unknown) => error);
+  await Promise.race([
+    started.promise,
+    first.then(() => {
+      throw new Error("First request ended before its tool call");
+    }),
+  ]);
+  const second = await b
+    .respond("Use lookup to find a fact.", {
+      options: { toolCallingMode: "required", maximumToolCalls: 2 },
+    })
+    .catch((error: unknown) => error);
+  assert.ok(second instanceof ToolCallLimitExceededError);
+  assert.equal(count, 3, "B must get both calls while A's budget is exhausted");
+  b.dispose();
+  assert.equal(firstSignal?.aborted, false);
+  a.cancel();
+  assert.ok((await first) instanceof CancelledError);
+}
+
 const scenarios: Record<string, () => Promise<void>> = {
+  "shared-tool-budgets": sharedToolBudgets,
   "cancel-shared-tool": cancelSharedTool,
   "cancel-stream-reuse-late-tool": () => cancelWithPendingTool("stream"),
   "cancel-stream-reuse-disposed-tool": () => cancelWithPendingTool("stream", true),

@@ -101,13 +101,9 @@ call past the limit isn't run, and the request fails with
 `ToolCallLimitExceededError`. The session keeps working, and each request gets a
 fresh limit.
 
-::: warning Sharing a tool between sessions
-A tool instance can be passed to several sessions. If two of them respond at the
-same time, the tool can't tell which request a call belongs to, so each call
-counts against both requests' limits. A request can then fail before making its
-own `maximumToolCalls` calls; it never makes more. Give each session its own tool
-instance when requests run concurrently and the limit matters.
-:::
+A tool instance can be shared by concurrent sessions. Each request counts only
+its own tool calls toward `maximumToolCalls`; another session's calls cannot
+consume its allowance. The tool's JavaScript state is still shared.
 
 ## Error Handling
 
@@ -133,8 +129,7 @@ the tool and whose `cause` is the original `FailRequestError`. Synchronous throw
 and rejected Promises behave alike; see [Failing the request](/api/tool#failing-the-request).
 
 If concurrent sessions share a tool, each failed request keeps the error from
-its own invocation, including when the messages are identical. The shared
-[tool call limit](#tool-call-limit) still applies as described above.
+its own invocation, including when the messages are identical.
 
 ## Cleanup
 

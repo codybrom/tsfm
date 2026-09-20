@@ -43,8 +43,10 @@ for (const [name, create] of Object.entries(factories)) {
   describe(`${name} tools array ownership`, () => {
     it("enforces the budget after the caller clears the tools array", async () => {
       using tool = new Lookup();
+      const bind = vi.spyOn(tool, "_bindToSession");
       const tools: Tool[] = [tool];
       using session = create(tools);
+      const registration = bind.mock.results[0].value as Tool;
       tools.length = 0;
       const pending = session.respond("Look it up", { options: { maximumToolCalls: 0 } });
       const rejected = expect(pending).rejects.toBeInstanceOf(ToolCallLimitExceededError);
@@ -52,21 +54,23 @@ for (const [name, create] of Object.entries(factories)) {
       mockFns.FMBridgedToolCreate.mock.calls[0][3]("arguments", 1);
       await rejected;
       expect(tool.call).not.toHaveBeenCalled();
-      expect(tool._budgets.size).toBe(0);
+      expect(registration._budgets.size).toBe(0);
     });
 
     it("cleans up the budget after the caller replaces tools during a request", async () => {
       using tool = new Lookup();
       using replacement = new Lookup();
+      const bind = vi.spyOn(tool, "_bindToSession");
       const tools: Tool[] = [tool];
       using session = create(tools);
+      const registration = bind.mock.results[0].value as Tool;
       const pending = session.respond("Look it up", { options: { maximumToolCalls: 1 } });
       await vi.waitFor(() => expect(mockFns.FMLanguageModelSessionRespond).toHaveBeenCalled());
       tools.splice(0, 1, replacement);
       const onCall = mockFns.FMBridgedToolCreate.mock.calls[0][3];
       onCall("arguments", 1);
       await pending;
-      expect(tool._budgets.size).toBe(0);
+      expect(registration._budgets.size).toBe(0);
       const next = session.respond("Look it up again", { options: { maximumToolCalls: 1 } });
       await vi.waitFor(() =>
         expect(mockFns.FMLanguageModelSessionRespond).toHaveBeenCalledTimes(2),
@@ -75,7 +79,7 @@ for (const [name, create] of Object.entries(factories)) {
       await expect(next).resolves.toHaveProperty("content", "answer");
       expect(tool.call).toHaveBeenCalledTimes(2);
       expect(replacement.call).not.toHaveBeenCalled();
-      expect(tool._budgets.size).toBe(0);
+      expect(registration._budgets.size).toBe(0);
     });
   });
 }

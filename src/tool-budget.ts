@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 
 /**
  * @internal A request's tool-call allowance (GenerationOptions.maximumToolCalls).
- * The session attaches one to each of its tools for the duration of a request;
- * a tool call runs only while every attached budget has room.
+ * The session attaches one to each of its private tool registrations for the
+ * duration of a request. Concurrent sessions never share a budget.
  */
 export class ToolCallBudget {
   used = 0;
   /**
-   * Failures from calls made while this budget was active. Shared tools cannot
-   * identify the calling session, so each failure gets an ID carried through
-   * the native error message. The session attaches only the matching failure.
+   * Failures from calls made while this budget was active. Each failure gets an ID carried
+   * through the native error message. The session attaches only the matching
+   * failure.
    */
   failures = new Map<string, { toolName: string; cause: Error }>();
   constructor(readonly max: number) {}

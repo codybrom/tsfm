@@ -86,10 +86,9 @@ describe("tool failure routing across concurrent sessions", () => {
       };
       const results = Promise.all([run(a).catch((e) => e), run(b).catch((e) => e)]);
       await vi.waitFor(() => expect(complete).toHaveLength(2));
-      expect(tool._budgets.size).toBe(2);
       const onCall = mockFns.FMBridgedToolCreate.mock.calls[0][3];
       onCall("arguments-a", 1);
-      onCall("arguments-b", 2);
+      mockFns.FMBridgedToolCreate.mock.calls[1][3]("arguments-b", 2);
 
       const errors = await results;
       for (const [i, error] of errors.entries()) {

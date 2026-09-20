@@ -18,7 +18,7 @@ import { recordToolFailure, type ToolCallBudget } from "./tool-budget.js";
 
 /** Context for one tool invocation. Cancellation is cooperative. */
 export interface ToolCallContext {
-  /** Aborted when this invocation is cancelled or the tool is disposed. */
+  /** Aborted when this invocation is cancelled, or its session or tool is disposed. */
   readonly signal: AbortSignal;
 }
 
@@ -48,7 +48,7 @@ export abstract class Tool {
    *
    * `context.signal` is specific to this invocation. Pass it to `fetch()` or
    * check `signal.throwIfAborted()` to stop work when the request is cancelled
-   * or this tool is disposed. Existing implementations may ignore the second
+   * or its session or this tool is disposed. Existing implementations may ignore the second
    * argument; JavaScript work is only stopped cooperatively.
    */
   abstract call(args: GeneratedContent, context: ToolCallContext): Promise<string>;
@@ -68,23 +68,31 @@ export abstract class Tool {
   /** Counts registrations, so a call is only answered on the tool that received it. */
   private _registration = 0;
   private _calls = new Map<number, AbortController>();
+  private _sessionTools = new Set<WeakRef<Tool>>();
 
-  /**
-   * @internal Budgets of the requests currently using this tool. A call runs
-   * only if every one has room, so a tool shared by sessions that respond at
-   * the same time can stop early but never exceeds a request's limit.
-   */
+  /** @internal The active request budget for this registration. */
   _budgets = new Set<ToolCallBudget>();
 
   /**
-   * @internal Called once before passing to FMBridgedToolCreate.
-   *
-   * Tool instances can be shared across multiple sessions — the same C tool
-   * object and persistent callback are reused. Only call `dispose()` when
-   * you are completely done with the tool across all sessions.
+   * @internal A separate native registration for one session. Calls still run
+   * on the user's Tool, preserving subclass state and private fields, but call
+   * IDs, cancellation controllers and budgets belong only to this session.
+   * Weak references let abandoned sessions and their registrations be collected.
    */
+  _bindToSession(): Tool {
+    const bound = new SessionTool(this, () => this._sessionTools.delete(ref));
+    const ref = new WeakRef<Tool>(bound);
+    bound._register();
+    for (const existing of this._sessionTools) {
+      if (!existing.deref()) this._sessionTools.delete(existing);
+    }
+    this._sessionTools.add(ref);
+    return bound;
+  }
+
+  /** @internal Registers a native callback; also used for tool token counts. */
   _register(): void {
-    if (this._nativeTool) return; // already registered; C object is reusable across sessions
+    if (this._nativeTool) return; // already registered
 
     if (!this.argumentsSchema?._nativeSchema) {
       throw new Error(
@@ -97,7 +105,7 @@ export abstract class Tool {
     const registration = ++this._registration;
 
     // The callback is persistent: the model may call this tool many times, from
-    // any session using it. Each call must be answered, by id, with
+    // its session. Each call must be answered, by id, with
     // FMBridgedToolFinishCall or FMBridgedToolFailCall, or the response waits.
     //
     // The addon holds this callback until the native tool is freed, so it must
@@ -240,6 +248,9 @@ export abstract class Tool {
    * yet are failed and their signals are aborted, so no response waits on them.
    */
   dispose(): void {
+    const sessions = [...this._sessionTools];
+    this._sessionTools.clear();
+    for (const ref of sessions) ref.deref()?.dispose();
     if (this._nativeTool) {
       const tool = this._nativeTool;
       this._nativeTool = null;
@@ -255,5 +266,34 @@ export abstract class Tool {
 
   [Symbol.dispose](): void {
     this.dispose();
+  }
+}
+
+/** A native registration owned by one session, forwarding to the user's tool. */
+class SessionTool extends Tool {
+  readonly name: string;
+  readonly description: string;
+  readonly argumentsSchema: GenerationSchema;
+
+  constructor(
+    private readonly owner: Tool,
+    private readonly onDispose: () => void,
+  ) {
+    super();
+    this.name = owner.name;
+    this.description = owner.description;
+    this.argumentsSchema = owner.argumentsSchema;
+  }
+
+  override onCall = (name: string, args: Record<string, unknown>) =>
+    this.owner.onCall?.(name, args);
+
+  call(args: GeneratedContent, context: ToolCallContext): Promise<string> {
+    return this.owner.call(args, context);
+  }
+
+  override dispose(): void {
+    this.onDispose();
+    super.dispose();
   }
 }

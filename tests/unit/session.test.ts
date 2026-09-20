@@ -73,7 +73,10 @@ vi.mock("../../src/bindings.js", () => ({
 vi.mock("../../src/tool.js", () => ({
   Tool: class MockTool {
     _nativeTool = "mock-tool-pointer";
-    _register() {}
+    _bindToSession() {
+      return this;
+    }
+    dispose() {}
   },
 }));
 
@@ -1076,14 +1079,15 @@ describe("LanguageModelSession", () => {
       };
       const mockTool = {
         _nativeTool: "mock-tool-pointer",
-        _register: vi.fn(),
+        _bindToSession: vi.fn(() => mockTool),
+        dispose: vi.fn(),
       };
 
       LanguageModelSession.fromTranscript(mockTranscript as never, {
         tools: [mockTool as never],
       });
 
-      expect(mockTool._register).toHaveBeenCalled();
+      expect(mockTool._bindToSession).toHaveBeenCalled();
     });
   });
 
@@ -1095,7 +1099,10 @@ describe("LanguageModelSession", () => {
     const failingTool = () => ({
       name: "lookup",
       _nativeTool: "ptr-lookup",
-      _register() {},
+      _bindToSession() {
+        return this;
+      },
+      dispose() {},
       _budgets: new Set<ToolCallBudget>(),
     });
     const cause = new FailRequestError("no such record");
@@ -1149,14 +1156,22 @@ describe("LanguageModelSession", () => {
     it("registers tools and passes tool pointers", () => {
       const mockTool = {
         _nativeTool: "mock-tool-pointer",
-        _register: vi.fn(),
+        _bindToSession: vi.fn(() => mockTool),
+        dispose: vi.fn(),
       };
 
       new LanguageModelSession({ tools: [mockTool as never] });
-      expect(mockTool._register).toHaveBeenCalled();
+      expect(mockTool._bindToSession).toHaveBeenCalled();
     });
 
-    const namedTool = (name: string) => ({ name, _nativeTool: "ptr-" + name, _register() {} });
+    const namedTool = (name: string) => ({
+      name,
+      _nativeTool: "ptr-" + name,
+      _bindToSession() {
+        return this;
+      },
+      dispose() {},
+    });
 
     it("rejects the same tool listed twice", () => {
       const tool = namedTool("lookup");

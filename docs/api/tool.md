@@ -140,4 +140,4 @@ class WeatherTool extends Tool {
 3. The tool's callback is registered internally when the session is created
 4. After all sessions are disposed, call `tool.dispose()`
 
-Tools can be shared across multiple sessions. The native callback remains registered until `dispose()` is called.
+Tools can be shared across multiple sessions. Each session has its own native registration and tool-call budget. Disposing a session releases its registration without affecting other sessions. Calling `tool.dispose()` releases all of the tool’s registrations and aborts their pending invocations.
