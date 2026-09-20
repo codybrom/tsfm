@@ -169,4 +169,20 @@ describe("composePrompt", () => {
     expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
     expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
   });
+
+  it("refuses an attachment label that isn't a string", () => {
+    expect(() => composePrompt(fn, { content: [{ path: image, label: 7 }] } as never)).toThrow(
+      /"label" must be a string, got number/,
+    );
+    expect(mockFns.FMComposedPromptInitialize).not.toHaveBeenCalled();
+  });
+
+  it("allows an absent or null label", () => {
+    composePrompt(fn, { content: [{ path: image, label: null }] } as never);
+    expect(mockFns.FMComposedPromptAddAttachment).toHaveBeenCalledWith(
+      "mock-composed-prompt",
+      image,
+      null,
+    );
+  });
 });

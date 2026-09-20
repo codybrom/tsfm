@@ -80,6 +80,10 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
     ) {
       throw new TypeError(`Every prompt part must be text or an attachment with a "path"`);
     }
+    const label = (part as Record<string, unknown>).label;
+    if (label != null && typeof label !== "string") {
+      throw new TypeError(`An attachment's "label" must be a string, got ${typeof label}`);
+    }
   }
   return parts as Array<string | PromptAttachment>;
 }
