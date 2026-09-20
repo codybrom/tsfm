@@ -147,7 +147,8 @@ export function formatDoctorReport(checks: DoctorCheck[]): string {
     .join("\n");
 }
 
-async function main(): Promise<void> {
+/** @internal */
+export async function main(): Promise<void> {
   const command = process.argv[2] ?? "doctor";
   if (command !== "doctor") {
     process.stderr.write(`Unknown command: ${command}\nUsage: tsfm doctor\n`);

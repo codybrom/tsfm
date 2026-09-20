@@ -4,9 +4,9 @@ import { resolve } from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "tsfm-sdk/chat": resolve(__dirname, "src/compat/index.js"),
-      "tsfm-sdk/openai": resolve(__dirname, "src/compat/index.js"),
-      "tsfm-sdk": resolve(__dirname, "src/index.js"),
+      "tsfm-sdk/chat": resolve(import.meta.dirname, "src/compat/index.js"),
+      "tsfm-sdk/openai": resolve(import.meta.dirname, "src/compat/index.js"),
+      "tsfm-sdk": resolve(import.meta.dirname, "src/index.js"),
     },
   },
   test: {
