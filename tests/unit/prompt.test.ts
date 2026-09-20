@@ -160,4 +160,13 @@ describe("composePrompt", () => {
     expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
     expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["undefined", undefined],
+    ["null", null],
+  ])("treats attachments: %s like a text-only prompt", (_name, value) => {
+    composePrompt(fn, { text: "Hello", attachments: value } as never);
+    expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith("mock-composed-prompt", "Hello");
+    expect(mockFns.FMComposedPromptAddAttachment).not.toHaveBeenCalled();
+  });
 });

@@ -63,7 +63,9 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
     if (typeof own.text !== "string") {
       throw new TypeError(`A prompt must be ${SHAPES}; this one has no "text"`);
     }
-    const attachments = Object.hasOwn(own, "attachments") ? own.attachments : [];
+    // An explicit undefined or null reads as "no attachments", like the
+    // optional property it is.
+    const attachments = own.attachments ?? [];
     if (!Array.isArray(attachments)) {
       throw new TypeError(`A prompt's "attachments" must be an array`);
     }

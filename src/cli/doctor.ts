@@ -35,7 +35,13 @@ function fmLicenseStatus(): string {
     stdio: ["ignore", "ignore", "ignore"],
     timeout: 5_000,
   });
-  if (result.error) return "fm CLI not found (not needed by tsfm)";
+  if (result.error) {
+    // spawnSync reports more than a missing binary: a timeout, or a spawn that
+    // was refused. Only ENOENT means it isn't installed.
+    const code = (result.error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return "fm CLI not found (not needed by tsfm)";
+    return `fm CLI found, but couldn't be run (${code ?? result.error.message}); not needed by tsfm`;
+  }
   if (result.status === 0) return "installed, license agreed";
   // 69 is what `fm license --status` exits with before the license is agreed,
   // in every stdin mode; see tests/fixtures/fm/unlicensed.json, recorded on
