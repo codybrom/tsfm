@@ -13,7 +13,7 @@ Pass `options` as part of the second argument to any generation method:
 ```ts
 import { SamplingMode } from "tsfm-sdk";
 
-const reply = await session.respond("Write a haiku about rain", {
+const { content: reply } = await session.respond("Write a haiku about rain", {
   options: {
     temperature: 0.9,
     maximumResponseTokens: 100,
@@ -26,8 +26,8 @@ const reply = await session.respond("Write a haiku about rain", {
 
 | Option | Type | Description |
 | --- | --- | --- |
-| `temperature` | `number` | Influences the confidence of the model's response. Higher values produce more varied output. Lower values produce more deterministic output. |
-| `maximumResponseTokens` | `number` | Maximum tokens the model is allowed to produce. Enforcing a strict limit can lead to truncated or grammatically incorrect responses. |
+| `temperature` | `number` | Influences the confidence of the model's response, from `0` (most deterministic) to `1` (most varied) inclusive. |
+| `maximumResponseTokens` | `number` | Maximum tokens the model is allowed to produce. When the limit is reached the framework ends the response early without throwing, so the result can be cut off mid-sentence; nothing tells you it was truncated. Check the output yourself if that matters. |
 | `sampling` | `SamplingMode` | Controls how the model picks tokens from its probability distribution (see below). |
 
 ## Sampling Modes
@@ -35,7 +35,7 @@ const reply = await session.respond("Write a haiku about rain", {
 The model builds its response token by token. At each step it produces a probability distribution over its vocabulary. The sampling mode controls how a token is selected from that distribution.
 
 ::: info
-The **Swift** equivalent is Foundation Models' [`SamplingMode`](https://developer.apple.com/documentation/foundationmodels/generationoptions/samplingmode).
+The **Swift** equivalent is Foundation Models' [`SamplingMode`](https://developer.apple.com/documentation/foundationmodels/generationoptions/samplingmode-swift.struct).
 :::
 
 ### Greedy (Most Deterministic)

@@ -45,7 +45,7 @@ checkModel.dispose();
 const describeIfAvailable = available ? describe : describe.skip;
 
 describeIfAvailable("tools (integration)", () => {
-  it("invokes a tool and includes its result", { timeout: 100_000 }, async () => {
+  it("invokes a tool and includes its result", { timeout: 260_000 }, async () => {
     const { successes } = await retryAttempts(
       async () => {
         const model = new SystemLanguageModel();
@@ -59,7 +59,7 @@ describeIfAvailable("tools (integration)", () => {
         });
 
         try {
-          const reply = await Promise.race([
+          const { content: reply } = await Promise.race([
             session.respond(
               'Use the lookup_secret tool to find the secret code for key "alpha". ' +
                 "Do not guess — call the tool.",
@@ -90,7 +90,11 @@ describeIfAvailable("tools (integration)", () => {
           model.dispose();
         }
       },
-      { maxAttempts: 3, requiredSuccesses: 1, label: "tools test" },
+      // The on-device model calls the tool on only about half of attempts, even
+      // when told to (measured the same on koffi and Node-API), so 3 attempts
+      // failed about 1 run in 8. With 8, a run fails well under 1% of the time
+      // unless tool calls are actually broken.
+      { maxAttempts: 8, requiredSuccesses: 1, label: "tools test" },
     );
 
     expect(successes).toBeGreaterThanOrEqual(1);

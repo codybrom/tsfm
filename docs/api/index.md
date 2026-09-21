@@ -1,12 +1,13 @@
 # API Reference
 
-Complete reference for all public exports from `tsfm`.
+Complete reference for all public exports from `tsfm-sdk`.
 
 ## Classes
 
 | Class | Description |
 | --- | --- |
 | [SystemLanguageModel](/api/system-language-model) | On-device model access and availability |
+| [PrivateCloudComputeLanguageModel](/guide/private-cloud-compute) | Server model run on Private Cloud Compute (macOS 27+) |
 | [LanguageModelSession](/api/language-model-session) | Conversation session with all generation methods |
 | [GenerationSchema](/api/generation-schema) | Schema builder for structured output |
 | [Tool](/api/tool) | Abstract base class for tool calling |
@@ -16,6 +17,9 @@ Complete reference for all public exports from `tsfm`.
 
 | Export | Description |
 | --- | --- |
+| [`Response<T>`](/api/language-model-session#response-t) | Model response with content and token usage |
+| [ResponseStream](/api/language-model-session#responsestream) | Streaming response iterable with usage and `collect()` |
+| [Usage](/api/language-model-session#usage-1) | Token usage breakdown (input, cached, output, reasoning) |
 | [GenerationOptions](/api/generation-options) | Options for temperature, tokens, sampling |
 | [SamplingMode](/api/generation-options#samplingmode) | Greedy or random sampling strategies |
 | [GenerationGuide](/api/generation-schema#generationguide) | Output constraints for schema properties |
@@ -26,6 +30,7 @@ Complete reference for all public exports from `tsfm`.
 | [InferSchema](/api/generation-schema#inferschema-t) | Mapped type for schema type inference |
 | [PromptInput](/api/language-model-session#prompt-attachments) | Prompt with attachments, accepted anywhere a string is |
 | [PromptAttachment](/api/language-model-session#prompt-attachments) | A file attached to a prompt |
+| [TranscriptEntry](/api/transcript#transcriptentry) | Typed entry in a session transcript |
 | [Errors](/api/errors) | Error hierarchy and error codes |
 
 ## Chat & Responses APIs
@@ -45,6 +50,7 @@ See the [Chat & Responses API reference](/api/chat) for full type documentation.
 ```ts
 import {
   SystemLanguageModel,
+  PrivateCloudComputeLanguageModel,
   LanguageModelSession,
   GenerationSchema,
   GenerationGuide,

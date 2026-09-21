@@ -5,8 +5,8 @@ titleTemplate: false
 
 hero:
   name: tsfm
-  text: On-device Apple Intelligence in Node.js
-  tagline: "TypeScript SDK for Apple Foundation Models. No keys. No fees. <i>It just works.</i>"
+  text: Apple Intelligence in Node.js
+  tagline: "TypeScript SDK for Apple's Foundation Models: the on-device model and Private Cloud Compute. No keys. No fees."
   image:
     src: /logo.svg
     alt: tsfm

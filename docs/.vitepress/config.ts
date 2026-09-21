@@ -36,6 +36,7 @@ function guideSidebar() {
       collapsed: false,
       items: [
         { text: "Getting Started", link: "/guide/getting-started" },
+        { text: "Migrating to 1.0", link: "/guide/migrating-to-1" },
         { text: "Model Configuration", link: "/guide/model-configuration" },
         { text: "Chat & Responses APIs", link: "/guide/chat-api" },
       ],
@@ -50,6 +51,7 @@ function guideSidebar() {
         { text: "Tools", link: "/guide/tools" },
         { text: "Transcripts", link: "/guide/transcripts" },
         { text: "Generation Options", link: "/guide/generation-options" },
+        { text: "Private Cloud Compute", link: "/guide/private-cloud-compute" },
         { text: "Error Handling", link: "/guide/error-handling" },
       ],
     },
@@ -142,6 +144,14 @@ export default defineConfig({
       { text: "Guide", link: "/guide/getting-started" },
       { text: "Reference", link: "/api/" },
       { text: "Changelog", link: "/changelog" },
+      {
+        text: "1.0 beta",
+        items: [
+          { text: "1.0 beta (these docs)", link: "/guide/getting-started" },
+          { text: "Migrating to 1.0", link: "/guide/migrating-to-1" },
+          { text: "0.5 docs (stable)", link: "https://github.com/codybrom/tsfm/tree/v0.5.1/docs" },
+        ],
+      },
     ],
 
     sidebar: {

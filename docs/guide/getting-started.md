@@ -1,26 +1,65 @@
 # Getting Started
 
-TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a pre-compiled dynamic library [via FFI](https://koffi.dev/), allowing it the same access as native Swift and ObjC applications.
+TSFM gives Node.js applications access to Apple's on-device large language model through the on-device Foundation Models framework. It loads a precompiled native library through [Node-API](https://nodejs.org/api/n-api.html), which gives it the same access as native Swift and Objective-C apps.
 
-TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26+ with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
+TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js ≥24 on an Apple Silicon Mac running macOS 26 or later with Apple Intelligence enabled. No matter what your AI assistant tells you, TSFM **<u>will not work</u>** in browser client-side code, on Windows/Linux, on Intel Macs or on macs without Apple Intelligence installed.
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
 ## Requirements
 
-- **macOS 26** (Tahoe) or later, Apple Silicon
+- **macOS 26** or later, Apple Silicon. A few features need macOS 27; see below.
 - **Apple Intelligence** enabled in System Settings
 - **Node.js 24+**
 
+### macOS 26 and macOS 27
+
+tsfm runs on both. Features built on macOS 27 APIs don't crash on macOS 26: each
+reports a clear reason your app can check.
+
+| Feature | On macOS 26 |
+| --- | --- |
+| Token usage (`response.usage`, `session.usage`) | `null` |
+| `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27` |
+| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`; using it throws `UnsupportedCapabilityError` |
+| [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
+| `model.variant`, `model.capabilities` | `null` |
+| `model.tokenCount()` (needs macOS 26.4) | On 26.0–26.3, rejects with `UnsupportedCapabilityError` with `minimumRequiredMacOS: 26.4` |
+
+Everything else works on both, including text, streaming, structured output,
+tools, transcripts and the Chat and Responses APIs. Regex guides are checked
+against the model's supported syntax only on macOS 27, where it's known.
+
+::: info
+tsfm's integration tests run on macOS 27. On macOS 26, the library's loading and
+fallbacks are verified at build time, but the model itself isn't tested there.
+:::
+
 ## Installation
 
+::: warning tsfm 1.0 is in beta
+These docs are for 1.0, which is published under the `beta` tag. Install it with:
+
 ```bash
-npm install tsfm-sdk
+npm install tsfm-sdk@beta
 ```
 
-Xcode is not required to use this package. The NPM package ships with a prebuilt dylib for macOS 26.0+. If you know your machine requires a different dylib, see [Building from Source](#building-from-source).
+A plain `npm install tsfm-sdk` still installs the stable 0.5 release, which has
+[its own docs](https://github.com/codybrom/tsfm/tree/v0.5.1/docs). Coming from 0.5? See
+[Migrating to 1.0](/guide/migrating-to-1).
+:::
 
-npm 11 may warn that `koffi` has an install script not covered by `allowScripts`. You can ignore the warning: koffi ships prebuilt binaries, and tsfm works without running the script. To silence it, run `npm approve-scripts koffi`.
+Xcode is not required to use this package. The npm package ships prebuilt native files for macOS 26.0+. If you know your machine requires a different build, see [Building from Source](#building-from-source).
+
+To check that everything tsfm needs is in place, run:
+
+```bash
+npx tsfm doctor
+```
+
+It reports the macOS version, whether the native library loads, the on-device
+model's availability and variant, and Private Cloud Compute availability. It only
+reads; it doesn't change anything.
 
 ## Quick Start
 
@@ -35,7 +74,7 @@ const session = new LanguageModelSession({
   instructions: "You are a concise assistant.",
 });
 
-const reply = await session.respond("What is the capital of France?");
+const { content: reply } = await session.respond("What is the capital of France?");
 console.log(reply); // "The capital of France is Paris."
 
 session.dispose();
@@ -44,9 +83,9 @@ model.dispose();
 
 ## Key Concepts
 
-**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework exposes **SystemLanguageModel**, the **on-device** large language model at the core of Apple Intelligence that runs on Macs, iPhones and iPads with no network required.
+**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework is the API for the language models behind it. As of macOS 27 it exposes three model paths: **`SystemLanguageModel`**, the on-device model that runs on Macs, iPhones and iPads with no network; **`PrivateCloudComputeLanguageModel`**, Apple's larger server model; and any model that conforms to the **`LanguageModel`** protocol, which Apple's own `coreai-models` and `foundation-models-utilities` packages use to plug in other models. tsfm covers the first two.
 
-TSFM basically mirrors the Swift Foundation Models API (same class names, same method signatures, same concepts) with TypeScript translating the same actions to the same underlying model. For the most part, [Apple's own documentation](https://developer.apple.com/documentation/FoundationModels) will translate pretty directly.
+tsfm follows the Swift framework closely in its concepts and most of its names, so [Apple's documentation](https://developer.apple.com/documentation/FoundationModels) is a good reference for how the model behaves. It is not a one-to-one port: some methods, option names and error semantics differ, and parts of the framework aren't exposed. See [Differences from the Swift API](#differences-from-the-swift-api) and [What tsfm doesn't expose](#what-tsfm-doesnt-expose) below.
 
 | SDK class | Role |
 | --- | --- |
@@ -64,6 +103,37 @@ TSFM basically mirrors the Swift Foundation Models API (same class names, same m
 - [Error Handling](/guide/error-handling) — Error types and recovery
 - [Chat API Compatibility](/guide/chat-api) — Drop-in Chat API compatible interface
 
+## Differences from the Swift API
+
+Where tsfm and the Swift framework do the same thing differently:
+
+| Swift | tsfm | Note |
+| --- | --- | --- |
+| `respond(to:generating:)` / `respond(to:schema:)` | `respondWithSchema()` / `respondWithJsonSchema()` | Two methods instead of a generic parameter. |
+| A tool that throws ends the request: `respond()` rethrows the error | A tool that throws sends the message back to the model and the request continues | Throw `FailRequestError` from `call()` to get Apple's behavior; the request then rejects with `RequestFailedByToolError`. |
+| `reasoningLevel` on `ContextOptions` | `reasoningLevel` in `GenerationOptions` | One options object. |
+| Guides `maximumCount`, `minimumCount`, `pattern` | `maxItems`, `minItems`, `regex` | Named after JSON Schema. |
+| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary; the exported JSON is Apple's. |
+| No counterpart | `cancel()` also clears tsfm's own request state | Both cancel the native task; tsfm additionally drops its active request and unblocks a waiting stream reader. |
+| Macros `@Generable` and `@Guide` | `generable()` and `GenerationGuide` | Runtime builders instead of compile-time macros. |
+
+## What tsfm doesn't expose
+
+The framework has these; tsfm doesn't, as of 1.0:
+
+- Streaming partial structured snapshots (`streamResponse(to:generating:)`, macOS 26+). tsfm streams text only; structured output is buffered until complete.
+- Dynamic profiles and dynamic instructions (macOS 27), and the history-transform hooks built on them.
+- The `LanguageModel` protocol for custom models.
+- `transcriptErrorHandlingPolicy`.
+- `logFeedbackAttachment`.
+- Non-string tool output, and `Tool.includesSchemaInInstructions`. tsfm tools return a string.
+- `Attachment` orientation, and in-memory images (`CGImage`, `CIImage`, `CVPixelBuffer`). tsfm attaches image files by path.
+- Trained adapters (`SystemLanguageModel.Adapter`).
+- Mutating `Transcript.history`. tsfm transcripts are read, exported and restored, not edited in place.
+- `Response.rawContent` and `Response.transcriptEntries`.
+
+Skills, as used in Apple's utilities package, aren't framework API; they're a pattern built on tools. You can build the same thing today with tools and `anyOf` guides.
+
 ## Building from Source
 
 If you are working on TSFM as a developer, or need to rebuild the native library, run:
@@ -74,4 +144,4 @@ cd tsfm
 npm run build
 ```
 
-Rebuilding from source requires **Xcode 26.4+** to compile the libFoundationModels.dylib Swift bridge. The 26.4 SDK is the first that declares `SystemLanguageModel.contextSize`, which the bridge reads.
+Rebuilding from source requires **Xcode 27** (the macOS 27 SDK and Swift 6.4) to compile the libFoundationModels.dylib Swift bridge in `native/bridge`.

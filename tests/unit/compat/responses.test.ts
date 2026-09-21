@@ -5,48 +5,32 @@ import { createMockFunctions } from "../helpers/mock-bindings.js";
 // Hoisted mocks — must run before any import
 // ---------------------------------------------------------------------------
 
-const { decodeAndFreeStringMock } = vi.hoisted(() => {
+vi.hoisted(() => {
   globalThis.FinalizationRegistry = class MockFinalizationRegistry {
     constructor(_callback: unknown) {}
     register() {}
     unregister() {}
   } as unknown as typeof FinalizationRegistry;
-
-  return {
-    decodeAndFreeStringMock: vi.fn((_pointer: unknown): string | null => {
-      if (!_pointer) return null;
-      return '{"key":"value"}';
-    }),
-  };
 });
 
 const mockFns = createMockFunctions();
 
-let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
+/** Feeds two cumulative usage readings (before, after) through the mocks. */
+function withUsageReadings(before: string, after: string): () => void {
+  const readings = [before, after];
+  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => readings.shift() ?? null);
+  return () => {
+    mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+  };
+}
 
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
-      lastRegisteredCallback = cb;
-      return "mock-cb-pointer";
-    }),
-    unregister: vi.fn(),
-    as: vi.fn((_arr: unknown[], _type: string) => "mock-arr-pointer"),
-    pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-  },
-}));
+const USAGE_BEFORE =
+  '{"input":{"totalTokens":100,"cachedTokens":40},"output":{"totalTokens":20,"reasoningTokens":0}}';
+const USAGE_AFTER =
+  '{"input":{"totalTokens":162,"cachedTokens":64},"output":{"totalTokens":25,"reasoningTokens":0}}';
 
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    if (typeof pointer === "string") return pointer;
-    return null;
-  }),
-  decodeAndFreeString: decodeAndFreeStringMock,
-  unregisterCallback: vi.fn(),
-  ResponseCallbackProto: "ResponseCallbackProto",
-  StructuredResponseCallbackProto: "StructuredResponseCallbackProto",
 }));
 
 vi.mock("../../../src/tool.js", () => ({
@@ -68,71 +52,59 @@ import type {
 // Helpers
 // ---------------------------------------------------------------------------
 
+type OnChunk = (status: number, text: string | null) => void;
+
+/** A started request whose result arrives on a later macrotask, like the addon's. */
+function later<T>(result: T): [Promise<never>, string] {
+  const promise = new Promise<T>((resolve) => setTimeout(() => resolve(result), 0));
+  return [promise as unknown as Promise<never>, "mock-request"];
+}
+
 function simulateRespondSuccess(text: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(0, text, text.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status: 0, text }));
 }
 
 function simulateRespondError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(status, msg, msg.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status, text: msg }));
 }
 
 function simulateStreamSuccess(chunks: string[]) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
       let cumulative = "";
       let i = 0;
       function next() {
         if (i < chunks.length) {
           cumulative += chunks[i];
           i++;
+          const snapshot = cumulative;
           setTimeout(() => {
-            lastRegisteredCallback?.(0, cumulative, cumulative.length, null);
+            onChunk(0, snapshot);
             next();
           }, 0);
         } else {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, null, 0, null);
-          }, 0);
+          setTimeout(() => onChunk(0, null), 0);
         }
       }
       next();
+      return "mock-stream-request";
     },
   );
 }
 
 function simulateStructuredSuccess(jsonObj: Record<string, unknown>) {
   const jsonStr = JSON.stringify(jsonObj);
-  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-    (..._args: unknown[]) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(0, "mock-content-pointer", null);
-      }, 0);
-      return "mock-task-pointer";
-    },
+  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+    later({ status: 0, content: "mock-content-pointer", message: null }),
   );
-  mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-  decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-    if (!pointer) return null;
-    return jsonStr;
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockReturnValue(jsonStr);
 }
 
 function simulateStreamError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(status, msg, msg.length, null);
-      }, 0);
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
+      setTimeout(() => onChunk(status, msg), 0);
+      return "mock-stream-request";
     },
   );
 }
@@ -152,11 +124,7 @@ const sampleFunctionTools = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  lastRegisteredCallback = null;
-  decodeAndFreeStringMock.mockImplementation((_pointer: unknown): string | null => {
-    if (!_pointer) return null;
-    return '{"key":"value"}';
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockImplementation(() => '{"key":"value"}');
 });
 
 describe("Responses API compat layer", () => {
@@ -195,8 +163,27 @@ describe("Responses API compat layer", () => {
       expect(result.output_text).toBe("Hello from Apple Intelligence");
       expect(result.error).toBeNull();
       expect(result.incomplete_details).toBeNull();
+      // The mocks report no usage, as on macOS 26.
       expect(result.usage).toBeNull();
       client.close();
+    });
+
+    it("reports the request's token usage in the Responses shape", async () => {
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const result = await client.responses.create({ input: "Hello" });
+        expect(result.usage).toEqual({
+          input_tokens: 62,
+          input_tokens_details: { cached_tokens: 24 },
+          output_tokens: 5,
+          output_tokens_details: { reasoning_tokens: 0 },
+          total_tokens: 67,
+        });
+        client.close();
+      } finally {
+        restore();
+      }
     });
   });
 
@@ -385,6 +372,57 @@ describe("Responses API compat layer", () => {
     });
   });
 
+  describe("Private Cloud Compute", () => {
+    it('selects PCC for the fm serve alias "pcc" and reports the full name', async () => {
+      simulateRespondSuccess("Hi");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const client = new Client();
+      const result = await client.responses.create({ input: "test", model: "pcc" });
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(console.warn).not.toHaveBeenCalled();
+      client.close();
+    });
+
+    it("uses the PCC model and maps reasoning.effort to reasoning_level", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      const result = await client.responses.create({
+        input: "test",
+        model: "PrivateCloudComputeLanguageModel",
+        reasoning: { effort: "low" },
+      });
+
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string;
+      expect(JSON.parse(optionsJson)).toMatchObject({ reasoning_level: "light" });
+      client.close();
+    });
+
+    it("warns and ignores reasoning for the on-device model, and on reasoning.summary", async () => {
+      simulateRespondSuccess("Hi");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const client = new Client();
+      const result = await client.responses.create({
+        input: "test",
+        reasoning: { effort: "high", summary: "auto" },
+      });
+
+      expect(result.model).toBe("SystemLanguageModel");
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"reasoning.effort"'));
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('"reasoning.summary"'));
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string | null;
+      expect(optionsJson ? JSON.parse(optionsJson) : {}).not.toHaveProperty("reasoning_level");
+      warnSpy.mockRestore();
+      client.close();
+    });
+  });
+
   describe("unsupported param warnings", () => {
     it("warns on unsupported model name", async () => {
       simulateRespondSuccess("test");
@@ -495,6 +533,7 @@ describe("Responses API compat layer", () => {
       expect(result.parallel_tool_calls).toBe(false);
       expect(result.text).toEqual({ format: { type: "text" } });
       expect(result.truncation).toBeNull();
+      // The mocks report no usage, as on macOS 26.
       expect(result.usage).toBeNull();
       expect(result.metadata).toBeNull();
       client.close();
@@ -890,6 +929,10 @@ describe("Responses API compat layer", () => {
 
       expect(events[0].type).toBe("response.created");
       expect(events[1].type).toBe("response.in_progress");
+      // OpenAI reports the response as in progress until it completes.
+      for (const event of events.slice(0, 2)) {
+        expect((event as { response: Response }).response.status).toBe("in_progress");
+      }
       client.close();
     });
 
@@ -1186,6 +1229,18 @@ describe("Responses API compat layer", () => {
     });
   });
 
+  describe("session creation failure", () => {
+    it("releases the transcript it built when the session can't be created", async () => {
+      mockFns.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null);
+      const client = new Client();
+      await expect(client.responses.create({ input: "Hello" })).rejects.toThrow(
+        /Failed to create session from transcript/,
+      );
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
+      client.close();
+    });
+  });
+
   describe("edge cases — coverage branches", () => {
     it("handles multiple contiguous function_call_output items", async () => {
       simulateRespondSuccess("Both results processed");
@@ -1309,19 +1364,10 @@ describe("Responses API compat layer", () => {
 
     it("reorderJson handles invalid JSON gracefully", async () => {
       // Return invalid JSON from the structured response to trigger catch branch
-      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, "mock-content-pointer", null);
-          }, 0);
-          return "mock-task-pointer";
-        },
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+        later({ status: 0, content: "mock-content-pointer", message: null }),
       );
-      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-      decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-        if (!pointer) return null;
-        return "not valid json {{{";
-      });
+      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("not valid json {{{");
 
       const client = new Client();
       const result = (await client.responses.create({

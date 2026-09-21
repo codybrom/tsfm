@@ -21,7 +21,12 @@ describe("Chat API integration", () => {
     expect(typeof response.choices[0].message.content).toBe("string");
     expect(response.choices[0].finish_reason).toBe("stop");
     expect(response.id).toMatch(/^chatcmpl-/);
-    expect(response.usage).toBeNull();
+    // Real token counts from the model.
+    expect(response.usage?.prompt_tokens).toBeGreaterThan(0);
+    expect(response.usage?.completion_tokens).toBeGreaterThan(0);
+    expect(response.usage?.total_tokens).toBe(
+      response.usage!.prompt_tokens + response.usage!.completion_tokens,
+    );
     expect(response.system_fingerprint).toBeNull();
   });
 
@@ -57,6 +62,22 @@ describe("Chat API integration", () => {
     expect(chunks.length).toBeGreaterThan(0);
     const full = chunks.join("");
     expect(full).toContain("15");
+  });
+
+  it("streaming with include_usage ends with a usage chunk", async () => {
+    const stream = await client.chat.completions.create({
+      messages: [{ role: "user", content: "Say hi." }],
+      stream: true,
+      stream_options: { include_usage: true },
+    });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+
+    const last = chunks[chunks.length - 1];
+    expect(last.choices).toEqual([]);
+    expect(last.usage?.prompt_tokens).toBeGreaterThan(0);
+    expect(last.usage?.completion_tokens).toBeGreaterThan(0);
+    expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
   });
 
   it("structured output with json_schema", async () => {

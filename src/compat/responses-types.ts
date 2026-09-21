@@ -193,7 +193,8 @@ export type Response = {
   model: string;
   output: ResponseOutputItem[];
   output_text: string;
-  status: "completed" | "failed" | "incomplete";
+  /** `"in_progress"` only on the `response.created` and `response.in_progress` stream events. */
+  status: "completed" | "failed" | "incomplete" | "in_progress";
   error: ResponseError | null;
   incomplete_details: { reason?: "max_output_tokens" | "content_filter" } | null;
   instructions: string | null;
@@ -206,7 +207,17 @@ export type Response = {
   parallel_tool_calls: boolean;
   text: ResponseTextConfig;
   truncation: "auto" | "disabled" | null;
-  usage: null;
+  /** Null until the response completes, or when generation failed. */
+  usage: ResponseUsage | null;
+};
+
+/** Token counts, in OpenAI's Responses shape. */
+export type ResponseUsage = {
+  input_tokens: number;
+  input_tokens_details: { cached_tokens: number };
+  output_tokens: number;
+  output_tokens_details: { reasoning_tokens: number };
+  total_tokens: number;
 };
 
 // ---------------------------------------------------------------------------

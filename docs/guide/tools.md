@@ -39,7 +39,7 @@ class WeatherTool extends Tool {
 | `name` | `string` | Unique tool identifier |
 | `description` | `string` | What the tool does (shown to the model) |
 | `argumentsSchema` | `GenerationSchema` | Schema for the tool's arguments |
-| `call(args)` | `async (GeneratedContent) => string` | Handler that returns a string result |
+| `call(args, context)` | `async (GeneratedContent, ToolCallContext) => string` | Handler that returns a string result. Existing one-argument implementations also work |
 
 ## Using Tools in a Session
 
@@ -52,23 +52,84 @@ const session = new LanguageModelSession({
   tools: [tool],
 });
 
-const reply = await session.respond("What's the weather in Tokyo?");
+const { content: reply } = await session.respond("What's the weather in Tokyo?");
 // The model calls get_weather, receives the result, and formulates a response
 ```
 
-## Error Handling
+## Tool Calling Modes
 
-If `call()` throws, it's wrapped in a `ToolCallError`:
+`toolCallingMode` controls how the model may use the session's tools for one
+request:
+
+| Mode | Behavior |
+| --- | --- |
+| `"allowed"` | The default. The model decides whether to call tools. |
+| `"required"` | The model must call a tool before answering. |
+| `"disallowed"` | The model answers without calling any tool. |
+
+`"required"` and `"disallowed"` need macOS 27. On macOS 26 they throw
+`UnsupportedCapabilityError` with `minimumRequiredMacOS: 27`, before the request is
+sent; `"allowed"` works on both.
+
+```ts
+// Skip tools when the answer is already in the conversation
+await session.respond("Summarize what you found", {
+  options: { toolCallingMode: "disallowed" },
+});
+```
+
+With `"required"`, the model keeps calling tools; it doesn't stop by itself. The
+request ends with `ToolCallLimitExceededError` when it reaches `maximumToolCalls`,
+so set a small limit and catch the error:
 
 ```ts
 try {
-  await session.respond("...");
-} catch (e) {
-  if (e instanceof ToolCallError) {
-    console.log(e.message); // includes tool name and original error
+  await session.respond("What's the weather in Paris?", {
+    options: { toolCallingMode: "required", maximumToolCalls: 3 },
+  });
+} catch (err) {
+  if (err instanceof ToolCallLimitExceededError) {
+    // The tool ran 3 times; ask again with toolCallingMode "allowed" to get an answer.
   }
 }
 ```
+
+## Tool Call Limit
+
+Every request may make at most `maximumToolCalls` tool calls (default `32`). The
+call past the limit isn't run, and the request fails with
+`ToolCallLimitExceededError`. The session keeps working, and each request gets a
+fresh limit.
+
+A tool instance can be shared by concurrent sessions. Each request counts only
+its own tool calls toward `maximumToolCalls`; another session's calls cannot
+consume its allowance. The tool's JavaScript state is still shared.
+
+## Error Handling
+
+If `call()` throws, the request does **not** fail. The error is wrapped in a
+`ToolCallError` and its message — the tool's name and the original error — is
+sent back to the model as the tool's result, so the model can explain the
+failure or try something else. The response you await is the model's, and it
+usually mentions that the tool failed.
+
+```ts
+class WeatherTool extends Tool {
+  async call(args: GeneratedContent): Promise<string> {
+    const city = args.value("city") as string;
+    if (!city) throw new Error("no city given"); // the model sees this
+    return fetchWeather(city);
+  }
+}
+```
+
+To fail the whole request instead, throw `FailRequestError` from `call()`.
+The request rejects with `RequestFailedByToolError`, whose `toolName` identifies
+the tool and whose `cause` is the original `FailRequestError`. Synchronous throws
+and rejected Promises behave alike; see [Failing the request](/api/tool#failing-the-request).
+
+If concurrent sessions share a tool, each failed request keeps the error from
+its own invocation, including when the messages are identical.
 
 ## Cleanup
 
@@ -97,7 +158,7 @@ The callback receives the tool name and the parsed arguments object. It is best-
 
 ## Best Practices
 
-The Foundation Model [`Tool` documentation](https://developer.apple.com/documentation/foundationmodels/tool) recommends:
+Apple's [Managing the context window](https://developer.apple.com/documentation/foundationmodels/managing-the-context-window) article recommends:
 
 - **Limit to 3–5 tools per session.** Tool schemas and descriptions consume context window space. More tools means less room for conversation. If your session exceeds the context size, split work across new sessions.
 - **Keep descriptions short.** A brief phrase is enough. Long descriptions add latency and use up context.
@@ -110,3 +171,37 @@ The model can call multiple tools in sequence within a single `respond()` call. 
 ## Chat API Tool Calling
 
 If you prefer the Chat API tool calling interface, the [compatibility layer](/guide/chat-api#tool-calling) supports `tools` with the standard `ChatCompletionTool` format. You define tools as JSON objects instead of extending the `Tool` class, and handle tool execution yourself between requests.
+
+## Cancellable tools
+
+Accept `ToolCallContext` as the second argument to stop external work when the
+request is cancelled. Existing tools with just `call(args)` still work.
+
+```ts
+import { Tool, GenerationSchema, GeneratedContent, type ToolCallContext } from "tsfm-sdk";
+
+class FetchPage extends Tool {
+  readonly name = "fetch_page";
+  readonly description = "Fetch a page from the documentation server.";
+  readonly argumentsSchema = new GenerationSchema("PageArgs").property("page", "string");
+
+  async call(args: GeneratedContent, { signal }: ToolCallContext): Promise<string> {
+    const page = encodeURIComponent(args.value<string>("page"));
+    const response = await fetch(`https://docs.example.com/pages/${page}`, { signal });
+    const text = await response.text();
+    signal.throwIfAborted();
+    return text;
+  }
+}
+```
+
+The signal belongs to one invocation, even when sessions share the same tool.
+`session.cancel()` and stopping a stream early cancel the relevant native
+request; its cancellation notification aborts the signal. `tool.dispose()`
+aborts all pending invocations of that tool.
+
+Cancellation is cooperative: pass the signal to APIs that support it, and check
+it before starting further work or side effects. Work that ignores the signal
+cannot be forcibly stopped, and already-completed side effects cannot be undone.
+Late results from a cancelled invocation are ignored. Its `args` stay valid until
+`call()` settles.

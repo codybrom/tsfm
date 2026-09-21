@@ -1,47 +1,40 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockFns, mockKoffi, capturedCallbacks, capturedRegistryCallback } = vi.hoisted(() => {
-  const capturedCallbacks: Array<(contentRef: unknown, callId: number) => void> = [];
-  let registryCb: ((held: { pointer: unknown; callback: unknown }) => void) | null = null;
-  globalThis.FinalizationRegistry = class MockFinalizationRegistry {
-    constructor(callback: (held: { pointer: unknown; callback: unknown }) => void) {
-      registryCb = callback;
-    }
-    register() {}
-    unregister() {}
-  } as unknown as typeof FinalizationRegistry;
+const { mockFns, capturedCallbacks } = vi.hoisted(() => {
+  const capturedCallbacks: Array<
+    (contentRef: unknown, callId: number, cancelled?: boolean) => void
+  > = [];
+  const ok = (value: unknown) => ({ value, status: 0, description: null });
   return {
     mockFns: {
-      FMBridgedToolCreate: vi.fn((): string | null => "mock-tool-pointer"),
-      FMBridgedToolFinishCall: vi.fn(),
+      // The addon hands each tool call to the onCall function it was given.
+      FMBridgedToolCreate: vi.fn(
+        (_name: string, _description: string, _schema: unknown, onCall: unknown) => {
+          capturedCallbacks.push(onCall as (contentRef: unknown, callId: number) => void);
+          return ok("mock-tool-pointer") as {
+            value: string | null;
+            status: number;
+            description: string | null;
+          };
+        },
+      ),
+      FMBridgedToolFinishCall: vi.fn(() => true),
+      FMBridgedToolFailCall: vi.fn(
+        (_tool: unknown, _id: number, _code: number, _message: string) => true,
+      ),
       FMRelease: vi.fn(),
     },
-    mockKoffi: {
-      register: vi.fn((cb: unknown, _proto: unknown) => {
-        capturedCallbacks.push(cb as (contentRef: unknown, callId: number) => void);
-        return "mock-cb-pointer";
-      }),
-      unregister: vi.fn(),
-      pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-    },
     capturedCallbacks,
-    capturedRegistryCallback: () => registryCb,
   };
 });
 
-vi.mock("koffi", () => ({
-  default: mockKoffi,
-}));
-
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: vi.fn(),
-  unregisterCallback: (pointer: unknown) => mockKoffi.unregister(pointer),
-  ToolCallbackProto: "ToolCallbackProto",
 }));
 
-const { shouldThrowOnConstruct } = vi.hoisted(() => ({
+const { shouldThrowOnConstruct, mockContentDispose } = vi.hoisted(() => ({
   shouldThrowOnConstruct: { value: false as boolean | string },
+  mockContentDispose: vi.fn(),
 }));
 
 vi.mock("../../src/schema.js", () => ({
@@ -55,10 +48,24 @@ vi.mock("../../src/schema.js", () => ({
       if (shouldThrowOnConstruct.value) throw shouldThrowOnConstruct.value;
       this._nativeContent = pointer;
     }
+    toObject() {
+      return {};
+    }
+    dispose() {
+      mockContentDispose(this._nativeContent);
+    }
   },
 }));
 
 vi.mock("../../src/errors.js", () => ({
+  CancelledError: class extends Error {},
+  GenerationErrorCode: { TOOL_CALL_LIMIT_EXCEEDED: 15, REQUEST_FAILED_BY_TOOL: 22 },
+  FailRequestError: class extends Error {
+    constructor(message: string, options?: { cause?: unknown }) {
+      super(message, options);
+      this.name = "FailRequestError";
+    }
+  },
   statusToError: vi.fn((_code: number, msg?: string) => new Error(msg ?? "mock error")),
   ToolCallError: class extends Error {
     toolName: string;
@@ -70,6 +77,8 @@ vi.mock("../../src/errors.js", () => ({
 }));
 
 import { Tool } from "../../src/tool.js";
+import { parseToolFailure, ToolCallBudget } from "../../src/tool-budget.js";
+import { FailRequestError } from "../../src/errors.js";
 import { GenerationSchema } from "../../src/schema.js";
 
 class TestTool extends Tool {
@@ -95,9 +104,7 @@ describe("Tool", () => {
       "test-tool",
       "A test tool",
       "mock-schema-pointer",
-      "mock-cb-pointer",
-      expect.any(Array),
-      null,
+      expect.any(Function),
     );
     expect(tool._nativeTool).toBe("mock-tool-pointer");
   });
@@ -122,18 +129,32 @@ describe("Tool", () => {
     expect(() => tool._register()).toThrow("argumentsSchema must be fully initialized");
   });
 
+  it("names the tool when creation fails", () => {
+    mockFns.FMBridgedToolCreate.mockReturnValueOnce({
+      value: null,
+      status: 10,
+      description: "undefined reference",
+    });
+    expect(() => new TestTool()._register()).toThrow(
+      "Failed to create tool 'test-tool': undefined reference",
+    );
+  });
+
   it("_register throws when C returns null", () => {
-    mockFns.FMBridgedToolCreate.mockReturnValueOnce(null);
+    mockFns.FMBridgedToolCreate.mockReturnValueOnce({
+      value: null,
+      status: 10,
+      description: "bad schema",
+    });
     const tool = new TestTool();
     expect(() => tool._register()).toThrow();
   });
 
-  it("dispose releases pointer and unregisters callback", () => {
+  it("dispose releases the tool", () => {
     const tool = new TestTool();
     tool._register();
     vi.clearAllMocks();
     tool.dispose();
-    expect(mockKoffi.unregister).toHaveBeenCalledWith("mock-cb-pointer");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
     expect(tool._nativeTool).toBeNull();
   });
@@ -144,11 +165,70 @@ describe("Tool", () => {
     tool.dispose();
     vi.clearAllMocks();
     tool.dispose();
-    expect(mockKoffi.unregister).not.toHaveBeenCalled();
     expect(mockFns.FMRelease).not.toHaveBeenCalled();
   });
 
-  describe("koffi callback handler", () => {
+  it("ignores a call that arrives after dispose, which the addon has already failed", () => {
+    const tool = new TestTool();
+    tool._register();
+    tool.dispose();
+    capturedCallbacks[0]("late-ref", 9);
+    expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+    expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+  });
+
+  it("doesn't answer through a released handle when onCall disposes the tool", async () => {
+    const tool = new TestTool();
+    tool.onCall = () => tool.dispose();
+    tool._register();
+    shouldThrowOnConstruct.value = false;
+    capturedCallbacks[0]("ref", 3);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+  });
+
+  describe("tool call handler", () => {
+    it("releases the arguments once call() resolves", async () => {
+      const tool = new TestTool();
+      tool._register();
+      capturedCallbacks[0]("ok-ref", 1);
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("ok-ref"));
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        "result",
+      );
+    });
+
+    it("releases the arguments once call() rejects", async () => {
+      class Rejecting extends TestTool {
+        async call(): Promise<string> {
+          throw new Error("nope");
+        }
+      }
+      const tool = new Rejecting();
+      tool._register();
+      capturedCallbacks[0]("reject-ref", 2);
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("reject-ref"));
+    });
+
+    it("releases the arguments when call() throws synchronously", async () => {
+      class Throwing extends TestTool {
+        call(): Promise<string> {
+          throw new Error("sync boom");
+        }
+      }
+      const tool = new Throwing();
+      tool._register();
+      capturedCallbacks[0]("sync-ref", 3);
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("sync-ref"));
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        3,
+        "Tool 'test-tool' failed: sync boom",
+      );
+    });
+
     it("calls FMBridgedToolFinishCall with the result on success", async () => {
       const tool = new TestTool();
       tool._register();
@@ -169,6 +249,31 @@ describe("Tool", () => {
         42,
         "result",
       );
+    });
+
+    it("answers a non-string result with an error naming the tool and the type", async () => {
+      class NumberTool extends Tool {
+        readonly name = "number-tool";
+        readonly description = "Resolves with a number by mistake";
+        readonly argumentsSchema = new GenerationSchema("Args");
+
+        async call(): Promise<string> {
+          return 42 as unknown as string;
+        }
+      }
+
+      new NumberTool()._register();
+      capturedCallbacks[0]("mock-content-ref", 7);
+
+      await vi.waitFor(() => {
+        expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1);
+      });
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        7,
+        "Tool 'number-tool' failed: call() must resolve with a string, got number",
+      );
+      expect(mockContentDispose).toHaveBeenCalledWith("mock-content-ref");
     });
 
     it("calls FMBridgedToolFinishCall with error message when call() throws an Error", async () => {
@@ -300,43 +405,151 @@ describe("Tool", () => {
     });
   });
 
+  describe("failing the request (FailRequestError)", () => {
+    class FailingTool extends Tool {
+      readonly name = "lookup";
+      readonly description = "Fails the request on purpose";
+      readonly argumentsSchema = new GenerationSchema("Args");
+      readonly failure = new FailRequestError("no such record", { cause: new Error("404") });
+      gate: Promise<void> = Promise.resolve();
+
+      async call(): Promise<string> {
+        await this.gate;
+        throw this.failure;
+      }
+    }
+
+    it("fails the call with REQUEST_FAILED_BY_TOOL and records the failure on the budgets", async () => {
+      const tool = new FailingTool();
+      tool._register();
+      const budget = new ToolCallBudget(5);
+      tool._budgets.add(budget);
+      capturedCallbacks[0]("ref-1", 1);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        22,
+        expect.stringContaining("] no such record"),
+      );
+      // Answered exactly once, and only by failing it.
+      expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+      const message = mockFns.FMBridgedToolFailCall.mock.calls[0][3];
+      const { id } = parseToolFailure(message);
+      expect(budget.failures.get(id!)).toEqual({ toolName: "lookup", cause: tool.failure });
+      expect(mockContentDispose).toHaveBeenCalledWith("ref-1");
+    });
+
+    it("keeps the default for any other error: the model sees it and the response continues", async () => {
+      class OrdinaryFailure extends Tool {
+        readonly name = "lookup";
+        readonly description = "Throws an ordinary error";
+        readonly argumentsSchema = new GenerationSchema("Args");
+        async call(): Promise<string> {
+          throw new Error("timeout");
+        }
+      }
+      const tool = new OrdinaryFailure();
+      tool._register();
+      const budget = new ToolCallBudget(5);
+      tool._budgets.add(budget);
+      capturedCallbacks[0]("ref-1", 1);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        1,
+        "Tool 'lookup' failed: timeout",
+      );
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+      expect(budget.failures.size).toBe(0);
+    });
+
+    it("doesn't answer through a released handle when the tool is disposed mid-call", async () => {
+      const tool = new FailingTool();
+      let open!: () => void;
+      tool.gate = new Promise((resolve) => (open = resolve));
+      tool._register();
+      capturedCallbacks[0]("ref-1", 1);
+      // The addon fails the pending call when the handle is released; JavaScript
+      // must not answer it again afterwards, and must not wait on it either.
+      tool.dispose();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
+      open();
+      await vi.waitFor(() => expect(mockContentDispose).toHaveBeenCalledWith("ref-1"));
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+      expect(mockFns.FMBridgedToolFinishCall).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("tool-call budget (maximumToolCalls)", () => {
+    it("runs calls while the request's budget has room, then fails the next one", async () => {
+      const tool = new TestTool();
+      const calls = vi.spyOn(tool, "call");
+      tool._register();
+      const budget = new ToolCallBudget(2);
+      tool._budgets.add(budget);
+      const callback = capturedCallbacks[0];
+
+      callback("ref-1", 1);
+      callback("ref-2", 2);
+      callback("ref-3", 3);
+
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(2));
+      expect(calls).toHaveBeenCalledTimes(2);
+      expect(budget.used).toBe(2);
+      // The third call isn't run: it's failed with TOOL_CALL_LIMIT_EXCEEDED,
+      // which ends the response, and its arguments are released.
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledWith(
+        "mock-tool-pointer",
+        3,
+        15,
+        expect.stringMatching(/limit of 2 tool calls.*'test-tool' was not run/),
+      );
+      expect(mockContentDispose).toHaveBeenCalledWith("ref-3");
+    });
+
+    it("doesn't fire onCall for a refused call", () => {
+      const tool = new TestTool();
+      tool.onCall = vi.fn();
+      tool._register();
+      tool._budgets.add(new ToolCallBudget(0));
+      capturedCallbacks[0]("ref", 1);
+      expect(tool.onCall).not.toHaveBeenCalled();
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+    });
+
+    it("respects every attached budget when a tool is shared by two requests", () => {
+      const tool = new TestTool();
+      tool._register();
+      const roomy = new ToolCallBudget(10);
+      const spent = new ToolCallBudget(1);
+      spent.used = 1;
+      tool._budgets.add(roomy).add(spent);
+      capturedCallbacks[0]("ref", 1);
+      expect(mockFns.FMBridgedToolFailCall).toHaveBeenCalledTimes(1);
+      expect(roomy.used).toBe(0);
+    });
+
+    it("runs normally with no budget attached", async () => {
+      const tool = new TestTool();
+      tool._register();
+      capturedCallbacks[0]("ref", 1);
+      await vi.waitFor(() => expect(mockFns.FMBridgedToolFinishCall).toHaveBeenCalledTimes(1));
+      expect(mockFns.FMBridgedToolFailCall).not.toHaveBeenCalled();
+    });
+  });
+
   describe("Symbol.dispose", () => {
     it("delegates to dispose()", () => {
       const tool = new TestTool();
       tool._register();
       vi.clearAllMocks();
       tool[Symbol.dispose]();
-      expect(mockKoffi.unregister).toHaveBeenCalledWith("mock-cb-pointer");
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-tool-pointer");
       expect(tool._nativeTool).toBeNull();
-    });
-  });
-
-  describe("FinalizationRegistry cleanup", () => {
-    it("unregisters callback and releases pointer when GC fires", () => {
-      const cleanup = capturedRegistryCallback();
-      expect(cleanup).toBeTypeOf("function");
-      cleanup!({ pointer: "gc-tool-pointer", callback: "gc-cb-pointer" });
-      expect(mockKoffi.unregister).toHaveBeenCalledWith("gc-cb-pointer");
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("gc-tool-pointer");
-    });
-
-    it("swallows errors from koffi.unregister in GC callback", () => {
-      mockKoffi.unregister.mockImplementationOnce(() => {
-        throw new Error("already unregistered");
-      });
-      const cleanup = capturedRegistryCallback();
-      // Should not throw, and should still attempt FMRelease
-      expect(() => cleanup!({ pointer: "gc-pointer", callback: "bad-cb" })).not.toThrow();
-      expect(mockFns.FMRelease).toHaveBeenCalledWith("gc-pointer");
-    });
-
-    it("swallows errors from FMRelease in GC callback", () => {
-      mockFns.FMRelease.mockImplementationOnce(() => {
-        throw new Error("already freed");
-      });
-      const cleanup = capturedRegistryCallback();
-      expect(() => cleanup!({ pointer: "bad-pointer", callback: "gc-cb" })).not.toThrow();
     });
   });
 });

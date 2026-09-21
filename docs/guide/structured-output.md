@@ -25,14 +25,17 @@ const MovieReview = generable("MovieReview", {
 });
 
 const session = new LanguageModelSession();
-const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+const { content } = await session.respondWithSchema("Review Inception", MovieReview.schema);
 const review = MovieReview.parse(content);
 // review.title: string, review.rating: number, review.pros: string[], review.seen: boolean
 ```
 
 ### Nested Objects
 
-Use `type: "object"` with a `properties` map for nested structures:
+Use `type: "object"` with a `properties` map for nested structures. Each nested
+object becomes a reference schema named by its property path, like
+`shipping_address`, so objects under the same key in different places stay
+separate:
 
 ```ts
 const Team = generable("Team", {
@@ -56,7 +59,7 @@ const Team = generable("Team", {
   },
 });
 
-const content = await session.respondWithSchema("Describe a dev team", Team.schema);
+const { content } = await session.respondWithSchema("Describe a dev team", Team.schema);
 const team = Team.parse(content);
 // team.lead.name: string, team.members[0].role: string
 ```
@@ -111,7 +114,7 @@ Bare `"array"` is not accepted by `GenerationSchema.property()`. Use the compoun
 Guides constrain the model's output for a property.
 
 ::: info
-The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.apple.com/documentation/foundationmodels/guide()) annotations. See Apple's [Generating Swift Data Structures with Guided Generation](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) guide.
+The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.apple.com/documentation/foundationmodels/guide(description:)) annotations. See Apple's [Generating Swift Data Structures with Guided Generation](https://developer.apple.com/documentation/foundationmodels/generating-swift-data-structures-with-guided-generation) guide.
 :::
 
 | Method | Constrains |
@@ -121,7 +124,7 @@ The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.appl
 | `GenerationGuide.range(min, max)` | Numeric range (inclusive) |
 | `GenerationGuide.minimum(n)` | Numeric lower bound |
 | `GenerationGuide.maximum(n)` | Numeric upper bound |
-| `GenerationGuide.regex(pattern)` | String pattern |
+| `GenerationGuide.regex(pattern)` | String pattern ([supported syntax](/api/generation-schema#regex-patterns)) |
 | `GenerationGuide.count(n)` | Exact array length |
 | `GenerationGuide.minItems(n)` | Minimum array length |
 | `GenerationGuide.maxItems(n)` | Maximum array length |
@@ -131,7 +134,7 @@ The **Swift** equivalent is Foundation Models' [`@Guide`](https://developer.appl
 
 ```ts
 const session = new LanguageModelSession();
-const content = await session.respondWithSchema("Describe a software engineer", schema);
+const { content } = await session.respondWithSchema("Describe a software engineer", schema);
 ```
 
 ### Extracting Values
@@ -160,7 +163,7 @@ const schema = new GenerationSchema("Cat", "A rescue cat")
   })
   .property("breed", "string", { description: "The cat's breed" });
 
-const content = await session.respondWithSchema("Generate a rescue cat", schema);
+const { content } = await session.respondWithSchema("Generate a rescue cat", schema);
 
 const cat: Cat = {
   name: content.value("name"),
@@ -174,7 +177,7 @@ const cat: Cat = {
 If you already have a JSON Schema definition, or are porting from OpenAI or another API, you can pass it directly with respondWithJsonSchema instead of building a GenerationSchema first:
 
 ```ts
-const content = await session.respondWithJsonSchema("Generate a person profile", {
+const { content } = await session.respondWithJsonSchema("Generate a person profile", {
   type: "object",
   properties: {
     name: { type: "string", description: "Full name" },
@@ -189,6 +192,11 @@ const person = content.toObject();
 ```
 
 The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
+
+Shared shapes can go in `$defs` and be referenced with `$ref`, like
+`{ "$ref": "#/$defs/Person" }`. Apple names each definition by its title, so
+the SDK sets each definition's title to its key; a different `title` on a
+definition is replaced. A schema can nest at most 128 levels of JSON deep.
 
 `toObject()` returns `JsonObject` by default. Pass the shape your schema
 guarantees to get it typed, rather than asserting at the call site:

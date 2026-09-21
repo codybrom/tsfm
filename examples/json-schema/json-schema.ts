@@ -10,7 +10,7 @@ async function main() {
     .property("occupation", "string", { description: "Job title" });
 
   const session = new LanguageModelSession();
-  const content = await session.respondWithJsonSchema(
+  const { content } = await session.respondWithJsonSchema(
     "Generate a person profile",
     personSchema.toDict(),
   );

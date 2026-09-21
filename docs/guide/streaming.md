@@ -2,6 +2,8 @@
 
 TSFM can stream responses token-by-token using an async iterator. The on-device model produces cumulative snapshots, and the SDK diffs them internally so you receive only the new tokens on each iteration.
 
+Only plain text streams. Structured output (`respondWithSchema()`, `respondWithJsonSchema()`) is buffered until complete. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet; see [What tsfm doesn't expose](/guide/getting-started#what-tsfm-doesnt-expose).
+
 ::: info
 The **Swift** equivalent is [`LanguageModelSession.ResponseStream`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/responsestream).
 :::
@@ -77,25 +79,39 @@ for await (const chunk of session.streamResponse("Write a long essay")) {
 }
 
 // The session is still usable
-const next = await session.respond("Summarize what you said");
+const { content: next } = await session.respond("Summarize what you said");
 ```
 
 ## Cancellation
 
-Call `session.cancel()` to stop a stream mid-generation. The stream iterator will terminate on the next iteration:
+Call `session.cancel()` to stop a stream mid-generation. A waiting iterator is
+unblocked, and iteration ends on its next step. Cleanup waits for the terminal
+native callback before releasing the request and queue lock, so a later request
+cannot overlap the cancelled generation. Breaking out of the loop follows the
+same cleanup path:
 
 ```ts
 // From another context (e.g. a timeout or user action)
-setTimeout(() => session.cancel(), 5000);
+const timer = setTimeout(() => session.cancel(), 5000);
 
-for await (const chunk of session.streamResponse("Write a long essay")) {
-  process.stdout.write(chunk);
+try {
+  for await (const chunk of session.streamResponse("Write a long essay")) {
+    process.stdout.write(chunk);
+  }
+} finally {
+  clearTimeout(timer);
 }
-// Loop exits after cancel() fires — session is still usable
+
+const { content: next } = await session.respond("Say hello.");
 ```
 
+Cancellation ends stream iteration normally; `collect()` returns the text
+received so far. A one-shot request stopped by cancellation rejects with
+`CancelledError`. See [Cancellation](/guide/sessions#cancellation) for requests
+waiting on tools.
+
 ::: tip
-If the stream stalls during a tool call (no new tokens for 30 seconds), an internal idle timeout terminates the stream with an error rather than hanging indefinitely.
+Once the first snapshot has arrived, a stream that goes 30 seconds without another one ends with a `GenerationError` ("Stream idle timeout") rather than hanging. The timer isn't armed before the first snapshot, so a slow tool call or a long wait for the model at the start doesn't trip it.
 :::
 
 ## Cleanup

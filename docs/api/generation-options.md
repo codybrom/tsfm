@@ -9,14 +9,22 @@ interface GenerationOptions {
   temperature?: number;
   maximumResponseTokens?: number;
   sampling?: SamplingMode;
+  toolCallingMode?: ToolCallingMode;
+  maximumToolCalls?: number;
+  reasoningLevel?: ReasoningLevel;
+  includeSchemaInPrompt?: boolean;
 }
 ```
 
 | Property | Type | Description |
 | --- | --- | --- |
-| `temperature` | `number` | Controls randomness. Higher = more varied. Must be ≥ 0. |
-| `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. |
+| `temperature` | `number` | Controls randomness. Higher = more varied. Must be between `0` and `1` inclusive. |
+| `maximumResponseTokens` | `number` | Max tokens in the response. Must be a positive integer. At the limit the framework ends the response early without throwing, so the text can be cut off silently. |
 | `sampling` | `SamplingMode` | Sampling strategy. |
+| `toolCallingMode` | `ToolCallingMode` | `"allowed"` (default), `"required"` or `"disallowed"`. See [tool calling modes](/guide/tools#tool-calling-modes). `"required"` and `"disallowed"` need macOS 27; on macOS 26 they throw `UnsupportedCapabilityError`. |
+| `reasoningLevel` | `ReasoningLevel` | How much the model reasons first. [Private Cloud Compute](/guide/private-cloud-compute#reasoning) only; the on-device model throws `UnsupportedCapabilityError`. |
+| `maximumToolCalls` | `number` | Most tool calls one request may make. Default `DEFAULT_MAXIMUM_TOOL_CALLS` (`32`). The request fails with `ToolCallLimitExceededError` instead of making another. Must be a non-negative integer. |
+| `includeSchemaInPrompt` | `boolean` | For `respondWithSchema()` and `respondWithJsonSchema()`: whether the schema goes into the prompt. Default `true`; set `false` when the model already knows the format (say, from earlier turns) to save tokens. `respond()` and `streamResponse()` ignore it. |
 
 Invalid values throw immediately when the options are serialized (before the native call).
 
@@ -56,12 +64,37 @@ static random(options?: {
 
 | Parameter | Description |
 | --- | --- |
-| `top` | Top-K: only consider the K most likely tokens |
-| `seed` | Random seed for reproducible output |
-| `probabilityThreshold` | Top-P / nucleus: cumulative probability threshold |
+| `top` | Top-K: only consider the K most likely tokens. A positive integer. |
+| `seed` | Random seed for reproducible output. A non-negative integer up to `Number.MAX_SAFE_INTEGER`. |
+| `probabilityThreshold` | Top-P / nucleus: cumulative probability threshold, from 0 to 1. |
+
+`top` and `probabilityThreshold` can't both be set. The same checks run when a
+request is sent, so a `sampling` object built by hand is validated too.
 
 ### `SamplingModeType`
 
 ```ts
-type SamplingModeType = "greedy" | "random"
+type SamplingModeType = "greedy" | "random";
+```
+
+## Types & Constants
+
+### `ToolCallingMode`
+
+```ts
+type ToolCallingMode = "allowed" | "required" | "disallowed";
+```
+
+### `ReasoningLevel`
+
+```ts
+type ReasoningLevel = "light" | "moderate" | "deep";
+```
+
+### `DEFAULT_MAXIMUM_TOOL_CALLS`
+
+The default limit for `maximumToolCalls`:
+
+```ts
+const DEFAULT_MAXIMUM_TOOL_CALLS = 32;
 ```

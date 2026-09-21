@@ -11,7 +11,7 @@ const transcript = session.transcript;
 ```
 
 ::: warning
-Access the transcript before calling `session.dispose()`. The transcript reads from the native session pointer.
+Export the transcript before calling `session.dispose()`. The transcript reads from the native session, and throws `FoundationModelsError` once the session is disposed.
 :::
 
 ## Methods
@@ -32,6 +32,14 @@ Export the transcript as a dictionary object.
 toDict(): object
 ```
 
+### `entries()`
+
+Return the typed transcript entries from the native JSON.
+
+```ts
+entries(): TranscriptEntry[]
+```
+
 ### `dispose()`
 
 Release the C object backing a standalone transcript.
@@ -40,9 +48,8 @@ Release the C object backing a standalone transcript.
 dispose(): void
 ```
 
-Transcripts from `Transcript.fromJson()` / `fromDict()` are independent C
-objects that are not freed by disposing any session, so dispose them when you
-are done:
+Transcripts from `Transcript.fromJson()` / `fromDict()` own their own C object
+until a session takes it over, so dispose them when you are done:
 
 ```ts
 const transcript = Transcript.fromJson(savedJson);
@@ -61,10 +68,32 @@ using transcript = Transcript.fromJson(savedJson);
 
 Safe to call more than once, and a no-op on the transcript reached through
 `session.transcript` — the session owns that pointer and frees it in
-`session.dispose()`. A `FinalizationRegistry` releases anything you miss, but
-that runs at the garbage collector's discretion, so prefer disposing
-explicitly. Reading a disposed transcript throws rather than dereferencing
-freed memory.
+`session.dispose()`.
+
+Only a transcript you restored yourself can be passed to
+`LanguageModelSession.fromTranscript()`. The one reached through
+`session.transcript` belongs to that session — the bridge represents both as
+the same kind of native object — so handing it over would redirect the original
+session's transcript at the new session and break it when that session is
+disposed. tsfm refuses it with `FoundationModelsError`. To branch a
+conversation, export and restore:
+
+```ts
+const branch = LanguageModelSession.fromTranscript(
+  Transcript.fromJson(session.transcript.toJson()),
+);
+```
+
+Passing a restored transcript to `LanguageModelSession.fromTranscript()` hands it over:
+the instance releases its own C object and reads from the new session from then
+on (it is that session's `transcript`), and once that session is disposed the
+instance is detached and its methods throw `FoundationModelsError`. Export it
+first if you need the history afterwards, and don't reuse one instance for a
+second `fromTranscript()` call; create a fresh one from the saved JSON.
+
+Anything you miss is released when the handle is garbage collected, but that
+runs at the collector's discretion, so prefer disposing explicitly. Reading a
+disposed transcript throws rather than dereferencing freed memory.
 
 ## Static Methods
 
@@ -92,3 +121,40 @@ const session = LanguageModelSession.fromTranscript(transcript);
 ```
 
 See [LanguageModelSession.fromTranscript()](/api/language-model-session#fromtranscript) for full options.
+
+## Types
+
+### `TranscriptEntry`
+
+```ts
+interface TranscriptEntry {
+  id: string;
+  role: TranscriptEntryRole;
+  contents?: TranscriptContent[];
+  tools?: JsonObject[];
+  options?: JsonObject;
+  responseFormat?: JsonSchema;
+  contextOptions?: JsonObject;
+  toolCalls?: TranscriptToolCall[];
+  assets?: string[];
+  toolName?: string;
+  toolCallID?: string;
+  reasoning?: {
+    contents: TranscriptContent[];
+    signature?: string;
+  };
+  metadata?: JsonObject;
+}
+
+type TranscriptEntryRole = "instructions" | "user" | "response" | "tool" | "reasoning";
+
+type TranscriptContent =
+  | { type: "text"; text: string; id: string }
+  | { type: "structure"; id: string; structure: { source: string; content: JsonObject } };
+
+interface TranscriptToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+```

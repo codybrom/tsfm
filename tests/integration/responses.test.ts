@@ -216,7 +216,12 @@ describe("Responses API — standalone", () => {
     expect(response.status).toBe("completed");
     expect(response.error).toBeNull();
     expect(response.incomplete_details).toBeNull();
-    expect(response.usage).toBeNull();
+    // Real token counts from the model.
+    expect(response.usage?.input_tokens).toBeGreaterThan(0);
+    expect(response.usage?.output_tokens).toBeGreaterThan(0);
+    expect(response.usage?.total_tokens).toBe(
+      response.usage!.input_tokens + response.usage!.output_tokens,
+    );
     expect(response.tools).toEqual([]);
   });
 

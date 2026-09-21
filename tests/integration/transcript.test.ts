@@ -30,7 +30,7 @@ describeIfAvailable("transcript (integration)", () => {
 
     const transcript = Transcript.fromJson(json);
     const resumed = LanguageModelSession.fromTranscript(transcript);
-    const reply = await resumed.respond("What is my name?");
+    const { content: reply } = await resumed.respond("What is my name?");
     expect(typeof reply).toBe("string");
     expect(reply.length).toBeGreaterThan(0);
     resumed.dispose();

@@ -7,7 +7,20 @@ export {
 } from "./core.js";
 
 export { LanguageModelSession } from "./session.js";
-export { type PromptInput, type PromptAttachment } from "./prompt.js";
+export { type ModelCapability } from "./capabilities.js";
+export {
+  PrivateCloudComputeLanguageModel,
+  PrivateCloudComputeUnavailableReason,
+  type PrivateCloudComputeAvailability,
+  type PrivateCloudComputeQuotaUsage,
+} from "./pcc.js";
+export { ResponseStream, type Response, type Usage } from "./response.js";
+export {
+  type PromptInput,
+  type PromptAttachment,
+  type TextPromptInput,
+  type ContentPromptInput,
+} from "./prompt.js";
 
 export {
   Transcript,
@@ -35,9 +48,16 @@ export {
   type JsonObject,
 } from "./schema.js";
 
-export { SamplingMode, type SamplingModeType, type GenerationOptions } from "./options.js";
+export {
+  SamplingMode,
+  DEFAULT_MAXIMUM_TOOL_CALLS,
+  type SamplingModeType,
+  type GenerationOptions,
+  type ToolCallingMode,
+  type ReasoningLevel,
+} from "./options.js";
 
-export { Tool } from "./tool.js";
+export { Tool, type ToolCallContext } from "./tool.js";
 
 export {
   FoundationModelsError,
@@ -53,7 +73,21 @@ export {
   ConcurrentRequestsError,
   RefusalError,
   InvalidGenerationSchemaError,
+  InvalidArgumentError,
+  TimeoutError,
+  UnsupportedCapabilityError,
+  UnsupportedTranscriptContentError,
+  ToolCallLimitExceededError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeEntitlementError,
+  CancelledError,
+  TranscriptMutationWhileRespondingError,
+  FailRequestError,
+  RequestFailedByToolError,
   ServiceCrashedError,
+  SystemPressureError,
   ToolCallError,
   PromptAttachmentError,
   type PromptAttachmentFailure,

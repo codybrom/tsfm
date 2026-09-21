@@ -5,48 +5,32 @@ import { createMockFunctions } from "../helpers/mock-bindings.js";
 // Hoisted mocks — must run before any import
 // ---------------------------------------------------------------------------
 
-const { decodeAndFreeStringMock } = vi.hoisted(() => {
+vi.hoisted(() => {
   globalThis.FinalizationRegistry = class MockFinalizationRegistry {
     constructor(_callback: unknown) {}
     register() {}
     unregister() {}
   } as unknown as typeof FinalizationRegistry;
-
-  return {
-    decodeAndFreeStringMock: vi.fn((_pointer: unknown): string | null => {
-      if (!_pointer) return null;
-      return '{"key":"value"}';
-    }),
-  };
 });
 
 const mockFns = createMockFunctions();
 
-let lastRegisteredCallback: ((...args: unknown[]) => void) | null = null;
+/** Feeds two cumulative usage readings (before, after) through the mocks. */
+function withUsageReadings(before: string, after: string): () => void {
+  const readings = [before, after];
+  mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => readings.shift() ?? null);
+  return () => {
+    mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+  };
+}
 
-vi.mock("koffi", () => ({
-  default: {
-    register: vi.fn((cb: (...args: unknown[]) => void, _proto: unknown) => {
-      lastRegisteredCallback = cb;
-      return "mock-cb-pointer";
-    }),
-    unregister: vi.fn(),
-    as: vi.fn((_arr: unknown[], _type: string) => "mock-arr-pointer"),
-    pointer: vi.fn((_proto: unknown) => "mock-proto-pointer"),
-  },
-}));
+const USAGE_BEFORE =
+  '{"input":{"totalTokens":100,"cachedTokens":40},"output":{"totalTokens":20,"reasoningTokens":0}}';
+const USAGE_AFTER =
+  '{"input":{"totalTokens":162,"cachedTokens":64},"output":{"totalTokens":25,"reasoningTokens":0}}';
 
 vi.mock("../../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    if (typeof pointer === "string") return pointer;
-    return null;
-  }),
-  decodeAndFreeString: decodeAndFreeStringMock,
-  unregisterCallback: vi.fn(),
-  ResponseCallbackProto: "ResponseCallbackProto",
-  StructuredResponseCallbackProto: "StructuredResponseCallbackProto",
 }));
 
 vi.mock("../../../src/tool.js", () => ({
@@ -63,71 +47,59 @@ import type { ChatCompletionChunk } from "../../../src/compat/types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
+type OnChunk = (status: number, text: string | null) => void;
+
+/** A started request whose result arrives on a later macrotask, like the addon's. */
+function later<T>(result: T): [Promise<never>, string] {
+  const promise = new Promise<T>((resolve) => setTimeout(() => resolve(result), 0));
+  return [promise as unknown as Promise<never>, "mock-request"];
+}
+
 function simulateRespondSuccess(text: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(0, text, text.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status: 0, text }));
 }
 
 function simulateRespondError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionRespond.mockImplementation((..._args: unknown[]) => {
-    setTimeout(() => {
-      lastRegisteredCallback?.(status, msg, msg.length, null);
-    }, 0);
-    return "mock-task-pointer";
-  });
+  mockFns.FMLanguageModelSessionRespond.mockImplementation(() => later({ status, text: msg }));
 }
 
 function simulateStreamSuccess(chunks: string[]) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
       let cumulative = "";
       let i = 0;
       function next() {
         if (i < chunks.length) {
           cumulative += chunks[i];
           i++;
+          const snapshot = cumulative;
           setTimeout(() => {
-            lastRegisteredCallback?.(0, cumulative, cumulative.length, null);
+            onChunk(0, snapshot);
             next();
           }, 0);
         } else {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, null, 0, null);
-          }, 0);
+          setTimeout(() => onChunk(0, null), 0);
         }
       }
       next();
+      return "mock-stream-request";
     },
   );
 }
 
 function simulateStructuredSuccess(jsonObj: Record<string, unknown>) {
   const jsonStr = JSON.stringify(jsonObj);
-  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-    (..._args: unknown[]) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(0, "mock-content-pointer", null);
-      }, 0);
-      return "mock-task-pointer";
-    },
+  mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+    later({ status: 0, content: "mock-content-pointer", message: null }),
   );
-  mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-  decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-    if (!pointer) return null;
-    return jsonStr;
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockReturnValue(jsonStr);
 }
 
 function simulateStreamError(status: number, msg: string) {
-  mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(
-    (_streamRef: unknown, _ui: unknown, _cbPointer: unknown) => {
-      setTimeout(() => {
-        lastRegisteredCallback?.(status, msg, msg.length, null);
-      }, 0);
+  mockFns.FMLanguageModelSessionStreamResponse.mockImplementation(
+    (_session: unknown, _prompt: unknown, _options: unknown, onChunk: OnChunk) => {
+      setTimeout(() => onChunk(status, msg), 0);
+      return "mock-stream-request";
     },
   );
 }
@@ -151,11 +123,7 @@ const sampleTools = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  lastRegisteredCallback = null;
-  decodeAndFreeStringMock.mockImplementation((_pointer: unknown): string | null => {
-    if (!_pointer) return null;
-    return '{"key":"value"}';
-  });
+  mockFns.FMGeneratedContentGetJSONString.mockImplementation(() => '{"key":"value"}');
 });
 
 describe("Chat API compat layer", () => {
@@ -207,9 +175,29 @@ describe("Chat API compat layer", () => {
       expect(result.choices[0].message.content).toBe("Hello from Apple Intelligence");
       expect(result.choices[0].message.refusal).toBeNull();
       expect(result.id).toMatch(/^chatcmpl-/);
+      // The mocks report no usage, as on macOS 26.
       expect(result.usage).toBeNull();
       expect(result.system_fingerprint).toBeNull();
       client.close();
+    });
+
+    it("reports the request's token usage in the Chat Completions shape", async () => {
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const result = await client.chat.completions.create({ messages: basicMessages });
+        // The request's usage is the change in the session's cumulative usage.
+        expect(result.usage).toEqual({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+          total_tokens: 67,
+          prompt_tokens_details: { cached_tokens: 24 },
+          completion_tokens_details: { reasoning_tokens: 0 },
+        });
+        client.close();
+      } finally {
+        restore();
+      }
     });
 
     it("disposes session after successful create", async () => {
@@ -246,6 +234,18 @@ describe("Chat API compat layer", () => {
 
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("gpt-4o"));
       warnSpy.mockRestore();
+      client.close();
+    });
+  });
+
+  describe("session creation failure", () => {
+    it("releases the transcript it built when the session can't be created", async () => {
+      mockFns.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null);
+      const client = new Client();
+      await expect(
+        client.chat.completions.create({ messages: [{ role: "user", content: "Hello" }] }),
+      ).rejects.toThrow(/Failed to create session from transcript/);
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-transcript-pointer");
       client.close();
     });
   });
@@ -383,6 +383,155 @@ describe("Chat API compat layer", () => {
 
       const last = chunks[chunks.length - 1];
       expect(last.choices[0].finish_reason).toBe("stop");
+      client.close();
+    });
+  });
+
+  describe("streaming — include_usage", () => {
+    it("ends with a usage chunk when include_usage is true", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+
+        const last = chunks[chunks.length - 1];
+        expect(last.choices).toEqual([]);
+        expect(last.usage).toEqual({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+          total_tokens: 67,
+          prompt_tokens_details: { cached_tokens: 24 },
+          completion_tokens_details: { reasoning_tokens: 0 },
+        });
+        // Every other chunk has usage: null, and the one before it finishes the choice.
+        expect(chunks.slice(0, -1).every((c) => c.usage === null)).toBe(true);
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("stop");
+        client.close();
+      } finally {
+        restore();
+      }
+    });
+
+    it("sends no usage chunk by default", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        stream: true,
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      expect(chunks.every((c) => c.usage === null && c.choices.length === 1)).toBe(true);
+      client.close();
+    });
+
+    it("still reports usage after a mapped error", async () => {
+      // Status 1 = ExceededContextWindowSizeError
+      simulateStreamError(1, "Context window exceeded");
+      const restore = withUsageReadings(USAGE_BEFORE, USAGE_AFTER);
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
+        expect(chunks[chunks.length - 1].usage).toMatchObject({ prompt_tokens: 62 });
+        client.close();
+      } finally {
+        restore();
+      }
+    });
+
+    it("ends with a usage chunk whose usage is null where usage isn't reported (macOS 26)", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        stream: true,
+        stream_options: { include_usage: true },
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      const last = chunks[chunks.length - 1];
+      expect(last.choices).toEqual([]);
+      expect(last.usage).toBeNull();
+      client.close();
+    });
+  });
+
+  describe("Private Cloud Compute", () => {
+    it('selects PCC for the fm serve alias "pcc" and reports the full name', async () => {
+      simulateRespondSuccess("Hi");
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "pcc",
+      });
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(console.warn).not.toHaveBeenCalled();
+      client.close();
+    });
+
+    it("uses the PCC model and passes reasoning_effort as reasoning_level", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "PrivateCloudComputeLanguageModel",
+        reasoning_effort: "high",
+      });
+
+      expect(result.model).toBe("PrivateCloudComputeLanguageModel");
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).toHaveBeenCalledTimes(1);
+      expect(
+        mockFns.FMLanguageModelSessionCreateFromTranscriptWithPrivateCloudComputeModel,
+      ).toHaveBeenCalled();
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string;
+      expect(JSON.parse(optionsJson)).toMatchObject({ reasoning_level: "deep" });
+
+      client.close();
+      expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-pcc-pointer");
+    });
+
+    it("creates the PCC model once and only when asked for", async () => {
+      simulateRespondSuccess("Hi");
+      const client = new Client();
+      await client.chat.completions.create({ messages: basicMessages });
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).not.toHaveBeenCalled();
+
+      const pcc = { messages: basicMessages, model: "PrivateCloudComputeLanguageModel" };
+      await client.chat.completions.create(pcc);
+      await client.chat.completions.create(pcc);
+      expect(mockFns.FMPrivateCloudComputeLanguageModelCreate).toHaveBeenCalledTimes(1);
+      client.close();
+    });
+
+    it("names the PCC model on stream chunks", async () => {
+      simulateStreamSuccess(["Hi"]);
+      const client = new Client();
+      const stream = await client.chat.completions.create({
+        messages: basicMessages,
+        model: "PrivateCloudComputeLanguageModel",
+        stream: true,
+      });
+      const chunks: ChatCompletionChunk[] = [];
+      for await (const chunk of stream) chunks.push(chunk);
+      expect(chunks.every((c) => c.model === "PrivateCloudComputeLanguageModel")).toBe(true);
       client.close();
     });
   });
@@ -606,19 +755,10 @@ describe("Chat API compat layer", () => {
 
     it("passes through invalid JSON unchanged during reordering", async () => {
       // Make decodeAndFreeString return invalid JSON for this test
-      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(
-        (..._args: unknown[]) => {
-          setTimeout(() => {
-            lastRegisteredCallback?.(0, "mock-content-pointer", null);
-          }, 0);
-          return "mock-task-pointer";
-        },
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() =>
+        later({ status: 0, content: "mock-content-pointer", message: null }),
       );
-      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("mock-json-pointer");
-      decodeAndFreeStringMock.mockImplementation((pointer: unknown) => {
-        if (!pointer) return null;
-        return "not valid json {{{";
-      });
+      mockFns.FMGeneratedContentGetJSONString.mockReturnValue("not valid json {{{");
 
       const client = new Client();
       const result = await client.chat.completions.create({
@@ -682,6 +822,37 @@ describe("Chat API compat layer", () => {
   });
 
   describe("streaming — tools", () => {
+    it("reports the tokens a tool request used even when it ends in a mapped error", async () => {
+      // Usage reads return BEFORE until the structured request starts, then AFTER.
+      let reading = USAGE_BEFORE;
+      mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => reading);
+      mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockImplementation(() => {
+        reading = USAGE_AFTER;
+        // Status 1 = ExceededContextWindowSizeError
+        return later({ status: 1, content: null, message: null });
+      });
+      try {
+        const client = new Client();
+        const stream = await client.chat.completions.create({
+          messages: basicMessages,
+          tools: sampleTools,
+          stream: true,
+          stream_options: { include_usage: true },
+        });
+        const chunks: ChatCompletionChunk[] = [];
+        for await (const chunk of stream) chunks.push(chunk);
+
+        expect(chunks[chunks.length - 2].choices[0].finish_reason).toBe("length");
+        expect(chunks[chunks.length - 1].usage).toMatchObject({
+          prompt_tokens: 62,
+          completion_tokens: 5,
+        });
+        client.close();
+      } finally {
+        mockFns.FMLanguageModelSessionGetUsageJSON.mockImplementation(() => null);
+      }
+    });
+
     it("buffers tool call and emits as chunks", async () => {
       simulateStructuredSuccess({
         type: "tool_call",
@@ -865,6 +1036,61 @@ describe("Chat API compat layer", () => {
       stream.close();
       expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
       client.close();
+    });
+  });
+
+  describe("client lifetime", () => {
+    it("refuses PCC after close(), instead of building a model nothing disposes", async () => {
+      const client = new Client();
+      client.close();
+      await expect(
+        client.chat.completions.create({
+          model: "PrivateCloudComputeLanguageModel",
+          messages: basicMessages,
+        } as never),
+      ).rejects.toThrow(/closed/);
+    });
+  });
+
+  describe("malformed requests", () => {
+    it.each([
+      ["messages missing", {}, /"messages" must be an array, got nothing/],
+      ["messages not an array", { messages: "hi" }, /"messages" must be an array, got string/],
+    ])("rejects a request with %s", async (_name, params, message) => {
+      await expect(new Client().chat.completions.create(params as never)).rejects.toThrow(message);
+    });
+
+    it("treats response_format with no json_schema as a bare object", async () => {
+      // A hand-built request can omit it; this used to throw a TypeError.
+      simulateStructuredSuccess({ answer: 42 });
+      const client = new Client();
+      const result = await client.chat.completions.create({
+        messages: basicMessages,
+        response_format: { type: "json_schema" } as never,
+      });
+      expect(result.choices[0].message.content).toBeDefined();
+      client.close();
+    });
+
+    it("ignores a response_format type supplied by the prototype", async () => {
+      simulateRespondSuccess("Hello");
+      const proto = Object.prototype as unknown as Record<string, unknown>;
+      proto.type = "json_object";
+      try {
+        const client = new Client();
+        await client.chat.completions.create({
+          messages: basicMessages,
+          response_format: { json_schema: { name: "x" } } as never,
+        });
+        // The JSON-mode instruction must not be appended off the prototype.
+        expect(mockFns.FMComposedPromptAddText).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.not.stringContaining("Respond with valid JSON only"),
+        );
+        client.close();
+      } finally {
+        delete proto.type;
+      }
     });
   });
 });

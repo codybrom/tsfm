@@ -36,14 +36,14 @@ const session = new LanguageModelSession({
 ### Text Response
 
 ```ts
-const reply = await session.respond("What is the capital of France?");
+const { content: reply } = await session.respond("What is the capital of France?");
 console.log(reply); // "The capital of France is Paris."
 ```
 
 ### With Generation Options
 
 ```ts
-const reply = await session.respond("Write a poem", {
+const { content: reply } = await session.respond("Write a poem", {
   options: {
     temperature: 0.9,
     maximumResponseTokens: 200,
@@ -71,10 +71,29 @@ Cancel an in-progress request with `cancel()`:
 
 ```ts
 const promise = session.respond("Tell me a long story");
-session.cancel();
+// From a later user action or timeout, once generation has started:
+const timer = setTimeout(() => session.cancel(), 5000);
+try {
+  await promise; // May reject with CancelledError.
+} finally {
+  clearTimeout(timer);
+}
 ```
 
-Cancellation is advisory — the response may still complete if the model finishes before the cancel is processed. After cancellation, the session resets to idle and is ready for new requests.
+`cancel()` asks the native task to stop. It returns immediately and the pending
+promise settles later. What to expect:
+
+- The response can still complete if the model finishes before the cancel is
+  processed. A request that was stopped rejects with `CancelledError`.
+- A request waiting on a `Tool.call()` can be cancelled too. Its
+  `context.signal` is aborted so the tool can stop work cooperatively. A tool
+  that ignores the signal may keep running, but its eventual result is ignored. It cannot resume the cancelled generation after the session has been reused.
+- Requests queued behind the cancelled one wait until it settles; `cancel()`
+  doesn't remove them from the queue.
+- For streams, cancellation unblocks a waiting iterator and the consumer loop
+  exits on its next iteration. Cleanup waits for native completion before
+  releasing the queue so later requests can run on the same session; see
+  [Streaming](/guide/streaming#cancellation).
 
 ## Checking State
 
@@ -85,6 +104,8 @@ if (session.isResponding) {
   // A generation call is in flight
 }
 ```
+
+Apple's guidance is not to call `respond()` while `isResponding` is `true`. tsfm queues requests per session and runs them one at a time, so you don't have to check first; a second call waits for the first. That's also why `ConcurrentRequestsError` is nearly unreachable through tsfm.
 
 ## Cleanup
 

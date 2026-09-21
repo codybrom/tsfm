@@ -46,7 +46,7 @@ async function main() {
     tools: [calculator],
   });
 
-  const reply = await session.respond("What is 15% of 240?");
+  const { content: reply } = await session.respond("What is 15% of 240?");
   console.log("Answer:", reply);
 
   session.dispose();

@@ -1,6 +1,6 @@
 {
   "name": "tsfm-sdk",
-  "version": "0.5.1",
+  "version": "1.0.0-beta.1",
   "description": "Unofficial TypeScript bindings for Apple Foundation Models framework (Apple Intelligence on-device LLM)",
   "license": "Apache-2.0",
   "repository": {
@@ -14,6 +14,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "tsfm": "./dist/cli/doctor.js"
+  },
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -22,10 +25,14 @@
     "./chat": {
       "import": "./dist/compat/index.js",
       "types": "./dist/compat/index.d.ts"
+    },
+    "./openai": {
+      "import": "./dist/compat/index.js",
+      "types": "./dist/compat/index.d.ts"
     }
   },
   "scripts": {
-    "build": "bash scripts/build-native.sh && tsc -p tsconfig.build.json",
+    "build": "bash scripts/build-native.sh && tsc -p tsconfig.build.json && chmod +x dist/cli/doctor.js",
     "prepublishOnly": "npm run build",
     "dev": "tsc -p tsconfig.build.json --watch",
     "lint": "eslint src/ tests/ examples/ scripts/",
@@ -36,6 +43,9 @@
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:integration:sdk27": "bash -c '\"$(bash scripts/sdk27-node.sh)\" node_modules/vitest/vitest.mjs run --project integration \"$@\"' --",
+    "test:integration:pcc": "TSFM_PCC_REQUIRE=1 bash -c '\"$(bash scripts/pcc-host.sh)\" node_modules/vitest/vitest.mjs run --project integration tests/integration/pcc.test.ts \"$@\"' --",
+    "test:stress": "node --import tsx scripts/stress-tools.ts",
     "test:coverage": "vitest run --coverage",
     "example": "tsx scripts/run-example.ts",
     "typecheck": "tsc --noEmit"
@@ -43,13 +53,11 @@
   "files": [
     "dist/",
     "native/libFoundationModels.dylib",
+    "native/tsfm.node",
     "native/FoundationModels.h",
     "src/",
     "NOTICE"
   ],
-  "dependencies": {
-    "koffi": "^3.3.0"
-  },
   "devDependencies": {
     "@types/node": "^26.6.1",
     "@typescript/native": "npm:typescript@^7.0.2",
@@ -73,7 +81,6 @@
   ],
   "allowScripts": {
     "fsevents@2.3.3": true,
-    "koffi@3.3.0": true,
     "esbuild@0.28.2": true
   }
 }

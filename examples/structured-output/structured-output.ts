@@ -16,7 +16,7 @@ async function main() {
     .property("breed", "string", { description: "The cat's breed" });
 
   const session = new LanguageModelSession();
-  const content = await session.respondWithSchema("Generate a rescue cat", schema);
+  const { content } = await session.respondWithSchema("Generate a rescue cat", schema);
 
   const cat: Cat = {
     name: content.value("name"),

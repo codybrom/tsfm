@@ -8,7 +8,7 @@ TSFM offers two ways to interact with the on-device Foundation Model:
    <small>(mostly mirrors [the original Swift FoundationModels API](https://developer.apple.com/documentation/foundationmodels))</small>
 2. **Compatibility APIs** that mirror popular cloud interfaces
 
-The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes.
+The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes. It's also available as `tsfm-sdk/openai`; both import paths load the same module.
 
 For full control over sessions, schemas, and tools, use the [native SDK](/guide/sessions) instead.
 
@@ -53,7 +53,7 @@ console.log(completion.choices[0].message.content);
 client.close();
 ```
 
-If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is that the `model` param can be omitted or set to `"SystemLanguageModel"`
+If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute). The ids Apple's `fm serve` uses, `"system"` and `"pcc"`, are accepted as aliases, so a client written for it works unchanged; responses always report the full name.
 
 ## What TSFM Supports
 
@@ -69,7 +69,37 @@ Both APIs support the same core capabilities:
 | `temperature`, `max_output_tokens` | `temperature`, `max_output_tokens` | `temperature`, `max_tokens` / `max_completion_tokens` | Full |
 | `top_p`, `seed` | `top_p`, `seed` | `top_p`, `seed` | Full |
 | Image/audio content | `input_image`, `input_file` | Image URLs | Not supported (warns) |
-| `usage` / token counts | `usage` | `usage` | Always `null` |
+| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full on macOS 27; `null` on macOS 26 |
+| Reasoning effort | `reasoning: { effort }` | `reasoning_effort` | Private Cloud Compute only |
+
+### Private Cloud Compute
+
+Set `model` to `"PrivateCloudComputeLanguageModel"` (or `"pcc"`) to send a request to Apple's
+[Private Cloud Compute](/guide/private-cloud-compute) model instead of the
+on-device one. The process running your code needs Apple's PCC entitlement;
+without it, the request throws `PrivateCloudComputeEntitlementError`. The client
+creates the PCC model the first time a request asks for it, and `close()`
+releases it.
+
+PCC can reason before it answers. The reasoning effort maps to `reasoningLevel`:
+
+| Effort | `reasoningLevel` |
+| --- | --- |
+| `"minimal"`, `"low"` | `"light"` |
+| `"medium"` | `"moderate"` |
+| `"high"`, `"xhigh"` | `"deep"` |
+| `"none"` | not set |
+
+```ts
+const completion = await client.chat.completions.create({
+  model: "PrivateCloudComputeLanguageModel",
+  reasoning_effort: "medium",
+  messages: [{ role: "user", content: "Plan a three-day trip to Kyoto." }],
+});
+```
+
+The on-device model doesn't reason, so a reasoning effort sent to it is ignored
+with a warning. `reasoning.summary` isn't supported.
 
 ---
 
@@ -149,7 +179,7 @@ Key event types:
 | `response.incomplete` | Generation stopped early |
 
 ::: warning
-When streaming structured output or tool calls, the full response is generated before any events are emitted. This is because Foundation Models uses constrained generation (a grammar that forces valid JSON), which cannot be interrupted mid-token. Plain text generation is the only mode that streams incrementally as tokens are produced.
+When streaming structured output or tool calls, tsfm generates the full response before emitting any events. That is a tsfm limitation, not the framework's: Apple's `streamResponse(to:generating:)` has yielded partial structured snapshots since macOS 26, but tsfm's native layer doesn't stream them yet. Only plain text streams incrementally through tsfm.
 :::
 
 ### Structured Output
@@ -282,7 +312,7 @@ const response = await client.responses.create({
   error: null,
   incomplete_details: null,        // { reason: "max_output_tokens" | "content_filter" }
   instructions: "...",
-  usage: null                      // not tracked
+  usage: { input_tokens: 56, output_tokens: 7, total_tokens: 63, ... }
 }
 ```
 
@@ -335,6 +365,22 @@ for await (const chunk of stream) {
 }
 ```
 
+To get the request's token usage, set `stream_options: { include_usage: true }`.
+The stream then ends with one more chunk whose `choices` is empty and whose
+`usage` is set; every other chunk has `usage: null`.
+
+```ts
+const stream = await client.chat.completions.create({
+  messages: [{ role: "user", content: "Tell me a story" }],
+  stream: true,
+  stream_options: { include_usage: true },
+});
+
+for await (const chunk of stream) {
+  if (chunk.usage) console.log(chunk.usage.total_tokens);
+}
+```
+
 The `Stream` object supports:
 
 - **`for await...of`** — iterates chunks, auto-closes on completion or `break`
@@ -342,7 +388,7 @@ The `Stream` object supports:
 - **`stream.toReadableStream()`** — convert to a Web `ReadableStream` for HTTP responses
 
 ::: warning
-Structured output and tool call responses are buffered — the model must finish constrained generation before the response is emitted. Only plain text streams token-by-token.
+Structured output and tool call responses are buffered by tsfm until the model finishes; only plain text streams incrementally. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
 :::
 
 ### Chat: Structured Output
@@ -448,6 +494,7 @@ Under the hood, tool calling uses structured output with a discriminated schema.
 | `max_tokens` / `max_completion_tokens` | `GenerationOptions.maximumResponseTokens` (`max_completion_tokens` takes priority) |
 | `top_p` | `SamplingMode.random({ probabilityThreshold })` |
 | `seed` | `SamplingMode.random({ seed })` |
+| `reasoning_effort` | `GenerationOptions.reasoningLevel` (Private Cloud Compute only; see [above](#private-cloud-compute)) |
 
 ```ts
 const response = await client.chat.completions.create({
@@ -485,7 +532,7 @@ const response = await client.chat.completions.create({
     },
     finish_reason: "stop"       // "stop" | "length" | "tool_calls" | "content_filter"
   }],
-  usage: null,                  // Not tracked
+  usage: { prompt_tokens: 69, completion_tokens: 5, total_tokens: 74, ... },
   system_fingerprint: null
 }
 ```

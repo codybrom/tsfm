@@ -1,7 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import { koffiMock, coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
+import { coreBindingsMock, errorsMock, mockPointer } from "./_helpers.js";
 
-vi.mock("koffi", () => koffiMock());
 vi.mock("../../../src/bindings.js", () => coreBindingsMock());
 vi.mock("../../../src/errors.js", () => errorsMock());
 

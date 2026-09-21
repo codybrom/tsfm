@@ -1,17 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { SystemLanguageModel } from "../core.js";
+import { PrivateCloudComputeLanguageModel } from "../pcc.js";
 import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonSchema, JsonObject } from "../schema.js";
 import type { GenerationOptions } from "../options.js";
+import { usageBetween, type ResponseStream, type Usage } from "../response.js";
 import {
+  FoundationModelsError,
   ExceededContextWindowSizeError,
   RefusalError,
-  RateLimitedError,
   GuardrailViolationError,
 } from "../errors.js";
 import { messagesToTranscript } from "./transcript.js";
-import { mapParams } from "./params.js";
+import { mapParams, ownParams } from "./params.js";
 import {
   buildToolInstructions,
   buildToolSchema,
@@ -20,7 +22,14 @@ import {
 } from "./tools.js";
 import { Stream } from "./stream.js";
 import { Responses } from "./responses.js";
-import { reorderJson, nowSeconds, CompatError } from "./utils.js";
+import {
+  SYSTEM_MODEL,
+  PCC_MODEL,
+  compatModelName,
+  type CompatModel,
+  type CompatModelName,
+} from "./models.js";
+import { reorderJson, nowSeconds, throwAsCompatError, toCompletionUsage } from "./utils.js";
 import type {
   ChatCompletionCreateParams,
   ChatCompletion,
@@ -34,7 +43,11 @@ export { Responses } from "./responses.js";
 export * from "./types.js";
 export * from "./responses-types.js";
 
-export const MODEL_DEFAULT = "SystemLanguageModel";
+export const MODEL_DEFAULT = SYSTEM_MODEL;
+export { SYSTEM_MODEL, PCC_MODEL, type CompatModelName } from "./models.js";
+
+/** Returns the model instance for a model name. */
+type ModelProvider = (name: CompatModelName) => CompatModel;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -62,9 +75,9 @@ function makeId(): string {
 // ---------------------------------------------------------------------------
 
 class Completions {
-  private _getModel: () => SystemLanguageModel;
+  private _getModel: ModelProvider;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: ModelProvider) {
     this._getModel = getModel;
   }
 
@@ -87,8 +100,15 @@ class Completions {
     params: ChatCompletionCreateParams & { stream?: false | null },
   ): Promise<ChatCompletion>;
   async create(params: ChatCompletionCreateParams): Promise<ChatCompletion | Stream>;
-  async create(params: ChatCompletionCreateParams): Promise<ChatCompletion | Stream> {
+  async create(raw: ChatCompletionCreateParams): Promise<ChatCompletion | Stream> {
+    // Own properties only; see ownParams.
+    const params = ownParams(raw);
     const options = mapParams(params);
+    if (!Array.isArray(params.messages)) {
+      throw new FoundationModelsError(
+        `"messages" must be an array, got ${params.messages === undefined ? "nothing" : typeof params.messages}`,
+      );
+    }
     const { transcriptJson, prompt: rawPrompt } = messagesToTranscript(params.messages);
     let prompt = rawPrompt;
     let transcriptStr = transcriptJson;
@@ -117,8 +137,12 @@ class Completions {
       transcriptStr = JSON.stringify(parsed);
     }
 
+    // response_format's own type, not the prototype's: a polluted
+    // Object.prototype.type would otherwise put every request into JSON mode.
+    const responseFormat = params.response_format ? ownParams(params.response_format) : undefined;
+
     // Append JSON instruction to prompt for json_object mode
-    if (params.response_format?.type === "json_object") {
+    if (responseFormat?.type === "json_object") {
       prompt += "\n\nRespond with valid JSON only. No other text.";
     }
 
@@ -128,15 +152,28 @@ class Completions {
     }
 
     // Create session from transcript
+    // Resolve the model first: _getModel throws for PCC on macOS 26, and
+    // doing it after fromJson would leak the transcript it just built.
+    const modelName = compatModelName(params.model);
+    const model = this._getModel(modelName);
     const transcript = Transcript.fromJson(transcriptStr);
-    const model = this._getModel();
-    const session = LanguageModelSession.fromTranscript(transcript, { model });
-
-    if (params.stream) {
-      return this._createStream(session, prompt, options, tools);
+    let session: LanguageModelSession;
+    try {
+      session = LanguageModelSession.fromTranscript(transcript, { model });
+    } catch (err) {
+      // The transcript owns a native object until a session takes it over;
+      // don't leave that to the garbage collector.
+      transcript.dispose();
+      throw err;
     }
 
-    return this._createCompletion(session, prompt, options, params, tools);
+    if (params.stream) {
+      const includeUsage = params.stream_options?.include_usage === true;
+      return this._createStream(session, prompt, options, modelName, includeUsage, tools);
+    }
+
+    const completion = await this._createCompletion(session, prompt, options, params, tools);
+    return { ...completion, model: modelName };
   }
 
   private async _createCompletion(
@@ -146,34 +183,41 @@ class Completions {
     params: ChatCompletionCreateParams,
     tools?: ChatCompletionTool[],
   ): Promise<ChatCompletion> {
+    // Own properties only; see ownParams.
+    const responseFormat = params.response_format ? ownParams(params.response_format) : undefined;
     try {
       // Tools present → use structured output with tool schema
       if (tools && tools.length > 0) {
         const schema = buildToolSchema(tools);
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
         const result = parseToolResponse(parsed);
 
         if (result.type === "tool_call" && result.toolCall) {
-          return buildCompletion(null, "tool_calls", [result.toolCall]);
+          return buildCompletion(null, "tool_calls", [result.toolCall], usage);
         }
-        return buildCompletion(result.content as string, "stop");
+        return buildCompletion(result.content as string, "stop", undefined, usage);
       }
 
       // json_schema response format
-      if (params.response_format?.type === "json_schema") {
-        const rf = params.response_format as {
+      if (responseFormat?.type === "json_schema") {
+        const rf = responseFormat as {
           type: "json_schema";
-          json_schema: { schema?: JsonSchema };
+          json_schema?: { schema?: JsonSchema };
         };
-        const schema = rf.json_schema.schema ?? { type: "object" };
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
-        return buildCompletion(reorderJson(content.toJson(), schema), "stop");
+        // json_schema, or its schema, may be missing in a hand-built request.
+        const schema = rf.json_schema?.schema ?? { type: "object" };
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
+        return buildCompletion(reorderJson(content.toJson(), schema), "stop", undefined, usage);
       }
 
       // Plain text
-      const text = await session.respond(prompt, { options });
-      return buildCompletion(text, "stop");
+      const { content, usage } = await session.respond(prompt, { options });
+      return buildCompletion(content, "stop", undefined, usage);
     } catch (err) {
       if (err instanceof ExceededContextWindowSizeError) {
         return buildCompletion("", "length");
@@ -194,9 +238,7 @@ class Completions {
           ],
         };
       }
-      if (err instanceof RateLimitedError) {
-        throw new CompatError(err.message, 429);
-      }
+      throwAsCompatError(err);
       if (err instanceof GuardrailViolationError) {
         return buildCompletion(null, "content_filter");
       }
@@ -210,27 +252,56 @@ class Completions {
     session: LanguageModelSession,
     prompt: string,
     options: GenerationOptions,
+    modelName: CompatModelName,
+    includeUsage: boolean,
     tools?: ChatCompletionTool[],
   ): Stream {
     const id = makeId();
     const created = nowSeconds();
+    const chunk = (
+      delta: ChatCompletionChunk["choices"][0]["delta"],
+      finishReason: ChatCompletionChunk["choices"][0]["finish_reason"],
+    ): ChatCompletionChunk => ({
+      ...makeChunk(id, created, delta, finishReason),
+      model: modelName,
+    });
+
+    // The request's usage, once known. A text stream sets it even when it
+    // ends with an error that maps to a finish_reason.
+    let usage: Usage | null | undefined;
 
     async function* generate(): AsyncGenerator<ChatCompletionChunk> {
+      yield* generateChoices();
+      if (includeUsage) {
+        yield {
+          ...chunk({}, null),
+          choices: [],
+          // null on macOS 26, which doesn't report usage.
+          usage: usage ? toCompletionUsage(usage) : null,
+        };
+      }
+    }
+
+    async function* generateChoices(): AsyncGenerator<ChatCompletionChunk> {
+      let stream: ResponseStream | undefined;
+      // A buffered (tool) request that throws returns no Response, so its usage
+      // is the change in the session's cumulative usage around it.
+      let bufferedUsageBefore: Usage | null | undefined;
       try {
         // First chunk: role announcement
-        yield makeChunk(id, created, { role: "assistant", content: "" }, null);
+        yield chunk({ role: "assistant", content: "" }, null);
 
         // Tools or structured output with streaming: buffer the full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
-          const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
+          bufferedUsageBefore = session.usage;
+          const response = await session.respondWithJsonSchema(prompt, schema, { options });
+          usage = response.usage;
+          const parsed = JSON.parse(response.content.toJson()) as ToolModelOutput;
           const result = parseToolResponse(parsed);
 
           if (result.type === "tool_call" && result.toolCall) {
-            yield makeChunk(
-              id,
-              created,
+            yield chunk(
               {
                 tool_calls: [
                   {
@@ -246,37 +317,42 @@ class Completions {
               },
               null,
             );
-            yield makeChunk(id, created, {}, "tool_calls");
+            yield chunk({}, "tool_calls");
           } else {
-            yield makeChunk(id, created, { content: result.content as string }, null);
-            yield makeChunk(id, created, {}, "stop");
+            yield chunk({ content: result.content as string }, null);
+            yield chunk({}, "stop");
           }
           return;
         }
 
         // Plain text streaming
-        for await (const delta of session.streamResponse(prompt, { options })) {
-          yield makeChunk(id, created, { content: delta }, null);
+        stream = session.streamResponse(prompt, { options });
+        for await (const delta of stream) {
+          yield chunk({ content: delta }, null);
         }
+        usage = stream.usage;
 
         // Final chunk
-        yield makeChunk(id, created, {}, "stop");
+        yield chunk({}, "stop");
       } catch (err) {
+        usage =
+          stream?.usage ??
+          (bufferedUsageBefore !== undefined
+            ? usageBetween(bufferedUsageBefore, session.usage)
+            : undefined);
         // Map errors to finish_reason chunks
         if (err instanceof ExceededContextWindowSizeError) {
-          yield makeChunk(id, created, {}, "length");
+          yield chunk({}, "length");
           return;
         }
         if (err instanceof RefusalError) {
-          yield makeChunk(id, created, { refusal: err.message }, null);
-          yield makeChunk(id, created, {}, "stop");
+          yield chunk({ refusal: err.message }, null);
+          yield chunk({}, "stop");
           return;
         }
-        if (err instanceof RateLimitedError) {
-          throw new CompatError(err.message, 429);
-        }
+        throwAsCompatError(err);
         if (err instanceof GuardrailViolationError) {
-          yield makeChunk(id, created, {}, "content_filter");
+          yield chunk({}, "content_filter");
           return;
         }
         throw err;
@@ -290,7 +366,7 @@ class Completions {
 class Chat {
   completions: Completions;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: ModelProvider) {
     this.completions = new Completions(getModel);
   }
 }
@@ -308,21 +384,43 @@ class Chat {
  * output, and tool calling. Each call is stateless: the input is replayed
  * into a native transcript, generation runs, and the session is auto-disposed.
  *
- * Call `close()` when done to release the underlying model.
+ * Requests use the on-device model unless `model` is
+ * `"PrivateCloudComputeLanguageModel"`, which needs Apple's PCC entitlement on
+ * the host process (see the Private Cloud Compute guide).
+ *
+ * Call `close()` when done to release the underlying models.
  */
 export default class Client {
   chat: Chat;
   responses: Responses;
   private _model: SystemLanguageModel;
+  private _pccModel: PrivateCloudComputeLanguageModel | null = null;
+  private _closed = false;
 
   constructor() {
     this._model = new SystemLanguageModel();
-    this.chat = new Chat(() => this._model);
-    this.responses = new Responses(() => this._model);
+    const getModel: ModelProvider = (name) => (name === PCC_MODEL ? this._pcc() : this._model);
+    this.chat = new Chat(getModel);
+    this.responses = new Responses(getModel);
+  }
+
+  /** Created on first use, so clients that stay on-device never touch PCC. */
+  private _pcc(): PrivateCloudComputeLanguageModel {
+    // Without this, a request arriving after close() would build a fresh
+    // native model that nothing will ever dispose. The on-device model
+    // already refuses, because disposing it makes it throw.
+    if (this._closed) {
+      throw new FoundationModelsError("This client is closed");
+    }
+    this._pccModel ??= new PrivateCloudComputeLanguageModel();
+    return this._pccModel;
   }
 
   close(): void {
+    this._closed = true;
     this._model.dispose();
+    this._pccModel?.dispose();
+    this._pccModel = null;
   }
 
   [Symbol.dispose](): void {
@@ -338,6 +436,7 @@ function buildCompletion(
   content: string | null,
   finishReason: "stop" | "length" | "tool_calls" | "content_filter",
   toolCalls?: ChatCompletion["choices"][0]["message"]["tool_calls"],
+  usage?: Usage | null,
 ): ChatCompletion {
   return {
     id: makeId(),
@@ -356,7 +455,7 @@ function buildCompletion(
         finish_reason: finishReason,
       },
     ],
-    usage: null,
+    usage: usage ? toCompletionUsage(usage) : null,
     system_fingerprint: null,
   };
 }

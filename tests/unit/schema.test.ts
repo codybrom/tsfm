@@ -1,13 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockFunctions } from "./helpers/mock-bindings.js";
+import { createMockFunctions, failed, ok } from "./helpers/mock-bindings.js";
 
 const mockFns = createMockFunctions();
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: vi.fn((pointer: unknown) => {
-    if (!pointer) return null;
-    return '{"name":"test"}';
-  }),
 }));
 
 import {
@@ -17,6 +13,7 @@ import {
   GenerationSchemaProperty,
   afmSchemaFormat,
   generable,
+  jsonNestingDepth,
   type JsonSchema,
 } from "../../src/schema.js";
 import type { NativePointer } from "../../src/bindings.js";
@@ -25,6 +22,8 @@ const mockPointer = (label: string) => label as unknown as NativePointer;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockFns.FMGenerationSchemaGetJSONString.mockReturnValue(ok<string | null>('{"name":"test"}'));
+  mockFns.FMGeneratedContentGetJSONString.mockReturnValue('{"name":"test"}');
 });
 
 describe("afmSchemaFormat", () => {
@@ -81,7 +80,8 @@ describe("afmSchemaFormat", () => {
       },
     });
     const nested = (result.properties as Record<string, Record<string, unknown>>).nested;
-    expect(nested.title).toBe("Object");
+    // Titled by its property path: Apple resolves object types by title.
+    expect(nested.title).toBe("nested");
     expect(nested.required).toEqual([]);
     expect(nested.additionalProperties).toBe(false);
     expect(nested["x-order"]).toEqual(["name"]);
@@ -106,12 +106,70 @@ describe("afmSchemaFormat", () => {
     expect(result.required).toEqual([]);
   });
 
-  it("uses 'Object' as title for non-root objects", () => {
+  it("falls back to 'Object' for a non-root object with no path", () => {
     const result = afmSchemaFormat(
       { type: "object", properties: { a: { type: "string" } } },
       false,
     );
     expect(result.title).toBe("Object");
+  });
+
+  it("says nothing when a $defs entry's title matches its key", () => {
+    // formatSchema titles a $defs entry by its key, so a schema that writes the
+    // same title (as the compat tool schema does) has one object, not two.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    afmSchemaFormat({
+      type: "object",
+      $defs: { ToolCall: { title: "ToolCall", type: "object", properties: {} } },
+      properties: { tool_call: { $ref: "#/$defs/ToolCall" } },
+    });
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("warns when two objects in a schema share a written title", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    afmSchemaFormat({
+      type: "object",
+      $defs: { Address: { type: "object", properties: {} } },
+      properties: {
+        billing: { title: "Address", type: "object", properties: {} },
+      },
+    });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('titled "Address"'));
+    warn.mockRestore();
+  });
+
+  it("gives each inline nested object its own title", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        owner: { type: "object", properties: { name: { type: "string" } } },
+        pet: { type: "object", properties: { species: { type: "string" } } },
+      },
+    });
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    // Sharing one title made the second object silently take the first's shape.
+    expect(props.owner.title).toBe("owner");
+    expect(props.pet.title).toBe("pet");
+  });
+
+  it("titles objects by their full path, and disambiguates a repeat", () => {
+    const result = afmSchemaFormat({
+      type: "object",
+      properties: {
+        home: { type: "object", properties: { city: { type: "object", properties: {} } } },
+        work: { type: "object", properties: { city: { type: "object", properties: {} } } },
+        city: { title: "home_city", type: "object", properties: {} },
+      },
+    });
+    const props = result.properties as Record<string, Record<string, unknown>>;
+    const nested = (key: string) =>
+      (props[key].properties as Record<string, Record<string, unknown>>).city.title;
+    // "home_city" is written into the schema, so the generated one moves aside.
+    expect(props.city.title).toBe("home_city");
+    expect(nested("home")).toBe("home_city_2");
+    expect(nested("work")).toBe("work_city");
   });
 
   it("passes through falsy property values without recursing", () => {
@@ -121,6 +179,15 @@ describe("afmSchemaFormat", () => {
     } as JsonSchema);
     const props = result.properties as Record<string, unknown>;
     expect(props.empty).toBeNull();
+  });
+
+  it("titles each $defs entry with its key, replacing any other title", () => {
+    const result = afmSchemaFormat({
+      $defs: { Person: { title: "Someone", type: "object", properties: {} } },
+      type: "object",
+      properties: { p: { $ref: "#/$defs/Person" } },
+    });
+    expect((result.$defs as Record<string, JsonSchema>).Person.title).toBe("Person");
   });
 
   it("recursively normalizes $defs entries", () => {
@@ -137,7 +204,8 @@ describe("afmSchemaFormat", () => {
       },
     });
     const defs = result.$defs as Record<string, Record<string, unknown>>;
-    expect(defs.Inner.title).toBe("Object");
+    // Apple resolves "#/$defs/Inner" by title, so the title is the key.
+    expect(defs.Inner.title).toBe("Inner");
     expect(defs.Inner.required).toEqual([]);
     expect(defs.Inner.additionalProperties).toBe(false);
     expect(defs.Inner["x-order"]).toEqual(["name"]);
@@ -191,7 +259,7 @@ describe("afmSchemaFormat", () => {
     });
     const props = result.properties as Record<string, Record<string, unknown>>;
     const items = props.people.items as Record<string, unknown>;
-    expect(items.title).toBe("Object");
+    expect(items.title).toBe("people_item");
     expect(items.required).toEqual([]);
     expect(items.additionalProperties).toBe(false);
     expect(items["x-order"]).toEqual(["name", "age"]);
@@ -235,6 +303,33 @@ describe("GenerationGuide", () => {
     expect(guide).toBeInstanceOf(GenerationGuide);
   });
 
+  it("rejects range bounds that are not finite or out of order", () => {
+    expect(() => GenerationGuide.range(5, 1)).toThrow(RangeError);
+    expect(() => GenerationGuide.range(Number.NaN, 1)).toThrow(RangeError);
+    expect(() => GenerationGuide.range(0, Infinity)).toThrow(RangeError);
+    expect(GenerationGuide.range(3, 3)).toBeInstanceOf(GenerationGuide);
+  });
+
+  it("rejects minimum and maximum that are not finite", () => {
+    expect(() => GenerationGuide.minimum(-Infinity)).toThrow(RangeError);
+    expect(() => GenerationGuide.maximum(Number.NaN)).toThrow(RangeError);
+    expect(GenerationGuide.minimum(-1.5)).toBeInstanceOf(GenerationGuide);
+  });
+
+  it("rejects counts that are not non-negative integers", () => {
+    for (const make of [
+      GenerationGuide.count,
+      GenerationGuide.minItems,
+      GenerationGuide.maxItems,
+    ]) {
+      expect(() => make(-1)).toThrow(RangeError);
+      expect(() => make(1.5)).toThrow(RangeError);
+      expect(() => make(Number.NaN)).toThrow(RangeError);
+      expect(() => make(1e20)).toThrow(RangeError);
+      expect(make(0)).toBeInstanceOf(GenerationGuide);
+    }
+  });
+
   it("regex creates guide with pattern", () => {
     const guide = GenerationGuide.regex("^[a-z]+$");
     expect(guide).toBeInstanceOf(GenerationGuide);
@@ -269,7 +364,6 @@ describe("GenerationGuide._applyToProperty", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-property",
       ["a", "b"],
-      2,
       false,
     );
   });
@@ -280,7 +374,6 @@ describe("GenerationGuide._applyToProperty", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-property",
       ["fixed"],
-      1,
       false,
     );
   });
@@ -460,10 +553,8 @@ describe("GenerationSchema", () => {
     expect(dict).toEqual({ name: "test" });
   });
 
-  it("toDict throws when decodeAndFreeString returns null", async () => {
-    const mod = await import("../../src/bindings.js");
-    const mockDecode = mod.decodeAndFreeString as ReturnType<typeof vi.fn>;
-    mockDecode.mockReturnValueOnce(null);
+  it("toDict throws when the schema can't be serialized", () => {
+    mockFns.FMGenerationSchemaGetJSONString.mockReturnValueOnce(failed(10, "bad schema"));
 
     const schema = new GenerationSchema("Bad");
     expect(() => schema.toDict()).toThrow();
@@ -471,26 +562,15 @@ describe("GenerationSchema", () => {
 });
 
 describe("GeneratedContent", () => {
-  // Get a handle on the mocked decodeAndFreeString so we can control it per-test
-  let mockDecodeAndFreeString: ReturnType<typeof vi.fn>;
-  beforeEach(async () => {
-    const mod = await import("../../src/bindings.js");
-    mockDecodeAndFreeString = mod.decodeAndFreeString as ReturnType<typeof vi.fn>;
-  });
-
   it("fromJson creates instance from JSON string", () => {
     const content = GeneratedContent.fromJson('{"name":"test"}');
-    expect(mockFns.FMGeneratedContentCreateFromJSON).toHaveBeenCalledWith(
-      '{"name":"test"}',
-      [0],
-      null,
-    );
+    expect(mockFns.FMGeneratedContentCreateFromJSON).toHaveBeenCalledWith('{"name":"test"}');
     expect(content).toBeInstanceOf(GeneratedContent);
     expect(content._nativeContent).toBe("mock-content-pointer");
   });
 
   it("fromJson throws when C returns null pointer", () => {
-    mockFns.FMGeneratedContentCreateFromJSON.mockReturnValueOnce(null);
+    mockFns.FMGeneratedContentCreateFromJSON.mockReturnValueOnce(failed(6));
     expect(() => GeneratedContent.fromJson("bad")).toThrow();
   });
 
@@ -503,14 +583,14 @@ describe("GeneratedContent", () => {
     expect(content.isComplete).toBe(false);
   });
 
-  it("toJson returns JSON string via decodeAndFreeString", () => {
+  it("toJson returns the JSON string", () => {
     const content = new GeneratedContent(mockPointer("mock-content"));
     const json = content.toJson();
     expect(mockFns.FMGeneratedContentGetJSONString).toHaveBeenCalledWith("mock-content");
     expect(json).toBe('{"name":"test"}');
   });
 
-  it('toJson returns "{}" when decodeAndFreeString returns null', () => {
+  it('toJson returns "{}" when there is no JSON', () => {
     mockFns.FMGeneratedContentGetJSONString.mockReturnValueOnce(null);
     const content = new GeneratedContent(mockPointer("mock-content"));
     const json = content.toJson();
@@ -530,34 +610,44 @@ describe("GeneratedContent", () => {
   });
 
   it("value returns parsed JSON value when FFI returns non-null", () => {
-    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce("mock-value-pointer");
-    mockDecodeAndFreeString.mockReturnValueOnce('"hello"');
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(ok<string | null>('"hello"'));
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("greeting");
     expect(result).toBe("hello");
     expect(mockFns.FMGeneratedContentGetPropertyValue).toHaveBeenCalledWith(
       "mock-content",
       "greeting",
-      null,
-      null,
     );
   });
 
   it("value returns raw string when JSON.parse fails", () => {
-    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce("mock-value-pointer");
-    mockDecodeAndFreeString.mockReturnValueOnce("not-valid-json");
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(
+      ok<string | null>("not-valid-json"),
+    );
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("field");
     expect(result).toBe("not-valid-json");
   });
 
   it("value falls back to toObject when FFI returns null", () => {
-    // FMGeneratedContentGetPropertyValue returns null by default
-    // decodeAndFreeString(null) returns null per the mock setup
-    // toJson's decodeAndFreeString call returns the default '{"name":"test"}'
+    // The property accessor returns null by default, so value() reads toJson().
     const content = new GeneratedContent(mockPointer("mock-content"));
     const result = content.value<string>("name");
     expect(result).toBe("test");
+  });
+
+  it("value reports the native failure when the property isn't found either way", () => {
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(failed(6, "no such key"));
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    expect(() => content.value("nonexistent")).toThrow(
+      /Property 'nonexistent' not found.*no such key/,
+    );
+  });
+
+  it("value still falls back to the JSON when the native read fails", () => {
+    mockFns.FMGeneratedContentGetPropertyValue.mockReturnValueOnce(failed(6, "no such key"));
+    const content = new GeneratedContent(mockPointer("mock-content"));
+    expect(content.value<string>("name")).toBe("test");
   });
 
   it("value throws when property not found anywhere", () => {
@@ -691,7 +781,6 @@ describe("generable", () => {
     expect(mockFns.FMGenerationSchemaPropertyAddAnyOfGuide).toHaveBeenCalledWith(
       "mock-prop-pointer",
       ["a", "b"],
-      2,
       false,
     );
   });
@@ -710,6 +799,86 @@ describe("generable", () => {
     expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("Outer", null);
     expect(mockFns.FMGenerationSchemaCreate).toHaveBeenCalledWith("inner", null);
     expect(mockFns.FMGenerationSchemaAddReferenceSchema).toHaveBeenCalled();
+    // Typed by the reference schema's name; "object" is an undefined reference.
+    expect(mockFns.FMGenerationSchemaPropertyCreate).toHaveBeenCalledWith(
+      "inner",
+      null,
+      "inner",
+      false,
+    );
+  });
+
+  it("names nested reference schemas by path, so repeated keys don't collide", () => {
+    generable("Order", {
+      address: { type: "object", properties: {} },
+      shipping: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      billing: {
+        type: "object",
+        properties: { address: { type: "object", properties: {} } },
+      },
+      shipping_address: { type: "object", properties: {} },
+    });
+    const names = mockFns.FMGenerationSchemaCreate.mock.calls.map((c) => (c as unknown[])[0]);
+    expect(names).toEqual([
+      "Order",
+      "address",
+      "shipping",
+      "shipping_address",
+      "billing",
+      "billing_address",
+      "shipping_address_2",
+    ]);
+    // Each property is typed by its own reference schema.
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
+    expect(types).toContainEqual(["address", "shipping_address"]);
+    expect(types).toContainEqual(["address", "billing_address"]);
+    expect(types).toContainEqual(["shipping_address", "shipping_address_2"]);
+  });
+
+  it("keeps reference schema names out of the scalar type names and \\w", () => {
+    generable("Root", {
+      string: { type: "object", properties: {} },
+      bool: { type: "array", items: { type: "object", properties: {} } },
+      "ship-to": { type: "array", items: { type: "object", properties: {} } },
+    });
+    const types = mockFns.FMGenerationSchemaPropertyCreate.mock.calls.map((c) => [
+      (c as unknown[])[0],
+      (c as unknown[])[2],
+    ]);
+    expect(types).toEqual([
+      ["string", "string_2"],
+      ["bool", "array<bool_2>"],
+      ["ship-to", "array<ship_to>"],
+    ]);
+  });
+
+  it("registers every nested reference schema on the root", () => {
+    const original = mockFns.FMGenerationSchemaCreate.getMockImplementation();
+    mockFns.FMGenerationSchemaCreate.mockImplementation(
+      ((name: string) => `schema:${name}`) as never,
+    );
+    try {
+      generable("Root", {
+        a: { type: "object", properties: { b: { type: "object", properties: {} } } },
+        list: {
+          type: "array",
+          items: { type: "object", properties: { c: { type: "object", properties: {} } } },
+        },
+      });
+      // The framework resolves references only from the schema a request uses.
+      const parents = mockFns.FMGenerationSchemaAddReferenceSchema.mock.calls.map(
+        (c) => (c as unknown[])[0],
+      );
+      expect(parents).toEqual(["schema:Root", "schema:Root", "schema:Root", "schema:Root"]);
+    } finally {
+      mockFns.FMGenerationSchemaCreate.mockImplementation(original!);
+    }
   });
 
   it("creates reference schemas for arrays of objects", () => {
@@ -786,5 +955,31 @@ describe("generable", () => {
     void _note;
 
     expect(movie).toBeDefined();
+  });
+});
+
+describe("jsonNestingDepth", () => {
+  it("counts nested objects and arrays", () => {
+    expect(jsonNestingDepth(1)).toBe(0);
+    expect(jsonNestingDepth({})).toBe(1);
+    expect(jsonNestingDepth({ a: [{ b: {} }] })).toBe(4);
+  });
+
+  it("reports a cycle as infinitely deep, even with no limit", () => {
+    const cyclic: Record<string, unknown> = { type: "object" };
+    cyclic.properties = { self: cyclic };
+    expect(jsonNestingDepth(cyclic)).toBe(Infinity);
+    expect(jsonNestingDepth([[cyclic]])).toBe(Infinity);
+  });
+
+  it("doesn't mistake an object shared by several parents for a cycle", () => {
+    const shared = { type: "string" };
+    expect(jsonNestingDepth({ a: shared, b: [shared], c: { d: shared } })).toBe(3);
+  });
+
+  it("stops counting past the limit, without recursing", () => {
+    let deep: unknown = {};
+    for (let i = 0; i < 100_000; i++) deep = { a: deep };
+    expect(jsonNestingDepth(deep, 10)).toBe(11);
   });
 });

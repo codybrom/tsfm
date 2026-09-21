@@ -1,30 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { createMockFunctions } from "./helpers/mock-bindings.js";
+import { createMockFunctions, failed, ok } from "./helpers/mock-bindings.js";
 
 const mockFns = createMockFunctions();
-const { mockDecodeAndFreeString } = vi.hoisted(() => ({
-  mockDecodeAndFreeString: vi.fn((_pointer: unknown): string | null => {
-    if (!_pointer) return null;
-    return '{"type":"FoundationModels.Transcript","version":1,"transcript":{"entries":[]}}';
-  }),
-}));
-
 vi.mock("../../src/bindings.js", () => ({
   getFunctions: () => mockFns,
-  decodeAndFreeString: mockDecodeAndFreeString,
 }));
 
+const EMPTY = '{"type":"FoundationModels.Transcript","version":1,"transcript":{"entries":[]}}';
+/** The transcript JSON the native side exports; tests queue readings on it. */
+const transcriptJson = vi.fn((): string | null => EMPTY);
+
 import { Transcript } from "../../src/transcript.js";
+import { FoundationModelsError } from "../../src/errors.js";
 import type { NativePointer } from "../../src/bindings.js";
 
 const mockPointer = (label: string) => label as unknown as NativePointer;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockDecodeAndFreeString.mockImplementation((pointer: unknown) => {
-    if (!pointer) return null;
-    return '{"type":"FoundationModels.Transcript","version":1,"transcript":{"entries":[]}}';
-  });
+  transcriptJson.mockImplementation(() => EMPTY);
+  mockFns.FMLanguageModelSessionGetTranscriptJSONString.mockImplementation(() =>
+    ok(transcriptJson()),
+  );
 });
 
 describe("Transcript", () => {
@@ -37,13 +34,19 @@ describe("Transcript", () => {
       );
       expect(mockFns.FMLanguageModelSessionGetTranscriptJSONString).toHaveBeenCalledWith(
         "mock-session",
-        null,
-        null,
       );
     });
 
+    it("throws the typed error for the native status when export fails", () => {
+      mockFns.FMLanguageModelSessionGetTranscriptJSONString.mockReturnValueOnce(
+        failed(6, "bad transcript"),
+      );
+      const transcript = new Transcript(mockPointer("mock-session"));
+      expect(() => transcript.toJson()).toThrow(/Decoding failure.*bad transcript/);
+    });
+
     it("throws when C API returns null", () => {
-      mockDecodeAndFreeString.mockReturnValueOnce(null);
+      transcriptJson.mockReturnValueOnce(null);
       const transcript = new Transcript(mockPointer("mock-session"));
       expect(() => transcript.toJson()).toThrow("Failed to export transcript");
     });
@@ -66,14 +69,12 @@ describe("Transcript", () => {
       const transcript = Transcript.fromJson('{"type":"transcript"}');
       expect(mockFns.FMTranscriptCreateFromJSONString).toHaveBeenCalledWith(
         '{"type":"transcript"}',
-        expect.any(Array),
-        null,
       );
       expect(transcript._nativeSession).toBe("mock-transcript-pointer");
     });
 
     it("throws when C returns null pointer", () => {
-      mockFns.FMTranscriptCreateFromJSONString.mockReturnValueOnce(null);
+      mockFns.FMTranscriptCreateFromJSONString.mockReturnValueOnce(failed(6));
       expect(() => Transcript.fromJson("bad json")).toThrow();
     });
   });
@@ -82,11 +83,7 @@ describe("Transcript", () => {
     it("serializes dict to JSON and calls fromJson", () => {
       const dict = { type: "transcript", entries: [] };
       const transcript = Transcript.fromDict(dict);
-      expect(mockFns.FMTranscriptCreateFromJSONString).toHaveBeenCalledWith(
-        JSON.stringify(dict),
-        expect.any(Array),
-        null,
-      );
+      expect(mockFns.FMTranscriptCreateFromJSONString).toHaveBeenCalledWith(JSON.stringify(dict));
       expect(transcript._nativeSession).toBe("mock-transcript-pointer");
     });
   });
@@ -116,7 +113,7 @@ describe("Transcript", () => {
           ],
         },
       });
-      mockDecodeAndFreeString.mockReturnValueOnce(json);
+      transcriptJson.mockReturnValueOnce(json);
       const transcript = new Transcript(mockPointer("mock-session"));
       const entries = transcript.entries();
 
@@ -129,6 +126,38 @@ describe("Transcript", () => {
         text: "You are helpful.",
         id: "c1",
       });
+    });
+
+    it("returns Private Cloud Compute reasoning entries", () => {
+      // The shape a PCC request with reasoningLevel "deep" produces on macOS 27.
+      const json = JSON.stringify({
+        version: 1,
+        type: "FoundationModels.Transcript",
+        transcript: {
+          entries: [
+            {
+              id: "u1",
+              role: "user",
+              contents: [{ type: "text", text: "Is 1001 prime?", id: "c1" }],
+              options: {},
+              contextOptions: { reasoningLevel: "deep" },
+            },
+            { id: "r1", role: "reasoning", reasoning: { contents: [], signature: "opaque" } },
+            {
+              id: "r1",
+              role: "response",
+              contents: [{ type: "text", text: "No.", id: "c2" }],
+              metadata: { systemVersion: "x" },
+            },
+          ],
+        },
+      });
+      transcriptJson.mockReturnValueOnce(json);
+      const entries = new Transcript(mockPointer("mock-session")).entries();
+
+      expect(entries.map((e) => e.role)).toEqual(["user", "reasoning", "response"]);
+      expect(entries[0].contextOptions).toEqual({ reasoningLevel: "deep" });
+      expect(entries[1].reasoning).toEqual({ contents: [], signature: "opaque" });
     });
 
     it("returns entries with tool calls and tool output", () => {
@@ -152,7 +181,7 @@ describe("Transcript", () => {
           ],
         },
       });
-      mockDecodeAndFreeString.mockReturnValueOnce(json);
+      transcriptJson.mockReturnValueOnce(json);
       const transcript = new Transcript(mockPointer("mock-session"));
       const entries = transcript.entries();
 
@@ -187,7 +216,7 @@ describe("Transcript", () => {
           ],
         },
       });
-      mockDecodeAndFreeString.mockReturnValueOnce(json);
+      transcriptJson.mockReturnValueOnce(json);
       const transcript = new Transcript(mockPointer("mock-session"));
       const entries = transcript.entries();
 
@@ -206,7 +235,7 @@ describe("Transcript", () => {
     });
 
     it("returns empty array when entries key is missing from JSON", () => {
-      mockDecodeAndFreeString.mockReturnValueOnce(
+      transcriptJson.mockReturnValueOnce(
         '{"type":"FoundationModels.Transcript","version":1,"transcript":{}}',
       );
       const transcript = new Transcript(mockPointer("mock-session"));
@@ -236,6 +265,26 @@ describe("Transcript", () => {
       mockFns.FMRelease.mockClear();
       transcript.dispose();
       expect(mockFns.FMRelease).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("_pointer", () => {
+    it("returns the native pointer of a usable transcript", () => {
+      expect(Transcript.fromJson("{}")._pointer()).toBe("mock-transcript-pointer");
+    });
+
+    it("throws FoundationModelsError once disposed", () => {
+      const transcript = Transcript.fromJson("{}");
+      transcript.dispose();
+      expect(() => transcript._pointer()).toThrow(FoundationModelsError);
+      expect(() => transcript._pointer()).toThrow(/disposed/);
+    });
+
+    it("throws FoundationModelsError once its session is disposed", () => {
+      const transcript = new Transcript(mockPointer("mock-session"));
+      transcript._detach();
+      expect(() => transcript._pointer()).toThrow(FoundationModelsError);
+      expect(() => transcript._pointer()).toThrow(/session .* disposed/);
     });
   });
 

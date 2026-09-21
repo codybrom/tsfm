@@ -4,6 +4,9 @@ import {
   LanguageModelSession,
   GenerationSchema,
   GenerationGuide,
+  InvalidGenerationSchemaError,
+  generable,
+  type JsonSchema,
 } from "../../src/index.js";
 
 const model = new SystemLanguageModel();
@@ -24,7 +27,7 @@ describeIfAvailable("structured output (integration)", () => {
       });
 
     const session = new LanguageModelSession();
-    const content = await session.respondWithSchema("Pick a color", schema);
+    const { content } = await session.respondWithSchema("Pick a color", schema);
     const name = content.value<string>("name");
     expect(["red", "blue", "green"]).toContain(name);
     const isPrimary = content.value<boolean>("isPrimary");
@@ -42,10 +45,120 @@ describeIfAvailable("structured output (integration)", () => {
     );
 
     const session = new LanguageModelSession();
-    const content = await session.respondWithJsonSchema("Is the sky blue?", schema.toDict());
+    const { content } = await session.respondWithJsonSchema("Is the sky blue?", schema.toDict());
     const obj = content.toObject();
     expect(obj).toHaveProperty("answer");
     expect(["yes", "no"]).toContain(obj.answer);
     session.dispose();
   }, 30_000);
+
+  it("generates nested objects with generable()", async () => {
+    const Order = generable("Order", {
+      customer: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          address: { type: "object", properties: { city: { type: "string" } } },
+        },
+      },
+      items: {
+        type: "array",
+        items: { type: "object", properties: { sku: { type: "string" } } },
+      },
+    });
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithSchema(
+      "Make up an order from Ana in Lisbon for two items.",
+      Order.schema,
+    );
+    const order = Order.parse(content);
+    expect(typeof order.customer.name).toBe("string");
+    expect(typeof order.customer.address.city).toBe("string");
+    expect(Array.isArray(order.items)).toBe(true);
+    session.dispose();
+  }, 60_000);
+
+  it("keeps same-named nested objects apart in generable()", async () => {
+    const Order = generable("Order", {
+      shipping: {
+        type: "object",
+        properties: {
+          address: { type: "object", properties: { city: { type: "string" } } },
+        },
+      },
+      billing: {
+        type: "object",
+        properties: {
+          address: { type: "object", properties: { postcode: { type: "string" } } },
+        },
+      },
+    });
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithSchema(
+      "Make up an order shipped to a city, billed to a postcode.",
+      Order.schema,
+    );
+    const order = Order.parse(content);
+    expect(typeof order.shipping.address.city).toBe("string");
+    expect(typeof order.billing.address.postcode).toBe("string");
+    session.dispose();
+  }, 60_000);
+
+  it("generates arrays of booleans, and objects under reserved or non-word keys", async () => {
+    const G = generable("Root", {
+      flags: { type: "array", items: { type: "boolean" } },
+      string: { type: "object", properties: { v: { type: "string" } } },
+      "ship-to": {
+        type: "array",
+        items: { type: "object", properties: { city: { type: "string" } } },
+      },
+    });
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithSchema("Make one up.", G.schema);
+    const value = G.parse(content);
+    expect(value.flags.every((f) => typeof f === "boolean")).toBe(true);
+    expect(typeof value.string.v).toBe("string");
+    expect(Array.isArray(value["ship-to"])).toBe(true);
+    session.dispose();
+  }, 60_000);
+
+  it("resolves $ref to $defs in a JSON schema", async () => {
+    const session = new LanguageModelSession();
+    const { content } = await session.respondWithJsonSchema("Make up a person and their pet.", {
+      type: "object",
+      properties: { owner: { $ref: "#/$defs/Person" }, pet: { $ref: "#/$defs/Pet" } },
+      $defs: {
+        Person: { type: "object", properties: { name: { type: "string" } } },
+        Pet: { type: "object", properties: { species: { type: "string" } } },
+      },
+    });
+    const value = JSON.parse(content.toJson()) as {
+      owner: { name: string };
+      pet: { species: string };
+    };
+    expect(typeof value.owner.name).toBe("string");
+    expect(typeof value.pet.species).toBe("string");
+    session.dispose();
+  }, 60_000);
+
+  it("reports a schema the framework can't build as InvalidGenerationSchemaError", async () => {
+    const session = new LanguageModelSession();
+    await expect(
+      session.respondWithJsonSchema("Make one up.", {
+        type: "object",
+        properties: { x: { $ref: "#/$defs/Missing" } },
+      }),
+    ).rejects.toBeInstanceOf(InvalidGenerationSchemaError);
+    session.dispose();
+  });
+
+  it("rejects a schema nested deeply enough to overflow the framework's stack", async () => {
+    let schema: JsonSchema = { type: "string" };
+    for (let i = 0; i < 200; i++) schema = { type: "object", properties: { child: schema } };
+    const session = new LanguageModelSession();
+    await expect(session.respondWithJsonSchema("Make one up.", schema)).rejects.toThrow(
+      /nests more than 128 levels/,
+    );
+    session.dispose();
+  });
 });

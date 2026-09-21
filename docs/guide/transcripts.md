@@ -11,7 +11,7 @@ The **Swift** equivalent is Foundation Models' [`Transcript`](https://developer.
 A transcript is a linear sequence of entries.
 
 ::: info
-The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/documentation/foundationmodels/transcript).
+The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/documentation/foundationmodels/transcript/entry).
 :::
 
 | Role | Description |
@@ -20,6 +20,7 @@ The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/doc
 | `user` | User input passed to `respond()` or `streamResponse()`. |
 | `response` | Model-generated output (text, structured content, or tool calls). |
 | `tool` | Results returned from executed tools. |
+| `reasoning` | The model's reasoning before a response. Only [Private Cloud Compute](/guide/private-cloud-compute) requests with a `reasoningLevel` produce these. The `reasoning.contents` text is often empty; `reasoning.signature` lets the model continue from it. |
 
 ## Inspecting Entries
 
@@ -37,7 +38,7 @@ for (const entry of entries) {
 }
 ```
 
-Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, or `"tool"`) and role-specific fields:
+Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, `"tool"`, or `"reasoning"`) and role-specific fields:
 
 | Field | Roles | Description |
 | --- | --- | --- |
@@ -45,10 +46,13 @@ Each entry has a `role` (`"instructions"`, `"user"`, `"response"`, or `"tool"`) 
 | `tools` | `instructions` | Tool definitions registered with the session. |
 | `options` | `user` | Generation options for this prompt. |
 | `responseFormat` | `user` | Schema constraint for structured output. |
+| `contextOptions` | `user` | Context options the request used, e.g. `{ reasoningLevel: "deep" }`. |
 | `toolCalls` | `response` | Tool invocations with name and arguments. |
 | `assets` | `response` | Asset references in the response. |
 | `toolName` | `tool` | Name of the tool that produced this output. |
 | `toolCallID` | `tool` | ID linking this output to its tool call. |
+| `reasoning` | `reasoning` | The reasoning `contents` and its `signature`. |
+| `metadata` | all | Model and system details recorded with the entry, when present. |
 
 ## Exporting a Transcript
 
@@ -85,7 +89,7 @@ const resumed = LanguageModelSession.fromTranscript(transcript);
 The restored session has full context of the previous conversation:
 
 ```ts
-const reply = await resumed.respond("What's my name?");
+const { content: reply } = await resumed.respond("What's my name?");
 // The model remembers: "Your name is Cody."
 ```
 
@@ -100,11 +104,11 @@ session.dispose();
 
 // Later — resume from saved transcript
 const resumed = LanguageModelSession.fromTranscript(Transcript.fromJson(json));
-const recall = await resumed.respond("What's my name?");
+const { content: recall } = await resumed.respond("What's my name?");
 console.log(recall); // References "Cody"
 resumed.dispose();
 ```
 
 ::: warning
-You must access `session.transcript` *before* calling `session.dispose()`. Transcripts are read from the native session pointer and will be lost when dispose runs.
+You must export `session.transcript` *before* calling `session.dispose()`. Transcripts are read from the native session, and after dispose `toJson()`, `toDict()` and `entries()` throw `FoundationModelsError`.
 :::

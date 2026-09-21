@@ -1,11 +1,13 @@
 #!/bin/bash
-# Builds the Foundation Models C dylib from Apple's python-apple-fm-sdk repo.
-# Requires: macOS 26.0+, Xcode 26.4+, Swift toolchain in PATH
+# Builds the Foundation Models C dylib from tsfm's Swift-to-C bridge in
+# native/bridge (a fork of Apple's foundation-models-c, see
+# native/bridge/UPSTREAM.md), plus native/extensions.
+# Requires: Xcode 27+ (macOS 27 SDK, Swift 6.4). The dylib runs on macOS 26+.
 #
 # Usage:
-#   bash scripts/build-native.sh [/path/to/foundation-models-c]
+#   bash scripts/build-native.sh [/path/to/bridge]
 #
-# If no path is given, clones apple/python-apple-fm-sdk from GitHub.
+# A path overrides native/bridge, e.g. to try an upstream foundation-models-c checkout.
 
 set -euo pipefail
 # Ignore SIGPIPE (exit 141) from VS Code task runner piping
@@ -16,16 +18,12 @@ PACKAGE_DIR="$(dirname "$SCRIPT_DIR")"
 NATIVE_DIR="$PACKAGE_DIR/native"
 LOG_FILE="$PACKAGE_DIR/build-native.log"
 
-# Upstream C bridge revision this SDK is built and tested against.
-#
-# Pinned deliberately: koffi binds by symbol name and cannot see a changed
-# parameter type, so an unpinned clone yields a dylib that links but misbehaves
-# at runtime. src/bindings.ts is written against exactly this revision.
-#
-# To try a newer revision: FM_SDK_REF=<sha> bash scripts/build-native.sh
-# Moving the pin means updating src/bindings.ts and native/extensions to match.
-FM_SDK_REF="${FM_SDK_REF:-e868e60811aa0706feb2ccb33cfe7e27626287b7}"
-CLONE_DIR="$PACKAGE_DIR/.build/python-apple-fm-sdk"
+# The bridge. native/addon/tsfm_addon.c is written against exactly this source,
+# and src/bindings.ts against the addon: a change to a C signature here needs
+# the matching change in both.
+BRIDGE_DIR="$NATIVE_DIR/bridge"
+# Built from a copy so native/bridge never holds build output or extensions.
+STAGING_DIR="$PACKAGE_DIR/.build/bridge"
 
 log() { echo "$*" | tee -a "$LOG_FILE"; }
 
@@ -33,58 +31,52 @@ log "=== tsfm native build ==="
 log "Log: $LOG_FILE"
 > "$LOG_FILE"  # truncate
 
-# --- Warn if the checkout has drifted from the pin ---
-#
-# Deliberately ahead of the skip-if-built shortcut below: a stale dylib next to
-# a drifted checkout would otherwise skip the build and the pin check together,
-# leaving no sign that the artifact and the source no longer agree. Reads local
-# HEAD only, so it costs nothing.
-
-if [[ -d "$CLONE_DIR" ]]; then
-  CLONE_REF="$(git -C "$CLONE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
-  if [[ "$CLONE_REF" != "$FM_SDK_REF" ]]; then
-    log "warning: $CLONE_DIR is at ${CLONE_REF:0:8}, pinned revision is ${FM_SDK_REF:0:8}."
-    log "         Delete native/libFoundationModels.dylib to rebuild at the pin."
-  fi
-fi
-
-# --- Select the toolchain ---
-#
-# A beta is preferred when present: it is how you get an SDK newer than the
-# released Xcode, which is what prompt attachments need (macOS 27 SDK). This
-# has to happen before the SDK check and the version check below, or they
-# validate the selected Xcode while swift build uses the beta.
-
-XCODE_BETA="/Applications/Xcode-beta.app"
-if [[ -d "$XCODE_BETA" ]]; then
-  export DEVELOPER_DIR="$XCODE_BETA/Contents/Developer"
-  log "Preferring Xcode beta at $XCODE_BETA"
-fi
-
-# Prompt attachments compile only when FM_HAS_MACOS_27_SDK is defined, which
-# upstream's build_backend.py sets for a macOS 27+ SDK. The deployment target
-# stays at macOS 26 (Package.swift), and the bridge gates attachments behind
-# #available(macOS 27), so one dylib loads on 26 and supports attachments on 27.
+# The bridge deploys to macOS 26 (Package.swift) and uses macOS 27 APIs behind
+# #available, so it needs the macOS 27 SDK. Checked below, after the skip shortcut.
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || true)"
 SDK_MAJOR="$(echo "$SDK_VERSION" | cut -d. -f1)"
-HAS_MACOS_27_SDK=false
-[[ "$SDK_MAJOR" =~ ^[0-9]+$ && "$SDK_MAJOR" -ge 27 ]] && HAS_MACOS_27_SDK=true
 
-# --- Skip if already built ---
+SOURCE_DIR="${1:-$BRIDGE_DIR}"
+EXTENSIONS_DIR="$NATIVE_DIR/extensions"
+
+# --- Skip if already built from the same inputs ---
 #
-# Unless the dylib predates the macOS 27 SDK: one built against the 26 SDK has
-# no attachment support, and skipping would keep it after switching to Xcode 27.
+# The bridge source lives in the repo and changes, so "a dylib exists" isn't
+# enough: a stale one would be packaged by prepublishOnly and no longer match
+# src/bindings.ts. The build records a fingerprint of everything it was built
+# from, and later runs skip only when that fingerprint still matches. The SDK
+# version and toolchain are part of it, so switching Xcode triggers a rebuild.
 
 DYLIB="$NATIVE_DIR/libFoundationModels.dylib"
+HEADER="$NATIVE_DIR/FoundationModels.h"
+ADDON_DIR="$NATIVE_DIR/addon"
+ADDON="$NATIVE_DIR/tsfm.node"
+STAMP="$NATIVE_DIR/.build-inputs.sha256"
+
+hash_tree() {
+  (cd "$1" && find . -path ./.build -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256)
+}
+
+build_fingerprint() {
+  {
+    echo "sdk=$SDK_VERSION developer_dir=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}"
+    swift --version 2>/dev/null | sed -n 1p || true
+    shasum -a 256 < "$SCRIPT_DIR/build-native.sh"
+    [[ -d "$SOURCE_DIR" ]] && hash_tree "$SOURCE_DIR"
+    [[ -d "$EXTENSIONS_DIR" ]] && hash_tree "$EXTENSIONS_DIR"
+    [[ -d "$ADDON_DIR" ]] && hash_tree "$ADDON_DIR"
+  } | shasum -a 256 | cut -d' ' -f1
+}
+
+INPUTS_FINGERPRINT="$(build_fingerprint)"
+if [[ -f "$DYLIB" && -f "$HEADER" && -f "$ADDON" && -f "$STAMP" && "$(cat "$STAMP")" == "$INPUTS_FINGERPRINT" ]]; then
+  log "Native dylib is up to date with its sources, skipping build."
+  exit 0
+fi
 if [[ -f "$DYLIB" ]]; then
-  if $HAS_MACOS_27_SDK && ! nm -m "$DYLIB" 2>/dev/null | grep 'Attachment.*from FoundationModels' >/dev/null; then
-    # Left in place until the copy step overwrites it, so a failed rebuild
-    # still leaves a loadable library.
-    log "Native dylib was built without prompt attachments, but the macOS $SDK_VERSION SDK is active. Rebuilding."
-  else
-    log "Native dylib already present, skipping build. Delete native/libFoundationModels.dylib to force rebuild."
-    exit 0
-  fi
+  # Left in place until the copy step overwrites it, so a failed rebuild
+  # still leaves a loadable library.
+  log "Native sources, extensions or toolchain changed since the last build. Rebuilding."
 fi
 
 # --- Check prerequisites ---
@@ -94,79 +86,46 @@ if [[ "$(uname)" != "Darwin" ]]; then
   exit 1
 fi
 
-MACOS_VERSION="$(sw_vers -productVersion)"
-MACOS_MAJOR="$(echo "$MACOS_VERSION" | cut -d. -f1)"
-if [[ "$MACOS_MAJOR" -lt 26 ]]; then
-  log "error: macOS 26.0+ required (found $MACOS_VERSION)."
-  exit 1
-fi
-log "macOS $MACOS_VERSION ✓"
+# Building needs the macOS 27 SDK (checked below); the dylib runs on macOS 26 and 27.
+log "Build host: macOS $(sw_vers -productVersion)"
 
 if ! command -v swift &>/dev/null; then
-  log "error: 'swift' not found. Install Xcode 26+."
+  log "error: 'swift' not found. Install Xcode 27+."
   exit 1
 fi
 
 # --- Validate the selected toolchain ---
 
-# Reads whatever DEVELOPER_DIR points at (see toolchain selection above).
 XCODE_OUTPUT="$(xcodebuild -version 2>/dev/null || true)"
 XCODE_VERSION="$(echo "$XCODE_OUTPUT" | grep -m1 -oE '[0-9]+\.[0-9]+')"
 XCODE_MAJOR="$(echo "$XCODE_VERSION" | cut -d. -f1)"
-XCODE_MINOR="$(echo "$XCODE_VERSION" | cut -d. -f2)"
-# The bridge reads SystemLanguageModel.contextSize, whose declaration first
-# appears in the Xcode 26.4 SDK. Earlier Xcode 26.x passes a major-only check
-# and then fails mid-compile on a missing member.
-if [[ "$XCODE_MAJOR" -lt 26 || ( "$XCODE_MAJOR" -eq 26 && "$XCODE_MINOR" -lt 4 ) ]]; then
-  log "error: Xcode 26.4+ required (found $XCODE_VERSION)."
-  if [[ -n "${DEVELOPER_DIR:-}" ]]; then
-    log "       Selected toolchain: $DEVELOPER_DIR"
-    log "       Remove or update that beta, or unset DEVELOPER_DIR, to use the released Xcode."
-  fi
-  log "       The C bridge needs the 26.4 SDK to see SystemLanguageModel.contextSize."
+if [[ ! "$XCODE_MAJOR" =~ ^[0-9]+$ || "$XCODE_MAJOR" -lt 27 ]]; then
+  log "error: Xcode 27+ required (found ${XCODE_VERSION:-none})."
+  log "       The bridge uses macOS 27 APIs and Package.swift needs swift-tools-version 6.4."
   exit 1
 fi
-log "Xcode $XCODE_VERSION ✓"
-
-# --- Locate or clone foundation-models-c ---
-
-if [[ -n "${1:-}" ]]; then
-  FM_C_DIR="$1"
-  if [[ ! -d "$FM_C_DIR" ]]; then
-    log "error: Could not find foundation-models-c at $FM_C_DIR"
-    exit 1
-  fi
-  log "SDK source: $FM_C_DIR"
-else
-  if [[ ! -d "$CLONE_DIR" ]]; then
-    log "Cloning apple/python-apple-fm-sdk at ${FM_SDK_REF:0:8}..."
-    git init -q "$CLONE_DIR" >> "$LOG_FILE" 2>&1
-    git -C "$CLONE_DIR" remote add origin https://github.com/apple/python-apple-fm-sdk >> "$LOG_FILE" 2>&1
-    git -C "$CLONE_DIR" fetch -q --depth 1 origin "$FM_SDK_REF" >> "$LOG_FILE" 2>&1
-    git -C "$CLONE_DIR" checkout -q FETCH_HEAD >> "$LOG_FILE" 2>&1
-  fi
-
-  # An existing checkout is reused, so confirm it is the pinned revision rather
-  # than whatever a previous run happened to leave behind.
-  CURRENT_REF="$(git -C "$CLONE_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")"
-  if [[ "$CURRENT_REF" != "$FM_SDK_REF" ]]; then
-    log "Existing checkout is at ${CURRENT_REF:0:8}, expected ${FM_SDK_REF:0:8} — fetching pin..."
-    if ! git -C "$CLONE_DIR" fetch -q --depth 1 origin "$FM_SDK_REF" >> "$LOG_FILE" 2>&1 \
-      || ! git -C "$CLONE_DIR" checkout -q FETCH_HEAD >> "$LOG_FILE" 2>&1; then
-      log "error: could not check out $FM_SDK_REF in $CLONE_DIR."
-      log "       Remove the directory and re-run, or set FM_SDK_REF to a revision you have."
-      exit 1
-    fi
-    CURRENT_REF="$(git -C "$CLONE_DIR" rev-parse HEAD)"
-  fi
-
-  FM_C_DIR="$CLONE_DIR/foundation-models-c"
-  log "SDK source: $FM_C_DIR @ ${CURRENT_REF:0:8}"
+if [[ ! "$SDK_MAJOR" =~ ^[0-9]+$ || "$SDK_MAJOR" -lt 27 ]]; then
+  log "error: macOS 27 SDK required (found ${SDK_VERSION:-none}). Select Xcode 27 with xcode-select."
+  exit 1
 fi
+log "Xcode $XCODE_VERSION, macOS SDK $SDK_VERSION ✓"
 
-# --- Copy tsfm extensions into the Apple source tree ---
+# --- Stage the bridge source ---
 
-EXTENSIONS_DIR="$PACKAGE_DIR/native/extensions"
+if [[ ! -f "$SOURCE_DIR/Package.swift" ]]; then
+  log "error: Could not find the bridge package (Package.swift) at $SOURCE_DIR"
+  exit 1
+fi
+log "Bridge source: $SOURCE_DIR"
+
+# A fresh copy every time, so extensions from a previous run can't linger.
+# The staging dir's own .build (SwiftPM cache) is kept for incremental builds.
+mkdir -p "$STAGING_DIR"
+rsync -a --delete --exclude .build "$SOURCE_DIR/" "$STAGING_DIR/"
+FM_C_DIR="$STAGING_DIR"
+
+# --- Add tsfm extensions to the staged source ---
+
 BINDINGS_SRC="$FM_C_DIR/Sources/FoundationModelsCBindings"
 if [[ -d "$EXTENSIONS_DIR" ]]; then
   for f in "$EXTENSIONS_DIR"/*.swift; do
@@ -177,16 +136,8 @@ fi
 
 # --- Build (redirect verbose Swift output to log file) ---
 
-SWIFT_ARGS=()
-if $HAS_MACOS_27_SDK; then
-  SWIFT_ARGS+=(-Xswiftc -DFM_HAS_MACOS_27_SDK)
-  log "macOS SDK $SDK_VERSION: prompt attachments enabled"
-else
-  log "macOS SDK ${SDK_VERSION:-unknown}: prompt attachments disabled (needs the macOS 27 SDK)"
-fi
-
 log "Building Foundation Models C bindings (this takes ~1-2 min)..."
-swift build -c release --package-path "$FM_C_DIR" ${SWIFT_ARGS[@]+"${SWIFT_ARGS[@]}"} >> "$LOG_FILE" 2>&1
+swift build -c release --package-path "$FM_C_DIR" >> "$LOG_FILE" 2>&1
 log "Build complete."
 
 BUILD_DIR="$(swift build -c release --package-path "$FM_C_DIR" --show-bin-path 2>>"$LOG_FILE")"
@@ -212,6 +163,36 @@ for f in "$EXTENSIONS_DIR"/*.h; do
   fi
 done
 log "Copied: FoundationModels.h"
+
+# --- Node-API addon ---
+#
+# tsfm.node is how JavaScript calls the bridge (see native/addon/tsfm_addon.c).
+# Node-API is ABI-stable, so one arm64 build serves every Node version; it
+# needs Node's headers only here, at build time. It deploys to macOS 26 like
+# the dylib, and finds the dylib next to itself at runtime.
+NODE_INCLUDE="$(node -p 'require("path").resolve(require("fs").realpathSync(process.execPath), "../../include/node")')"
+if [[ ! -f "$NODE_INCLUDE/node_api.h" ]]; then
+  log "error: node_api.h not found in $NODE_INCLUDE. Install Node.js from nodejs.org, nvm or Homebrew."
+  exit 1
+fi
+# For the editor's clang (clangd, SourceKit-LSP). Gitignored: this machine's paths.
+printf '%s\n' -std=c11 "-I$NODE_INCLUDE" "-I$NATIVE_DIR" > "$ADDON_DIR/compile_flags.txt"
+log "Building the Node-API addon..."
+xcrun clang -std=c11 -O2 -Wall -Wextra -Werror \
+  -mmacosx-version-min=26.0 -arch arm64 \
+  -bundle -undefined dynamic_lookup \
+  -I "$NODE_INCLUDE" -I "$NATIVE_DIR" \
+  "$ADDON_DIR/tsfm_addon.c" \
+  -L "$NATIVE_DIR" -lFoundationModels -Wl,-rpath,@loader_path \
+  -o "$ADDON" >> "$LOG_FILE" 2>&1 || {
+  log "error: the addon failed to build; see $LOG_FILE."
+  exit 1
+}
+log "Built: tsfm.node"
+
+# Recorded last, so a build that fails partway leaves no matching fingerprint
+# and the next run rebuilds.
+echo "$INPUTS_FINGERPRINT" > "$STAMP"
 
 log ""
 log "Artifacts in $NATIVE_DIR:"

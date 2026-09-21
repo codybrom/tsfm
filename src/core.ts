@@ -1,13 +1,6 @@
-import koffi from "koffi";
-import {
-  decodeAndFreeString,
-  getFunctions,
-  unregisterCallback,
-  TokenCountCallbackProto,
-  type NativePointer,
-  type KoffiCallback,
-} from "./bindings.js";
+import { getFunctions, type CountResult, type NativePointer, type Started } from "./bindings.js";
 import { FoundationModelsError, statusToError } from "./errors.js";
+import { parseCapabilities, type ModelCapability } from "./capabilities.js";
 import { composePrompt, type PromptInput } from "./prompt.js";
 import type { Tool } from "./tool.js";
 import type { GenerationSchema } from "./schema.js";
@@ -24,13 +17,10 @@ export type TokenCountInput =
   | { schema: GenerationSchema }
   | { transcript: Transcript };
 
-const _modelRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] Model cleanup via FinalizationRegistry failed:", err);
-  }
-});
+/** @internal The host's current locale, as ICU/BCP 47 (e.g. "en-US"). */
+export function currentLocale(): string {
+  return Intl.DateTimeFormat().resolvedOptions().locale;
+}
 
 export enum SystemLanguageModelUseCase {
   GENERAL = 0,
@@ -77,14 +67,14 @@ export class SystemLanguageModel {
     } = {},
   ) {
     const fn = getFunctions();
+    // The handle releases the native model when it's garbage collected.
     this._nativeModel = fn.FMSystemLanguageModelCreate(
       opts.useCase ?? SystemLanguageModelUseCase.GENERAL,
       opts.guardrails ?? SystemLanguageModelGuardrails.DEFAULT,
-    ) as NativePointer | null;
+    );
     if (!this._nativeModel) {
       throw new FoundationModelsError("Failed to create SystemLanguageModel");
     }
-    _modelRegistry.register(this, this._nativeModel, this);
   }
 
   /**
@@ -97,11 +87,10 @@ export class SystemLanguageModel {
    *   warming up. Use `waitUntilAvailable()` to poll.
    */
   isAvailable(): AvailabilityResult {
-    const fn = getFunctions();
-    const reasonOut = [0];
-    const available = fn.FMSystemLanguageModelIsAvailable(this._nativeModel, reasonOut) as boolean;
-    if (available) return { available: true };
-    const code: number = reasonOut[0];
+    const { available, reason: code } = getFunctions().FMSystemLanguageModelIsAvailable(
+      this._model(),
+    );
+    if (available || code === null) return { available: true };
     const reason = Object.values(SystemLanguageModelUnavailableReason).includes(code)
       ? (code as SystemLanguageModelUnavailableReason)
       : SystemLanguageModelUnavailableReason.UNKNOWN;
@@ -137,23 +126,26 @@ export class SystemLanguageModel {
    * against this limit.
    */
   get contextSize(): number {
-    return getFunctions().FMSystemLanguageModelGetContextSize(this._nativeModel) as number;
+    return getFunctions().FMSystemLanguageModelGetContextSize(this._model());
   }
 
-  // macOS 26.4+ runtime only — uncomment when targeting 26.4+
-  // /** Returns the number of tokens the model would use to encode the given text. */
-  // tokenCount(text: string): number {
-  //   return getFunctions().FMSystemLanguageModelGetTokenCount(this._nativeModel, text) as number;
-  // }
+  /** The model variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26. */
+  get variant(): string | null {
+    return getFunctions().FMSystemLanguageModelGetVariantName(this._model());
+  }
+
+  /** What the model can do, or `null` on macOS 26. Apple doesn't publish the set; read it rather than assuming it. */
+  get capabilities(): ModelCapability[] | null {
+    return parseCapabilities(
+      getFunctions().FMSystemLanguageModelGetCapabilitiesJSON(this._model()),
+    );
+  }
 
   /**
-   * Returns the locale identifiers the model supports (e.g. `["en-US", "es-ES"]`).
+   * Returns the language identifiers the model supports, as minimal BCP 47 language tags (e.g. `["en-GB", "fr-CA", "de", "ja"]`), not full locales.
    */
   get supportedLanguages(): string[] {
-    const pointer = getFunctions().FMSystemLanguageModelGetSupportedLanguages(
-      this._nativeModel,
-    ) as NativePointer | null;
-    const json = decodeAndFreeString(pointer);
+    const json = getFunctions().FMSystemLanguageModelGetSupportedLanguages(this._model());
     if (!json) return [];
     try {
       return JSON.parse(json) as string[];
@@ -165,118 +157,76 @@ export class SystemLanguageModel {
   }
 
   /**
-   * Check whether the model supports a given locale.
+   * Check whether the model supports a locale; the host's current locale when
+   * none is given, as Apple's `supportsLocale(_:)` defaults to `.current`.
    *
    * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)
    */
-  supportsLocale(localeIdentifier: string): boolean {
-    return getFunctions().FMSystemLanguageModelSupportsLocale(
-      this._nativeModel,
-      localeIdentifier,
-    ) as boolean;
+  supportsLocale(localeIdentifier: string = currentLocale()): boolean {
+    return getFunctions().FMSystemLanguageModelSupportsLocale(this._model(), localeIdentifier);
   }
 
   /**
    * Count the tokens a prompt, instruction set, tool list, schema, or
    * transcript would consume against the context window.
    *
-   * Requires a macOS 26.4+ runtime; the C bridge reports an error below that.
    * Each call dispatches asynchronously and owns a native task that is
    * released once the count arrives.
    */
   tokenCount(input: TokenCountInput): Promise<number> {
+    const model = this._model();
+    return this._countTokens(model, input);
+  }
+
+  private async _countTokens(model: NativePointer, input: TokenCountInput): Promise<number> {
     const fn = getFunctions();
-    const model = this._nativeModel;
-    if (!model) throw new FoundationModelsError("Model has been disposed");
-
     let composed: NativePointer | null = null;
-    if ("prompt" in input) composed = composePrompt(fn, input.prompt);
-
-    // Keeps the event loop alive while the native side works, mirroring the
-    // response paths.
-    const keepAlive = setInterval(() => {}, 10000);
-
-    return new Promise<number>((resolve, reject) => {
-      const handle: { task: NativePointer | null; callback: KoffiCallback | null } = {
-        task: null,
-        callback: null,
-      };
-
-      const finish = () => {
-        clearInterval(keepAlive);
-        if (handle.callback) {
-          unregisterCallback(handle.callback);
-          handle.callback = null;
-        }
-        if (handle.task) {
-          fn.FMRelease(handle.task);
-          handle.task = null;
-        }
-        if (composed) {
-          fn.FMRelease(composed);
-          composed = null;
-        }
-      };
-
-      handle.callback = koffi.register(
-        (status: number, count: number, errorDescription: string | null) => {
-          finish();
-          if (status !== 0) reject(statusToError(status, errorDescription ?? undefined));
-          else resolve(count);
-        },
-        koffi.pointer(TokenCountCallbackProto),
-      );
-
-      try {
-        const cb = handle.callback;
-        if ("prompt" in input) {
-          handle.task = fn.FMSystemLanguageModelTokenCountForPrompt(
-            model,
-            composed,
-            null,
-            cb,
-          ) as NativePointer;
-        } else if ("instructions" in input) {
-          handle.task = fn.FMSystemLanguageModelTokenCountForInstructions(
-            model,
-            input.instructions,
-            null,
-            cb,
-          ) as NativePointer;
-        } else if ("tools" in input) {
-          const pointers = input.tools.map((t) => t._nativeTool);
-          handle.task = fn.FMSystemLanguageModelTokenCountForTools(
-            model,
-            pointers.length > 0 ? koffi.as(pointers, "void **") : null,
-            pointers.length,
-            null,
-            cb,
-          ) as NativePointer;
-        } else if ("schema" in input) {
-          handle.task = fn.FMSystemLanguageModelTokenCountForSchema(
-            model,
-            input.schema._nativeSchema,
-            null,
-            cb,
-          ) as NativePointer;
-        } else {
-          handle.task = fn.FMSystemLanguageModelTokenCountForTranscript(
-            model,
-            input.transcript._nativeSession,
-            null,
-            cb,
-          ) as NativePointer;
-        }
-      } catch (err) {
-        finish();
-        reject(err);
+    try {
+      let started: Started<CountResult>;
+      if ("prompt" in input) {
+        composed = composePrompt(fn, input.prompt);
+        started = fn.FMSystemLanguageModelTokenCountForPrompt(model, composed);
+      } else if ("instructions" in input) {
+        started = fn.FMSystemLanguageModelTokenCountForInstructions(model, input.instructions);
+      } else if ("tools" in input) {
+        // Registered like a session's tools, so every tool is counted.
+        started = fn.FMSystemLanguageModelTokenCountForTools(
+          model,
+          input.tools.map((t) => {
+            t._register();
+            if (!t._nativeTool)
+              throw new FoundationModelsError(`Tool '${t.name}' has no native tool`);
+            return t._nativeTool;
+          }),
+        );
+      } else if ("schema" in input) {
+        started = fn.FMSystemLanguageModelTokenCountForSchema(model, input.schema._nativeSchema);
+      } else {
+        started = fn.FMSystemLanguageModelTokenCountForTranscript(
+          model,
+          input.transcript._pointer(),
+        );
       }
-    });
+      try {
+        const { status, count, message } = await started[0];
+        if (status !== 0) throw statusToError(status, message ?? undefined);
+        return count;
+      } finally {
+        fn.FMRelease(started[1]);
+      }
+    } finally {
+      if (composed) fn.FMRelease(composed);
+    }
+  }
+
+  /** The native model, or throws once disposed. */
+  private _model(): NativePointer {
+    if (!this._nativeModel) throw new FoundationModelsError("Model has been disposed");
+    return this._nativeModel;
   }
 
   dispose(): void {
     if (this._nativeModel) {
-      _modelRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeModel);
       this._nativeModel = null;
     }

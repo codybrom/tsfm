@@ -6,11 +6,22 @@
     "chatcmpl",
     "fontawesome",
     "generativeexperiencesd",
-    "koffi",
     "Llms",
     "Siri",
     "tsfm",
+    "tsfn",
     "vitepress",
     "vitest"
-  ]
+  ],
+  "cSpell.ignorePaths": [
+    "package-lock.json",
+    "node_modules",
+    "vscode-extension",
+    ".git/{info,lfs,logs,refs,objects}/**",
+    ".git/{index,*refs,*HEAD}",
+    ".vscode",
+    ".vscode-insiders",
+    "native/bridge/LICENSE.md"
+  ],
+  "swift.autoGenerateLaunchConfigurations": false
 }

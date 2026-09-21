@@ -4,7 +4,7 @@ Usage examples for the [tsfm](https://www.npmjs.com/package/tsfm-sdk) package.
 
 ## Prerequisites
 
-- macOS 26+ (Tahoe) on Apple Silicon
+- macOS 26 or later on Apple Silicon. Examples that use token usage, tool-calling modes, Private Cloud Compute or attachments need macOS 27.
 - Apple Intelligence enabled
 - Node.js 24+
 

@@ -44,6 +44,8 @@ const model = new SystemLanguageModel({
 
 With `DEFAULT` guardrails, unsafe content may trigger a `GuardrailViolationError`. With `PERMISSIVE_CONTENT_TRANSFORMATIONS`, the model may attempt to transform the content instead of rejecting it outright.
 
+`PERMISSIVE_CONTENT_TRANSFORMATIONS` only applies to plain-text responses (`respond()` and `streamResponse()`). For any other response type it behaves like `DEFAULT` and throws `GuardrailViolationError`, so it does nothing for `respondWithSchema()` or `respondWithJsonSchema()`.
+
 ## Use Cases
 
 Use cases hint to the model what kind of task you're performing.
@@ -55,7 +57,7 @@ The **Swift** equivalent is [`SystemLanguageModel.UseCase`](https://developer.ap
 | Value | Description |
 | --- | --- |
 | `GENERAL` | General-purpose text generation (default) |
-| `CONTENT_TAGGING` | Optimized for classification and labeling tasks |
+| `CONTENT_TAGGING` | Tuned to respond with tags. It always answers with tags (topics, emotions, actions, and so on) rather than prose, so use it for tagging, not for general classification or labeling. |
 
 ```ts
 const tagger = new SystemLanguageModel({

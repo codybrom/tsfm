@@ -5,7 +5,7 @@
  * This mirrors the Python SDK's GenerationSchema / GenerationSchemaProperty / GenerationGuide.
  */
 
-import { getFunctions, decodeAndFreeString, type NativePointer } from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { statusToError } from "./errors.js";
 
 export type PropertyType = "string" | "integer" | "number" | "boolean" | "array" | "object";
@@ -14,7 +14,8 @@ export type PropertyType = "string" | "integer" | "number" | "boolean" | "array"
  * Compound type names used by the C bridge. Includes scalar types plus
  * array variants like `"array<string>"`, `"array<integer>"`, etc.
  */
-export type NativeTypeName = PropertyType | `array<${string}>`;
+/** A scalar type, `array<T>`, or the name of a reference schema. */
+export type NativeTypeName = PropertyType | `array<${string}>` | (string & {});
 
 type JsonPrimitive = string | number | boolean | null | undefined;
 
@@ -61,6 +62,22 @@ type GuideData =
   | { type: GuideType.RANGE; value: [number, number] }
   | { type: GuideType.REGEX; value: string };
 
+/** Throws a RangeError unless `value` is a finite number. */
+function finite(value: number, what: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new RangeError(`${what} must be a finite number, got ${String(value)}`);
+  }
+  return value;
+}
+
+/** Throws a RangeError unless `value` is a non-negative safe integer. */
+function itemCount(value: number, what: string): number {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${what} must be a non-negative integer, got ${String(value)}`);
+  }
+  return value;
+}
+
 export class GenerationGuide {
   private readonly data: GuideData;
 
@@ -80,7 +97,7 @@ export class GenerationGuide {
 
   /** Require exactly `count` items in an array. */
   static count(count: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.COUNT, value: count });
+    return new GenerationGuide({ type: GuideType.COUNT, value: itemCount(count, "count") });
   }
 
   /** Apply a guide to each element of an array. */
@@ -90,26 +107,31 @@ export class GenerationGuide {
 
   /** Maximum number of items in an array. */
   static maxItems(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MAX_ITEMS, value });
+    return new GenerationGuide({ type: GuideType.MAX_ITEMS, value: itemCount(value, "maxItems") });
   }
 
   /** Maximum numeric value. */
   static maximum(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MAXIMUM, value });
+    return new GenerationGuide({ type: GuideType.MAXIMUM, value: finite(value, "maximum") });
   }
 
   /** Minimum number of items in an array. */
   static minItems(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MIN_ITEMS, value });
+    return new GenerationGuide({ type: GuideType.MIN_ITEMS, value: itemCount(value, "minItems") });
   }
 
   /** Minimum numeric value. */
   static minimum(value: number): GenerationGuide {
-    return new GenerationGuide({ type: GuideType.MINIMUM, value });
+    return new GenerationGuide({ type: GuideType.MINIMUM, value: finite(value, "minimum") });
   }
 
   /** Constrain numeric value to [min, max]. */
   static range(min: number, max: number): GenerationGuide {
+    finite(min, "range minimum");
+    finite(max, "range maximum");
+    if (min > max) {
+      throw new RangeError(`range minimum ${min} is above its maximum ${max}`);
+    }
     return new GenerationGuide({ type: GuideType.RANGE, value: [min, max] });
   }
 
@@ -130,17 +152,11 @@ export class GenerationGuide {
 
     switch (type) {
       case GuideType.ANY_OF: {
-        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, value, value.length, wrapped);
+        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, value, wrapped);
         break;
       }
       case GuideType.CONSTANT: {
-        const choices = [value];
-        fn.FMGenerationSchemaPropertyAddAnyOfGuide(
-          propertyPointer,
-          choices,
-          choices.length,
-          wrapped,
-        );
+        fn.FMGenerationSchemaPropertyAddAnyOfGuide(propertyPointer, [value], wrapped);
         break;
       }
       case GuideType.COUNT:
@@ -193,7 +209,7 @@ export class GenerationSchemaProperty {
       opts.description ?? null,
       type,
       opts.optional ?? false,
-    ) as NativePointer;
+    );
 
     for (const guide of opts.guides ?? []) {
       guide._applyToProperty(this._nativeProperty);
@@ -211,7 +227,7 @@ export class GenerationSchema {
 
   constructor(name: string, description?: string) {
     const fn = getFunctions();
-    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null) as NativePointer;
+    this._nativeSchema = fn.FMGenerationSchemaCreate(name, description ?? null);
   }
 
   addProperty(property: GenerationSchemaProperty): this {
@@ -247,14 +263,10 @@ export class GenerationSchema {
 
   /** Serialize the schema to a plain object (mirrors Python's GenerationSchema.to_dict()). */
   toDict(): JsonSchema {
-    const errorCode = [0];
-    const pointer = getFunctions().FMGenerationSchemaGetJSONString(
+    const { value: json, status } = getFunctions().FMGenerationSchemaGetJSONString(
       this._nativeSchema,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    const json = decodeAndFreeString(pointer);
-    if (!json) throw statusToError(errorCode[0], "Failed to serialize GenerationSchema");
+    );
+    if (!json) throw statusToError(status, "Failed to serialize GenerationSchema");
     return JSON.parse(json);
   }
 }
@@ -343,29 +355,87 @@ function arrayElementTypeName(def: PropertyDef): string {
   return def.type; // "string" | "integer" | "number" | "boolean"
 }
 
+/** Where a property sits while `generable()` builds a schema. */
+interface SchemaBuildContext {
+  /** The schema passed to the request; every reference schema is registered on it. */
+  root: GenerationSchema;
+  /** Reference schema names already used under `root`. */
+  usedNames: Set<string>;
+  /** Property names from the root to the property's parent. */
+  path: string[];
+}
+
+/**
+ * Type names the bridge reads as scalars. A reference schema with one of these
+ * names would be built as that scalar instead.
+ */
+const RESERVED_TYPE_NAMES = [
+  "string",
+  "number",
+  "float",
+  "double",
+  "integer",
+  "int",
+  "boolean",
+  "bool",
+];
+
+/**
+ * The name for a nested object's reference schema: its property path joined
+ * with "_" (`shipping_address`), so objects under the same key in different
+ * places don't collide. The framework resolves references by name. Characters
+ * other than letters, digits and "_" become "_", because the bridge matches
+ * `array<Name>` with `\w+`. A name that is reserved or already taken gets a
+ * numeric suffix.
+ */
+function referenceName(ctx: SchemaBuildContext, key: string): string {
+  const base = [...ctx.path, key].join("_").replace(/\W/g, "_") || "_";
+  let name = base;
+  for (let n = 2; ctx.usedNames.has(name); n++) name = `${base}_${n}`;
+  ctx.usedNames.add(name);
+  return name;
+}
+
+/** Builds a nested object's reference schema and registers it on the root. */
+function addReferenceSchema(ctx: SchemaBuildContext, key: string, def: ObjectPropertyDef): string {
+  const name = referenceName(ctx, key);
+  const nested = new GenerationSchema(name, def.description);
+  const inner = { ...ctx, path: [...ctx.path, key] };
+  for (const [childKey, childDef] of Object.entries(def.properties)) {
+    addPropertyDef(nested, childKey, childDef, inner);
+  }
+  // The framework resolves references only from the schema passed to the
+  // request, not from the reference schemas themselves.
+  ctx.root.addReferenceSchema(nested);
+  return name;
+}
+
 /** Recursively adds a property definition to a GenerationSchema. */
-function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef): void {
+function addPropertyDef(
+  schema: GenerationSchema,
+  name: string,
+  def: PropertyDef,
+  ctx: SchemaBuildContext,
+): void {
   if (def.type === "object") {
-    const nested = new GenerationSchema(name, def.description);
-    for (const [key, nestedDef] of Object.entries(def.properties)) {
-      addPropertyDef(nested, key, nestedDef);
-    }
-    schema.addReferenceSchema(nested);
-    schema.addProperty(new GenerationSchemaProperty(name, "object", { optional: def.optional }));
+    // The property's type is the reference schema's name, as for arrays of
+    // objects below. Typing it "object" leaves an undefined reference.
+    const typeName = addReferenceSchema(ctx, name, def);
+    schema.addProperty(
+      new GenerationSchemaProperty(name, typeName, {
+        description: def.description,
+        optional: def.optional,
+      }),
+    );
   } else if (def.type === "array") {
     // Build compound type name like "array<string>" or "array<Name>" to match
     // the convention expected by Apple's C bridge (see python-apple-fm-sdk).
-    const elementType = arrayElementTypeName(def.items);
-    const typeName: NativeTypeName = `array<${elementType === "object" ? name : elementType}>`;
-    if (def.items.type === "object") {
-      const itemSchema = new GenerationSchema(name, def.items.description);
-      for (const [key, nestedDef] of Object.entries(def.items.properties)) {
-        addPropertyDef(itemSchema, key, nestedDef);
-      }
-      schema.addReferenceSchema(itemSchema);
-    }
+    const elementType =
+      def.items.type === "object"
+        ? addReferenceSchema(ctx, name, def.items)
+        : arrayElementTypeName(def.items);
     schema.addProperty(
-      new GenerationSchemaProperty(name, typeName, {
+      new GenerationSchemaProperty(name, `array<${elementType}>`, {
         description: def.description,
         optional: def.optional,
         guides: def.guides,
@@ -395,7 +465,7 @@ function addPropertyDef(schema: GenerationSchema, name: string, def: PropertyDef
  *   review: { type: "string" },
  * });
  *
- * const content = await session.respondWithSchema("Review Inception", MovieReview.schema);
+ * const { content } = await session.respondWithSchema("Review Inception", MovieReview.schema);
  * const review = MovieReview.parse(content);
  * // review.title: string, review.rating: number, review.review: string
  * ```
@@ -406,8 +476,13 @@ export function generable<const T extends Record<string, PropertyDef>>(
   description?: string,
 ): Generable<T> {
   const schema = new GenerationSchema(name, description);
+  const ctx: SchemaBuildContext = {
+    root: schema,
+    usedNames: new Set([name, ...RESERVED_TYPE_NAMES]),
+    path: [],
+  };
   for (const [key, def] of Object.entries(properties)) {
-    addPropertyDef(schema, key, def);
+    addPropertyDef(schema, key, def, ctx);
   }
   return {
     schema,
@@ -423,6 +498,60 @@ export function generable<const T extends Record<string, PropertyDef>>(
 // ---------------------------------------------------------------------------
 
 /**
+ * The deepest JSON nesting a schema may have. Apple's framework decodes a
+ * schema recursively on a background thread with a small stack, and a schema
+ * nested a few hundred levels deep overflows it, which kills the process
+ * (Swift can't catch a stack overflow). Real schemas are nowhere near this.
+ *
+ * @internal
+ */
+export const MAX_SCHEMA_DEPTH = 128;
+
+/**
+ * Returns how deeply `value` nests objects and arrays, counting up to `limit`
+ * and stopping there. Iterative, so hostile input can't overflow the JS stack.
+ * An object that contains itself is infinitely deep, so a cycle returns
+ * `Infinity`; an object shared by several parents is not a cycle.
+ *
+ * @internal
+ */
+export function jsonNestingDepth(value: unknown, limit = Infinity): number {
+  let deepest = 0;
+  // The objects on the path from the root to the current node.
+  const onPath = new Set<object>();
+  const stack: Array<{ node: unknown; depth: number; exit?: true }> = [{ node: value, depth: 1 }];
+  while (stack.length > 0) {
+    const { node, depth, exit } = stack.pop()!;
+    if (node === null || typeof node !== "object") continue;
+    if (exit) {
+      onPath.delete(node);
+      continue;
+    }
+    if (onPath.has(node)) return Infinity;
+    if (depth > deepest) {
+      deepest = depth;
+      if (deepest > limit) return deepest;
+    }
+    onPath.add(node);
+    stack.push({ node, depth, exit: true });
+    for (const child of Object.values(node)) stack.push({ node: child, depth: depth + 1 });
+  }
+  return deepest;
+}
+
+/**
+ * Claims `title` for one object, adding a numeric suffix if it's taken. Apple
+ * resolves object types by title, so a duplicate makes one object adopt the
+ * other's properties.
+ */
+function reserveTitle(title: string, used: Set<string>): string {
+  let unique = title;
+  for (let n = 2; used.has(unique); n++) unique = `${title}_${n}`;
+  used.add(unique);
+  return unique;
+}
+
+/**
  * Normalize a JSON Schema object for the Foundation Models C API.
  *
  * The AFM schema parser requires every `object` node to have `title`,
@@ -433,6 +562,79 @@ export function generable<const T extends Record<string, PropertyDef>>(
  * @internal
  */
 export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
+  // Titles written into the schema are reserved first: a generated one must
+  // move aside rather than rename a title a $ref may point at.
+  const used = new Set<string>();
+  collectTitles(schema, used);
+  return formatSchema(schema, isRoot, [], used);
+}
+
+let _warnedDuplicateTitle = false;
+
+/** Records one title, warning the first time a schema reuses one. */
+function noteTitle(title: string, into: Set<string>, seen: Set<string>): void {
+  if (seen.has(title) && !_warnedDuplicateTitle) {
+    _warnedDuplicateTitle = true;
+    console.warn(
+      `[tsfm] Two objects in this schema are titled "${title}". The model keys object types by ` +
+        `title, so one will take the other's shape. Give them distinct titles.`,
+    );
+  }
+  seen.add(title);
+  into.add(title);
+}
+
+/**
+ * Every title already in the schema, at any depth. Two objects sharing one is
+ * reported: the framework keys object types by title, so the second silently
+ * takes the first's shape, and a written title can't be renamed here because a
+ * $ref may point at it.
+ */
+function collectTitles(
+  node: unknown,
+  into: Set<string>,
+  seen = new Set<string>(),
+  // A $defs entry's own title is ignored: formatSchema replaces it with the
+  // key, so counting both would report the same object twice.
+  skipOwnTitle = false,
+): void {
+  if (!node || typeof node !== "object") return;
+  if (Array.isArray(node)) {
+    for (const item of node) collectTitles(item, into, seen);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  const defs =
+    record.$defs && typeof record.$defs === "object" && !Array.isArray(record.$defs)
+      ? (record.$defs as Record<string, unknown>)
+      : null;
+  // A $defs entry is titled by its key, so the key is a title even though it
+  // isn't written as one; Apple resolves "#/$defs/<key>" that way.
+  if (defs) {
+    for (const [key, value] of Object.entries(defs)) {
+      noteTitle(key, into, seen);
+      collectTitles(value, into, seen, true);
+    }
+  }
+  if (!skipOwnTitle && typeof record.title === "string" && record.title) {
+    noteTitle(record.title, into, seen);
+  }
+  for (const [key, value] of Object.entries(record)) {
+    if (key !== "title" && key !== "$defs") collectTitles(value, into, seen);
+  }
+}
+
+/**
+ * `path` is where this subschema sits, used to title untitled objects; `used`
+ * holds the titles already taken, because the framework keys object types by
+ * title and two objects sharing one silently take the same shape.
+ */
+function formatSchema(
+  schema: JsonSchema,
+  isRoot: boolean,
+  path: string[],
+  used: Set<string>,
+): JsonSchema {
   const result: JsonSchema = { ...schema };
 
   // Recurse into $defs entries (Apple uses $defs/$ref for nested objects)
@@ -440,7 +642,12 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
     const defs = result.$defs as Record<string, JsonSchema>;
     const normalized: Record<string, JsonSchema> = {};
     for (const [key, value] of Object.entries(defs)) {
-      normalized[key] = value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+      // Apple resolves "#/$defs/<key>" by the definition's title, so the title
+      // must be its key; otherwise every $ref is an undefined reference.
+      normalized[key] =
+        value && typeof value === "object"
+          ? formatSchema({ ...value, title: key }, false, [key], used)
+          : value;
     }
     result.$defs = normalized;
   }
@@ -454,7 +661,9 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
         normalized[key] = value;
       } else {
         normalized[key] =
-          value && typeof value === "object" ? afmSchemaFormat(value, false) : value;
+          value && typeof value === "object"
+            ? formatSchema(value, false, [...path, key], used)
+            : value;
       }
     }
     result.properties = normalized;
@@ -467,12 +676,15 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
     !Array.isArray(result.items) &&
     !("$ref" in (result.items as JsonSchema))
   ) {
-    result.items = afmSchemaFormat(result.items as JsonSchema, false);
+    result.items = formatSchema(result.items as JsonSchema, false, [...path, "item"], used);
   }
 
   // Apple requires every object to have title, properties, required, additionalProperties, and x-order
   if (result.type === "object") {
-    if (!result.title) result.title = isRoot ? "Schema" : "Object";
+    // A title already in the schema stays exactly as written.
+    if (typeof result.title !== "string" || !result.title) {
+      result.title = reserveTitle(isRoot ? "Schema" : path.join("_") || "Object", used);
+    }
     if (!result.properties) result.properties = {};
     if (!result.required) result.required = [];
     if (!("additionalProperties" in result)) result.additionalProperties = false;
@@ -488,14 +700,6 @@ export function afmSchemaFormat(schema: JsonSchema, isRoot = true): JsonSchema {
 // GeneratedContent
 // ---------------------------------------------------------------------------
 
-const _contentRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] GeneratedContent cleanup via FinalizationRegistry failed:", err);
-  }
-});
-
 /**
  * The structured content returned from guided-generation requests.
  *
@@ -510,21 +714,15 @@ export class GeneratedContent {
 
   /** @internal */
   constructor(pointer: NativePointer) {
+    // The handle releases the native object when it's garbage collected.
     this._nativeContent = pointer;
-    _contentRegistry.register(this, pointer, this);
   }
 
   /** Create GeneratedContent from a JSON string (mirrors Python's GeneratedContent.from_json()). */
   static fromJson(jsonString: string): GeneratedContent {
-    const fn = getFunctions();
-    const errorCode = [0];
-    const pointer = fn.FMGeneratedContentCreateFromJSON(
-      jsonString,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    if (!pointer) throw statusToError(errorCode[0], "Failed to create GeneratedContent from JSON");
-    return new GeneratedContent(pointer);
+    const { value, status } = getFunctions().FMGeneratedContentCreateFromJSON(jsonString);
+    if (!value) throw statusToError(status, "Failed to create GeneratedContent from JSON");
+    return new GeneratedContent(value);
   }
 
   /** @internal Throws if the content has been disposed. */
@@ -536,16 +734,13 @@ export class GeneratedContent {
 
   get isComplete(): boolean {
     this._assertNotDisposed();
-    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent!) as boolean;
+    return getFunctions().FMGeneratedContentIsComplete(this._nativeContent!);
   }
 
   /** Returns the raw JSON string of the generated content. */
   toJson(): string {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMGeneratedContentGetJSONString(
-      this._nativeContent!,
-    ) as NativePointer | null;
-    return decodeAndFreeString(pointer) ?? "{}";
+    return getFunctions().FMGeneratedContentGetJSONString(this._nativeContent!) ?? "{}";
   }
 
   /**
@@ -587,13 +782,11 @@ export class GeneratedContent {
    */
   value<T = unknown>(propertyName: string): T {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMGeneratedContentGetPropertyValue(
-      this._nativeContent!,
-      propertyName,
-      null,
-      null,
-    ) as NativePointer | null;
-    const raw = decodeAndFreeString(pointer);
+    const {
+      value: raw,
+      status,
+      description,
+    } = getFunctions().FMGeneratedContentGetPropertyValue(this._nativeContent!, propertyName);
     if (raw !== null) {
       try {
         return JSON.parse(raw);
@@ -606,13 +799,19 @@ export class GeneratedContent {
     if (propertyName in obj) {
       return obj[propertyName] as T;
     }
+    // Neither path found it. If the native read failed, say why.
+    if (status !== 0) {
+      throw statusToError(
+        status,
+        `Property '${propertyName}' not found in generated content${description ? `: ${description}` : ""}`,
+      );
+    }
     throw new Error(`Property '${propertyName}' not found in generated content`);
   }
 
   /** Release the underlying C content object. Safe to call multiple times. */
   dispose(): void {
     if (this._nativeContent) {
-      _contentRegistry.unregister(this);
       getFunctions().FMRelease(this._nativeContent);
       this._nativeContent = null;
     }

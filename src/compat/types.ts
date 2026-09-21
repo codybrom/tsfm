@@ -167,13 +167,23 @@ export type ChatCompletionChoice = {
   finish_reason: "stop" | "length" | "tool_calls" | "content_filter";
 };
 
+/** Token counts, in OpenAI's Chat Completions shape. */
+export type CompletionUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_tokens_details: { cached_tokens: number };
+  completion_tokens_details: { reasoning_tokens: number };
+};
+
 export type ChatCompletion = {
   id: string;
   object: "chat.completion";
   created: number;
   model: string;
   choices: ChatCompletionChoice[];
-  usage: null;
+  /** Null when generation failed before a response was produced. */
+  usage: CompletionUsage | null;
   system_fingerprint: null;
 };
 
@@ -208,6 +218,7 @@ export type ChatCompletionChunk = {
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
-  usage: null;
+  /** Set only on the final chunk, when `stream_options.include_usage` is true; its `choices` is empty. */
+  usage: CompletionUsage | null;
   system_fingerprint: null;
 };

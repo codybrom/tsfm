@@ -42,6 +42,8 @@ toDict(): object
 type PropertyType = "string" | "integer" | "number" | "boolean" | "array" | "object"
 ```
 
+`"array"` and `"object"` are the vocabulary of `generable()` property definitions, where an array carries its `items` and an object its `properties`. `property()` takes a `NativeTypeName` instead, and there a bare `"array"` is rejected at runtime: give the element type as `"array<string>"`, `"array<integer>"`, and so on, and name a reference schema for objects.
+
 ## GenerationGuide
 
 Factory methods that create output constraints for schema properties.
@@ -51,8 +53,27 @@ Factory methods that create output constraints for schema properties.
 ```ts
 GenerationGuide.anyOf(values: string[])    // enumerated values
 GenerationGuide.constant(value: string)     // exact value
-GenerationGuide.regex(pattern: string)      // regex pattern
+GenerationGuide.regex(pattern: string)      // regex pattern (see supported syntax below)
 ```
+
+### Regex patterns
+
+The on-device model supports a subset of regex syntax in `regex` guides and JSON
+Schema `pattern`. Apple documents no restrictions; this table is tsfm's own
+measurement on macOS 27.0 (AFM 3 Core Advanced), and a later model may differ:
+
+| Supported | Not supported |
+| --- | --- |
+| Literals and `.` | Character classes `[a-z]`, `[^a]` (use `\d`, `\w`, `\s` or `(a\|b\|c)`) |
+| `\d`, `\w`, `\s` | Anchors `^`, `$` (patterns already match the whole value) |
+| Escaped punctuation: `\.`, `\-`, `\(`, `\[`, `\^`, `\$`, `\{` … | Other escapes: `\D`, `\W`, `\S`, `\b`, `\n`, `\t`, `\p{…}`, `\x41`, `\\` |
+| Groups `(…)`, nested and quantified, with `\|` | `(?…)` groups: non-capturing, lookaround, named |
+| `*`, `+`, `?`, `{m}`, `{m,n}` | Lazy or possessive quantifiers: `+?`, `*+`, `{2,3}?`; backreferences |
+
+`respondWithSchema()` and `respondWithJsonSchema()` check patterns before the
+request and throw `UnsupportedGuideError` naming the construct and where it is.
+Without that check, `(?:…)` makes the model generate until it fills the context
+window, and the others fail with an unhelpful error.
 
 ### Numeric Guides
 
@@ -85,10 +106,14 @@ value<T>(key: string): T
 
 ### `toObject()`
 
-Get the full result as a plain object:
+Get the full result as a plain object. Pass a type parameter to type the returned object according to your schema (defaults to `JsonObject`):
 
 ```ts
-toObject(): JsonObject
+toObject<T = JsonObject>(): T
+```
+
+```ts
+const result = content.toObject<{ name: string; age: number }>();
 ```
 
 ### `toJson()`
@@ -97,6 +122,14 @@ Get the raw JSON string of the generated content:
 
 ```ts
 toJson(): string
+```
+
+### `fromJson()`
+
+Create a `GeneratedContent` instance from a JSON string.
+
+```ts
+static fromJson(jsonString: string): GeneratedContent
 ```
 
 ### `isComplete`
@@ -118,7 +151,7 @@ dispose(): void
 Also supports `Symbol.dispose` for use with TC39 Explicit Resource Management:
 
 ```ts
-using content = await session.respondWithSchema(prompt, schema);
+using content = (await session.respondWithSchema(prompt, schema)).content;
 const data = content.toObject();
 // content is released when the block exits
 ```

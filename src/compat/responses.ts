@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { SystemLanguageModel } from "../core.js";
 import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
 import { SamplingMode, type GenerationOptions } from "../options.js";
+import { ownParams } from "./params.js";
+import type { Usage, ResponseStream as ModelResponseStream } from "../response.js";
 import {
   ExceededContextWindowSizeError,
   RefusalError,
-  RateLimitedError,
   GuardrailViolationError,
 } from "../errors.js";
 import {
@@ -18,12 +18,20 @@ import {
 } from "./tools.js";
 import { ResponseStream } from "./responses-stream.js";
 import {
+  compatModelName,
+  mapReasoningEffort,
+  warnOnUnknownModel,
+  type CompatModel,
+  type CompatModelName,
+} from "./models.js";
+import {
   reorderJson,
   nowSeconds,
-  CompatError,
+  throwAsCompatError,
   describeToolCall,
   formatToolResult,
   toolResultPrompt,
+  toResponseUsage,
   type ToolCallRef,
 } from "./utils.js";
 import type {
@@ -41,8 +49,6 @@ import type {
   ResponseFormatJsonSchema,
 } from "./responses-types.js";
 import type { ChatCompletionTool } from "./types.js";
-
-const MODEL_DEFAULT = "SystemLanguageModel";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -80,7 +86,6 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ResponseCreateParams> = [
   "truncation",
   "metadata",
   "include",
-  "reasoning",
   "parallel_tool_calls",
   "service_tier",
   "user",
@@ -136,12 +141,21 @@ function extractInputText(content: string | Array<{ type: string; text?: string 
 }
 
 /** Map ResponseCreateParams to native GenerationOptions. */
-function mapResponseParams(params: ResponseCreateParams): GenerationOptions {
+function mapResponseParams(raw: ResponseCreateParams): GenerationOptions {
+  const params = ownParams(raw);
   const options: GenerationOptions = {};
 
-  if (params.model !== undefined && params.model !== "SystemLanguageModel") {
+  warnOnUnknownModel(params.model);
+
+  const reasoningLevel = mapReasoningEffort(
+    params.reasoning ? ownParams(params.reasoning).effort : undefined,
+    compatModelName(params.model),
+    "reasoning.effort",
+  );
+  if (reasoningLevel !== undefined) options.reasoningLevel = reasoningLevel;
+  if (params.reasoning && ownParams(params.reasoning).summary != null) {
     console.warn(
-      `[tsfm compat] Model "${params.model}" is not supported. Use "SystemLanguageModel" or omit the model field.`,
+      `[tsfm compat] Parameter "reasoning.summary" is not supported and will be ignored.`,
     );
   }
 
@@ -312,9 +326,10 @@ function inputToTranscript(
 function buildResponse(
   params: ResponseCreateParams,
   output: ResponseOutputItem[],
-  status: "completed" | "failed" | "incomplete",
+  status: Response["status"],
   error: { code: string; message: string } | null = null,
   incompleteReason?: "max_output_tokens" | "content_filter",
+  usage?: Usage | null,
 ): Response {
   const outputText = output
     .filter((item): item is ResponseOutputMessage => item.type === "message")
@@ -327,7 +342,7 @@ function buildResponse(
     id: makeId(),
     object: "response",
     created_at: nowSeconds(),
-    model: MODEL_DEFAULT,
+    model: compatModelName(params.model),
     output,
     output_text: outputText,
     status,
@@ -343,7 +358,7 @@ function buildResponse(
     parallel_tool_calls: params.parallel_tool_calls ?? false,
     text: params.text ?? { format: { type: "text" } },
     truncation: params.truncation ?? null,
-    usage: null,
+    usage: usage ? toResponseUsage(usage) : null,
   };
 }
 
@@ -397,16 +412,18 @@ function makeFunctionCall(name: string, args: string): ResponseOutputFunctionToo
 // ---------------------------------------------------------------------------
 
 export class Responses {
-  private _getModel: () => SystemLanguageModel;
+  private _getModel: (name: CompatModelName) => CompatModel;
 
-  constructor(getModel: () => SystemLanguageModel) {
+  constructor(getModel: (name: CompatModelName) => CompatModel) {
     this._getModel = getModel;
   }
 
   async create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>;
   async create(params: ResponseCreateParams & { stream?: false | null }): Promise<Response>;
   async create(params: ResponseCreateParams): Promise<Response | ResponseStream>;
-  async create(params: ResponseCreateParams): Promise<Response | ResponseStream> {
+  async create(raw: ResponseCreateParams): Promise<Response | ResponseStream> {
+    // Own properties only; see ownParams.
+    const params = ownParams(raw);
     const options = mapResponseParams(params);
     const { transcriptJson, prompt: rawPrompt } = inputToTranscript(
       params.input,
@@ -444,9 +461,19 @@ export class Responses {
       prompt += "\n\nRemember: if a tool can help answer this, use type tool_call.";
     }
 
+    // Resolve the model first: _getModel throws for PCC on macOS 26, and
+    // doing it after fromJson would leak the transcript it just built.
+    const model = this._getModel(compatModelName(params.model));
     const transcript = Transcript.fromJson(transcriptStr);
-    const model = this._getModel();
-    const session = LanguageModelSession.fromTranscript(transcript, { model });
+    let session: LanguageModelSession;
+    try {
+      session = LanguageModelSession.fromTranscript(transcript, { model });
+    } catch (err) {
+      // The transcript owns a native object until a session takes it over;
+      // don't leave that to the garbage collector.
+      transcript.dispose();
+      throw err;
+    }
 
     if (params.stream) {
       return this._createStream(session, prompt, options, params, completionTools);
@@ -466,7 +493,9 @@ export class Responses {
       // Tools → structured output with tool schema
       if (tools && tools.length > 0) {
         const schema = buildToolSchema(tools);
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
         const result = parseToolResponse(parsed);
 
@@ -475,9 +504,16 @@ export class Responses {
             result.toolCall.function.name,
             result.toolCall.function.arguments,
           );
-          return buildResponse(params, [fc], "completed");
+          return buildResponse(params, [fc], "completed", null, undefined, usage);
         }
-        return buildResponse(params, [makeOutputMessage(result.content as string)], "completed");
+        return buildResponse(
+          params,
+          [makeOutputMessage(result.content as string)],
+          "completed",
+          null,
+          undefined,
+          usage,
+        );
       }
 
       // Structured output via text.format
@@ -485,17 +521,29 @@ export class Responses {
       if (format?.type === "json_schema") {
         const jsFormat = format as ResponseFormatJsonSchema;
         const schema = jsFormat.schema ?? { type: "object" };
-        const content = await session.respondWithJsonSchema(prompt, schema, { options });
+        const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+          options,
+        });
         return buildResponse(
           params,
           [makeOutputMessage(reorderJson(content.toJson(), schema))],
           "completed",
+          null,
+          undefined,
+          usage,
         );
       }
 
       // Plain text
-      const text = await session.respond(prompt, { options });
-      return buildResponse(params, [makeOutputMessage(text)], "completed");
+      const { content, usage } = await session.respond(prompt, { options });
+      return buildResponse(
+        params,
+        [makeOutputMessage(content)],
+        "completed",
+        null,
+        undefined,
+        usage,
+      );
     } catch (err) {
       if (err instanceof ExceededContextWindowSizeError) {
         return buildResponse(
@@ -509,9 +557,7 @@ export class Responses {
       if (err instanceof RefusalError) {
         return buildResponse(params, [makeRefusalMessage(err.message)], "completed");
       }
-      if (err instanceof RateLimitedError) {
-        throw new CompatError(err.message, 429);
-      }
+      throwAsCompatError(err);
       if (err instanceof GuardrailViolationError) {
         return buildResponse(
           params,
@@ -537,16 +583,20 @@ export class Responses {
     let seq = 0;
 
     async function* generate(): AsyncGenerator<ResponseStreamEvent> {
+      let stream: ModelResponseStream | undefined;
       try {
         // response.created
-        const initialResponse = buildResponse(params, [], "completed");
+        // OpenAI reports the response as in progress until it completes.
+        const initialResponse = buildResponse(params, [], "in_progress");
         yield { type: "response.created", response: initialResponse, sequence_number: seq++ };
         yield { type: "response.in_progress", response: initialResponse, sequence_number: seq++ };
 
         // Tools → buffer full response
         if (tools && tools.length > 0) {
           const schema = buildToolSchema(tools);
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
+          const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+            options,
+          });
           const parsed = JSON.parse(content.toJson()) as ToolModelOutput;
           const result = parseToolResponse(parsed);
 
@@ -585,7 +635,7 @@ export class Responses {
               sequence_number: seq++,
             };
 
-            const finalResponse = buildResponse(params, [fc], "completed");
+            const finalResponse = buildResponse(params, [fc], "completed", null, undefined, usage);
             yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
             return;
           }
@@ -593,7 +643,7 @@ export class Responses {
           // Text response from tool schema
           const msg = makeOutputMessage(result.content as string);
           yield* emitTextMessage(msg, 0);
-          const finalResponse = buildResponse(params, [msg], "completed");
+          const finalResponse = buildResponse(params, [msg], "completed", null, undefined, usage);
           yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
           return;
         }
@@ -603,11 +653,13 @@ export class Responses {
         if (format?.type === "json_schema") {
           const jsFormat = format as ResponseFormatJsonSchema;
           const schema = jsFormat.schema ?? { type: "object" };
-          const content = await session.respondWithJsonSchema(prompt, schema, { options });
+          const { content, usage } = await session.respondWithJsonSchema(prompt, schema, {
+            options,
+          });
           const text = reorderJson(content.toJson(), schema);
           const msg = makeOutputMessage(text);
           yield* emitTextMessage(msg, 0);
-          const finalResponse = buildResponse(params, [msg], "completed");
+          const finalResponse = buildResponse(params, [msg], "completed", null, undefined, usage);
           yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
           return;
         }
@@ -638,7 +690,9 @@ export class Responses {
         };
 
         let fullText = "";
-        for await (const delta of session.streamResponse(prompt, { options })) {
+        // Hoisted so the catch can still read usage; see the same shape in index.ts.
+        stream = session.streamResponse(prompt, { options });
+        for await (const delta of stream) {
           fullText += delta;
           yield {
             type: "response.output_text.delta",
@@ -681,7 +735,14 @@ export class Responses {
           sequence_number: seq++,
         };
 
-        const finalResponse = buildResponse(params, [doneItem], "completed");
+        const finalResponse = buildResponse(
+          params,
+          [doneItem],
+          "completed",
+          null,
+          undefined,
+          stream?.usage,
+        );
         yield { type: "response.completed", response: finalResponse, sequence_number: seq++ };
       } catch (err) {
         if (err instanceof ExceededContextWindowSizeError) {
@@ -691,19 +752,19 @@ export class Responses {
             "incomplete",
             { code: "max_output_tokens", message: err.message },
             "max_output_tokens",
+            // The stream counts what it produced before the error.
+            stream?.usage,
           );
           yield { type: "response.incomplete", response: resp, sequence_number: seq++ };
           return;
         }
         if (err instanceof RefusalError) {
           const msg = makeRefusalMessage(err.message);
-          const resp = buildResponse(params, [msg], "completed");
+          const resp = buildResponse(params, [msg], "completed", null, undefined, stream?.usage);
           yield { type: "response.completed", response: resp, sequence_number: seq++ };
           return;
         }
-        if (err instanceof RateLimitedError) {
-          throw new CompatError(err.message, 429);
-        }
+        throwAsCompatError(err);
         if (err instanceof GuardrailViolationError) {
           const resp = buildResponse(
             params,
@@ -711,6 +772,7 @@ export class Responses {
             "failed",
             { code: "content_filter", message: err.message },
             "content_filter",
+            stream?.usage,
           );
           yield { type: "response.failed", response: resp, sequence_number: seq++ };
           return;

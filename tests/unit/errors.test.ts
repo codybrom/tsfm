@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { recordToolFailure } from "../../src/tool-budget.js";
 import {
   statusToError,
   GenerationErrorCode,
@@ -12,7 +13,21 @@ import {
   ConcurrentRequestsError,
   RefusalError,
   InvalidGenerationSchemaError,
+  InvalidArgumentError,
+  TimeoutError,
+  UnsupportedCapabilityError,
+  UnsupportedTranscriptContentError,
+  ToolCallLimitExceededError,
+  PrivateCloudComputeNetworkError,
+  PrivateCloudComputeQuotaExceededError,
+  PrivateCloudComputeUnavailableError,
+  PrivateCloudComputeEntitlementError,
   ServiceCrashedError,
+  SystemPressureError,
+  CancelledError,
+  TranscriptMutationWhileRespondingError,
+  FailRequestError,
+  RequestFailedByToolError,
   GenerationError,
   FoundationModelsError,
   ToolCallError,
@@ -86,6 +101,173 @@ describe("statusToError", () => {
     expect(err).toBeInstanceOf(GenerationError);
   });
 
+  it.each([
+    [GenerationErrorCode.INVALID_ARGUMENT, InvalidArgumentError, "Invalid argument"],
+    [GenerationErrorCode.TIMEOUT, TimeoutError, "Timed out"],
+    [
+      GenerationErrorCode.UNSUPPORTED_CAPABILITY,
+      UnsupportedCapabilityError,
+      "Unsupported capability",
+    ],
+    [
+      GenerationErrorCode.UNSUPPORTED_TRANSCRIPT_CONTENT,
+      UnsupportedTranscriptContentError,
+      "Unsupported transcript content",
+    ],
+    [
+      GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
+      ToolCallLimitExceededError,
+      "Tool call limit exceeded",
+    ],
+    [
+      GenerationErrorCode.PCC_NETWORK_FAILURE,
+      PrivateCloudComputeNetworkError,
+      "Private Cloud Compute network failure",
+    ],
+    [
+      GenerationErrorCode.PCC_QUOTA_LIMIT_REACHED,
+      PrivateCloudComputeQuotaExceededError,
+      "Private Cloud Compute quota reached",
+    ],
+    [
+      GenerationErrorCode.PCC_SERVICE_UNAVAILABLE,
+      PrivateCloudComputeUnavailableError,
+      "Private Cloud Compute is unavailable",
+    ],
+  ])("maps code %i to its GenerationError subclass", (code, type, message) => {
+    const err = statusToError(code);
+    expect(err).toBeInstanceOf(type);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe(message);
+  });
+
+  it("maps TRANSCRIPT_MUTATION_WHILE_RESPONDING to its error, a GenerationError", () => {
+    const err = statusToError(GenerationErrorCode.TRANSCRIPT_MUTATION_WHILE_RESPONDING, "edited");
+    expect(err).toBeInstanceOf(TranscriptMutationWhileRespondingError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe("The transcript was changed while the session was responding: edited");
+    expect(GenerationErrorCode.TRANSCRIPT_MUTATION_WHILE_RESPONDING).toBe(21);
+  });
+
+  it("maps REQUEST_FAILED_BY_TOOL to RequestFailedByToolError, with no tool yet", () => {
+    const err = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, "no such record");
+    expect(err).toBeInstanceOf(RequestFailedByToolError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toBe("A tool failed the request: no such record");
+    expect((err as RequestFailedByToolError).toolName).toBeNull();
+    expect(GenerationErrorCode.REQUEST_FAILED_BY_TOOL).toBe(22);
+  });
+
+  it("RequestFailedByToolError names the tool and carries the cause once attached", () => {
+    const cause = new FailRequestError("no such record", { cause: new Error("404") });
+    expect(cause.name).toBe("FailRequestError");
+    expect((cause.cause as Error).message).toBe("404");
+    const err = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, "no such record");
+    (err as RequestFailedByToolError)._attach("lookup", cause);
+    expect((err as RequestFailedByToolError).toolName).toBe("lookup");
+    expect(err.cause).toBe(cause);
+    expect(err.message).toBe("Tool 'lookup' failed the request: no such record");
+  });
+
+  it.each([false, true])(
+    "hides the failure marker without a matching budget (JSON: %s)",
+    (json) => {
+      const failure = new FailRequestError('No record "alpha"\nTry again');
+      const wire = recordToolFailure([], "lookup", failure);
+      const detail = json ? JSON.stringify(wire) : wire;
+      const error = statusToError(GenerationErrorCode.REQUEST_FAILED_BY_TOOL, detail);
+      expect(error).toBeInstanceOf(RequestFailedByToolError);
+      expect(error.message).toBe(
+        `A tool failed the request: ${json ? JSON.stringify(failure.message) : failure.message}`,
+      );
+      expect((error as RequestFailedByToolError)._failureId).toBeTruthy();
+      expect((error as RequestFailedByToolError).toolName).toBeNull();
+      expect(error.cause).toBeUndefined();
+    },
+  );
+
+  it.each([
+    [
+      "a tool call",
+      'Error ModelManagerServices.ModelManagerError:1013 - Not executed due to current system state ["CriticalMemoryPressure"], try again later',
+      "CriticalMemoryPressure",
+    ],
+    [
+      "the safety classifier",
+      'Error Domain=com.apple.SensitiveContentAnalysisML Code=15 UserInfo={NSMultipleUnderlyingErrorsKey=("Error Domain=ModelManagerServices.ModelManagerError Code=1013")}',
+      undefined,
+    ],
+  ])("maps the model manager's 1013 from %s to SystemPressureError", (_name, detail, state) => {
+    // The same refusal reaches us formatted two ways; see
+    // tests/fixtures/service-pressure/.
+    const err = statusToError(GenerationErrorCode.UNKNOWN_ERROR, detail);
+    expect(err).toBeInstanceOf(SystemPressureError);
+    expect((err as SystemPressureError).state).toBe(state);
+    expect(err.message).toContain("can't run the model right now");
+    expect(err.message).toContain(detail);
+  });
+
+  // Messages taken verbatim from ModelManagerServices' own table; see
+  // tests/fixtures/service-pressure/pressure.md.
+  it.each([
+    ["Client rate limit exceeded, try again later", RateLimitedError],
+    ["Canceled due to preemption, try again", SystemPressureError],
+    ["Asset com.apple.fm.language is not available in Model Catalog", AssetsUnavailableError],
+    ["Asset com.apple.fm.language not found in Model Catalog", AssetsUnavailableError],
+  ])("recognises the model manager's %j instead of reporting an unknown error", (detail, type) => {
+    const err = statusToError(GenerationErrorCode.UNKNOWN_ERROR, detail);
+    expect(err).toBeInstanceOf(type);
+    expect(err.message).not.toContain("Unknown error");
+  });
+
+  it("names preemption as the state when the model manager yields to another request", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNKNOWN_ERROR,
+      "Canceled due to preemption, try again",
+    );
+    expect((err as SystemPressureError).state).toBe("Preempted");
+    expect(err.message).toContain("another request took priority");
+  });
+
+  it("still reports a classifier failure with no system state as a crash", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNKNOWN_ERROR,
+      'Error Domain=com.apple.SensitiveContentAnalysisML Code=15 "(null)"',
+    );
+    expect(err).toBeInstanceOf(ServiceCrashedError);
+    expect(err).not.toBeInstanceOf(SystemPressureError);
+  });
+
+  it("maps CANCELLED to CancelledError, a GenerationError", () => {
+    const err = statusToError(GenerationErrorCode.CANCELLED, "Operation cancelled");
+    expect(err).toBeInstanceOf(CancelledError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.name).toBe("CancelledError");
+    expect(err.message).toBe("The request was cancelled");
+    expect(GenerationErrorCode.CANCELLED).toBe(20);
+  });
+
+  it("keeps a cancellation detail that says more than the bridge's own wording", () => {
+    const err = statusToError(GenerationErrorCode.CANCELLED, "the host went away");
+    expect(err.message).toBe("The request was cancelled: the host went away");
+  });
+
+  it("keeps the point release in minimumRequiredMacOS, as token counting needs 26.4", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNSUPPORTED_CAPABILITY,
+      "Token counting requires macOS 26.4 or later.",
+    );
+    expect(err).toBeInstanceOf(UnsupportedCapabilityError);
+    expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(26.4);
+  });
+
+  it("maps PCC_ENTITLEMENT_MISSING to an error naming the entitlement", () => {
+    const err = statusToError(GenerationErrorCode.PCC_ENTITLEMENT_MISSING);
+    expect(err).toBeInstanceOf(PrivateCloudComputeEntitlementError);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err.message).toMatch(/com\.apple\.developer\.private-cloud-compute/);
+  });
+
   it("maps unknown code to GenerationError", () => {
     const err = statusToError(999);
     expect(err).toBeInstanceOf(GenerationError);
@@ -124,14 +306,14 @@ describe("statusToError", () => {
     const err = statusToError(255, detail);
     expect(err).toBeInstanceOf(ServiceCrashedError);
     expect(err.message).toContain("Apple Intelligence service has crashed");
-    expect(err.message).toContain("launchctl kickstart");
+    expect(err.message).toContain("log out and back in");
     expect(err.message).toContain(detail);
   });
 
-  it("maps code 255 with ModelManagerError Code=1013 to ServiceCrashedError", () => {
+  it("maps code 255 with ModelManagerError Code=1013 to SystemPressureError", () => {
     const detail = "ModelManagerServices.ModelManagerError Code=1013";
     const err = statusToError(255, detail);
-    expect(err).toBeInstanceOf(ServiceCrashedError);
+    expect(err).toBeInstanceOf(SystemPressureError);
   });
 
   it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
@@ -145,6 +327,15 @@ describe("statusToError", () => {
     const err = statusToError(255, "some other error");
     expect(err).not.toBeInstanceOf(ServiceCrashedError);
     expect(err).toBeInstanceOf(GenerationError);
+  });
+});
+
+describe("GenerationErrorCode", () => {
+  it("exists at runtime, with reverse mappings", () => {
+    // A const enum would be erased at compile time and leave nothing here.
+    expect(GenerationErrorCode.TIMEOUT).toBe(12);
+    expect(GenerationErrorCode[12]).toBe("TIMEOUT");
+    expect(Object.keys(GenerationErrorCode)).toContain("UNSUPPORTED_TRANSCRIPT_CONTENT");
   });
 });
 
@@ -208,14 +399,15 @@ describe("error hierarchy", () => {
 
   it("ServiceCrashedError includes recovery instructions", () => {
     const err = new ServiceCrashedError();
-    expect(err.message).toContain("launchctl kickstart");
-    expect(err.message).toContain("com.apple.generativeexperiencesd");
+    expect(err.message).toContain("retry with a new session");
+    expect(err.message).toContain("log out and back in");
+    expect(err.message).not.toContain("launchctl");
   });
 
   it("ServiceCrashedError includes original error detail when provided", () => {
     const err = new ServiceCrashedError("SensitiveContentAnalysisML Code=15");
     expect(err.message).toContain("SensitiveContentAnalysisML Code=15");
-    expect(err.message).toContain("launchctl kickstart");
+    expect(err.message).toContain("log out and back in");
   });
 
   it("errors have default messages when constructed without arguments", () => {

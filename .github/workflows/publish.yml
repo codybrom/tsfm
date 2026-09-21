@@ -28,12 +28,11 @@ permissions:
 jobs:
   publish:
     # Must be macOS: prepublishOnly runs scripts/build-native.sh, which compiles
-    # the Swift bridge and needs Xcode 26.4+. On a Linux runner this fails deep
-    # in the build rather than at publish time.
+    # the Swift bridge and needs Xcode 27 (macOS 27 SDK). On a Linux runner this
+    # fails deep in the build rather than at publish time.
     #
-    # xcode-27 builds against the macOS 27 SDK, which prompt attachments need.
-    # The deployment target stays macOS 26, and the Verify step below fails the
-    # publish if the dylib would not load there.
+    # The Verify step below fails the publish unless the dylib and the addon
+    # deploy to macOS 26.0 with the macOS 27 APIs weak-linked.
     runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
@@ -69,15 +68,58 @@ jobs:
 
       # Build explicitly so the artifact can be inspected before publishing.
       # prepublishOnly runs the same command again, but build-native.sh skips
-      # when the dylib is already present, so the second pass only re-emits TS.
+      # when its inputs are unchanged, so the second pass only re-emits TS.
       - name: Build
         run: npm run build
 
       - name: Verify the native library made it into the package
         run: |
-          bash scripts/verify-native.sh --attachments
+          bash scripts/verify-native.sh
           npm pack --dry-run
+
+      # A prerelease (1.0.0-beta.1) publishes under its identifier (beta) and
+      # never becomes latest. A release older than the current latest, such as
+      # a 0.x patch after 1.0 or 1.0.1 after 1.2.0, publishes as legacy so it
+      # doesn't move latest backwards. Compared as whole versions with the same
+      # semver rules npm uses, not by major alone.
+      - name: Choose the npm dist-tag
+        id: dist-tag
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* ]]; then
+            TAG="${VERSION#*-}"
+            TAG="${TAG%%.*}"
+          else
+            # Guessing here could move latest backwards, so a failed lookup
+            # stops the publish instead.
+            if ! LATEST="$(npm view tsfm-sdk dist-tags.latest)" || [[ ! "$LATEST" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Couldn't read tsfm-sdk's latest dist-tag from npm (got '$LATEST')"
+              exit 1
+            fi
+            if [[ "$(bash scripts/compare-versions.sh "$VERSION" "$LATEST")" == "older" ]]; then
+              TAG="legacy"
+            else
+              TAG="latest"
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "publishing $VERSION with dist-tag $TAG"
+
+      - name: Verify the GitHub release's prerelease flag matches the version
+        if: github.event_name == 'release'
+        env:
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$VERSION" == *-* && "$PRERELEASE" != "true" ]]; then
+            echo "::error::$VERSION is a prerelease; publish it from a GitHub pre-release"
+            exit 1
+          fi
+          if [[ "$VERSION" != *-* && "$PRERELEASE" == "true" ]]; then
+            echo "::error::$VERSION isn't a prerelease, but the GitHub release is marked pre-release"
+            exit 1
+          fi
 
       - name: Publish to npm
         if: github.event_name == 'release' || inputs.dry-run == false
-        run: npm publish
+        run: npm publish --tag "${{ steps.dist-tag.outputs.tag }}"

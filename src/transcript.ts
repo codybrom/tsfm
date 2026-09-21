@@ -1,8 +1,9 @@
-import { getFunctions, decodeAndFreeString, type NativePointer } from "./bindings.js";
+import { getFunctions, type NativePointer } from "./bindings.js";
 import { statusToError, FoundationModelsError } from "./errors.js";
 import type { JsonSchema, JsonObject } from "./schema.js";
 
-export type TranscriptEntryRole = "instructions" | "user" | "response" | "tool";
+/** `"reasoning"` entries come from Private Cloud Compute requests with a `reasoningLevel`. */
+export type TranscriptEntryRole = "instructions" | "user" | "response" | "tool" | "reasoning";
 
 export interface TranscriptTextContent {
   type: "text";
@@ -33,21 +34,24 @@ export interface TranscriptEntry {
   // user-specific
   options?: JsonObject;
   responseFormat?: JsonSchema;
+  /** Context options the request used, e.g. `{ reasoningLevel: "deep" }`. */
+  contextOptions?: JsonObject;
   // response-specific
   toolCalls?: TranscriptToolCall[];
   assets?: string[];
   // tool-specific
   toolName?: string;
   toolCallID?: string;
+  // reasoning-specific (Private Cloud Compute)
+  reasoning?: {
+    /** The model's reasoning text, when it's shared. Often empty. */
+    contents: TranscriptContent[];
+    /** An opaque signature the model uses to continue from this reasoning. */
+    signature?: string;
+  };
+  /** Model and system details recorded with the entry. */
+  metadata?: JsonObject;
 }
-
-const _transcriptRegistry = new FinalizationRegistry((pointer: NativePointer) => {
-  try {
-    getFunctions().FMRelease(pointer);
-  } catch (err) {
-    console.warn("[tsfm] Transcript cleanup via FinalizationRegistry failed:", err);
-  }
-});
 
 export class Transcript {
   /** @internal raw session pointer — backs the live session's native handle */
@@ -64,26 +68,61 @@ export class Transcript {
   private _owned: boolean;
 
   private _disposed = false;
+  /** Set when the session backing this transcript is disposed. */
+  private _detached = false;
 
   /** @internal */
   constructor(sessionPointer: NativePointer, owned = false) {
     this._nativeSession = sessionPointer;
+    // An owned handle is also released when it's garbage collected.
     this._owned = owned;
-    if (owned) _transcriptRegistry.register(this, sessionPointer, this);
   }
 
   private _assertNotDisposed(): void {
     if (this._disposed) {
       throw new FoundationModelsError("Transcript has been disposed");
     }
+    if (this._detached) {
+      throw new FoundationModelsError(
+        "The session this transcript belongs to has been disposed. " +
+          "Export the transcript before disposing the session.",
+      );
+    }
+  }
+
+  /**
+   * @internal Called when the backing session is disposed. Its pointer is
+   * released, and reading through it would crash the host.
+   */
+  _detach(): void {
+    if (!this._owned) this._detached = true;
+  }
+
+  /**
+   * @internal The native pointer, for building a session or counting tokens.
+   * Throws a FoundationModelsError once the transcript is disposed or its
+   * session is; the addon would refuse the released handle anyway, but with a
+   * bare Error.
+   */
+  _pointer(): NativePointer {
+    this._assertNotDisposed();
+    return this._nativeSession;
   }
 
   /** @internal Release the C object this instance owns, if any. */
   private _releaseIfOwned(): void {
     if (!this._owned) return;
-    _transcriptRegistry.unregister(this);
     getFunctions().FMRelease(this._nativeSession);
     this._owned = false;
+  }
+
+  /**
+   * @internal Whether this transcript owns its native object. False for one
+   * reached through `session.transcript`, and for one already handed to
+   * `fromTranscript()`.
+   */
+  get _ownsObject(): boolean {
+    return this._owned;
   }
 
   /** @internal Update the native session after fromTranscript(). */
@@ -115,8 +154,8 @@ export class Transcript {
    *
    * **Lifetime note:** instances created by `new LanguageModelSession()` or
    * `LanguageModelSession.fromTranscript()` are backed by the live session's
-   * C state. Calling `toJson()` after `session.dispose()` will dereference a
-   * freed pointer. Export the transcript before disposing the session.
+   * C state. Export the transcript before disposing the session; afterwards
+   * `toJson()` throws.
    *
    * Instances created via the static `Transcript.fromJson()` /
    * `Transcript.fromDict()` constructors are independent C objects and are
@@ -124,14 +163,19 @@ export class Transcript {
    */
   toJson(): string {
     this._assertNotDisposed();
-    const pointer = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(
-      this._nativeSession,
-      null,
-      null,
-    ) as NativePointer | null;
-    const json = decodeAndFreeString(pointer);
-    if (!json) throw new FoundationModelsError("Failed to export transcript");
-    return json;
+    const {
+      value: json,
+      status,
+      description,
+    } = getFunctions().FMLanguageModelSessionGetTranscriptJSONString(this._nativeSession);
+    if (json !== null) return json;
+    if (status !== 0) {
+      throw statusToError(
+        status,
+        `Failed to export transcript${description ? `: ${description}` : ""}`,
+      );
+    }
+    throw new FoundationModelsError("Failed to export transcript");
   }
 
   /** Export the transcript as a parsed dictionary (mirrors Python's Transcript.to_dict()). */
@@ -153,17 +197,9 @@ export class Transcript {
 
   /** Deserialize a previously exported transcript JSON string. */
   static fromJson(json: string): Transcript {
-    const fn = getFunctions();
-    const errorCode = [0];
-    const pointer = fn.FMTranscriptCreateFromJSONString(
-      json,
-      errorCode,
-      null,
-    ) as NativePointer | null;
-    if (!pointer) {
-      throw statusToError(errorCode[0], "Failed to deserialize transcript");
-    }
-    return new Transcript(pointer, true);
+    const { value, status } = getFunctions().FMTranscriptCreateFromJSONString(json);
+    if (!value) throw statusToError(status, "Failed to deserialize transcript");
+    return new Transcript(value, true);
   }
 
   /** Deserialize a transcript from a dictionary (mirrors Python's Transcript.from_dict()). */

@@ -20,6 +20,7 @@ import {
   type InferSchema,
   type PropertyDef,
 } from "tsfm-sdk";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Schema
@@ -183,7 +184,7 @@ async function main() {
     console.log(sample.text);
     console.log();
 
-    const content = await session.respondWithSchema(
+    const { content } = await session.respondWithSchema(
       `Parse this contact info:\n\n${sample.text}`,
       ContactCard.schema,
     );
@@ -195,7 +196,7 @@ async function main() {
   }
 
   // Natural-language summary using the same session (context carries over)
-  const summary = await session.respond(
+  const { content: summary } = await session.respond(
     `You just parsed ${parsed.length} contacts. Give a brief summary: ` +
       `how many had complete info, which fields were you least confident about, ` +
       `and any details that seemed ambiguous.`,
@@ -208,4 +209,6 @@ async function main() {
   model.dispose();
 }
 
-main().catch(console.error);
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  main().catch(console.error);
+}
