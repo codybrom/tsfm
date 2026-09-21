@@ -29,6 +29,14 @@
     "./openai": {
       "import": "./dist/compat/index.js",
       "types": "./dist/compat/index.d.ts"
+    },
+    "./system1": {
+      "import": "./dist/system-one.js",
+      "types": "./dist/system-one.d.ts"
+    },
+    "./jev": {
+      "import": "./dist/system-one.js",
+      "types": "./dist/system-one.d.ts"
     }
   },
   "scripts": {

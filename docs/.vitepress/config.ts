@@ -39,6 +39,7 @@ function guideSidebar() {
         { text: "Migrating to 1.0", link: "/guide/migrating-to-1" },
         { text: "Model Configuration", link: "/guide/model-configuration" },
         { text: "Chat & Responses APIs", link: "/guide/chat-api" },
+        { text: "System One Decisions", link: "/guide/system-one" },
       ],
     },
     {
@@ -171,6 +172,7 @@ export default defineConfig({
             { text: "Transcript", link: "/api/transcript" },
             { text: "Errors", link: "/api/errors" },
             { text: "Chat & Responses APIs", link: "/api/chat" },
+            { text: "System One API", link: "/api/system-one" },
           ],
         },
       ],

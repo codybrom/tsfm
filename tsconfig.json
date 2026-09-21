@@ -12,7 +12,9 @@
     "paths": {
       "tsfm-sdk": ["./src/index.ts"],
       "tsfm-sdk/chat": ["./src/compat/index.ts"],
-      "tsfm-sdk/openai": ["./src/compat/index.ts"]
+      "tsfm-sdk/openai": ["./src/compat/index.ts"],
+      "tsfm-sdk/system1": ["./src/system-one.ts"],
+      "tsfm-sdk/jev": ["./src/system-one.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*", "examples/**/*", "scripts/**/*"],

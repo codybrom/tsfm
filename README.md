@@ -24,6 +24,7 @@
 - Tool calling
 - Transcript persistence
 - Chat-style and Responses-style APIs via `tsfm-sdk/chat` (or its alias, `tsfm-sdk/openai`)
+- Typed, decision-only Choice/Score/Noul calls via `tsfm-sdk/system1` (or its Jev-shaped alias, `tsfm-sdk/jev`)
 
 ## Quick Start
 
@@ -64,6 +65,7 @@ model.dispose();
 - [Structured Output](https://tsfm.dev/guide/structured-output) — typed schemas with generation guides
 - [Tools](https://tsfm.dev/guide/tools) — function calling
 - [Chat & Responses APIs](https://tsfm.dev/guide/chat-api) — familiar Chat-style and Responses-style interfaces
+- [System One Decisions](https://tsfm.dev/guide/system-one) — local, Jev-shaped typed decisions without prose
 - [API Reference](https://tsfm.dev/api/) — complete API docs
 - [Examples](https://tsfm.dev/examples/) — runnable code for every feature
 

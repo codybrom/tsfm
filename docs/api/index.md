@@ -45,6 +45,22 @@ import Client from "tsfm-sdk/chat";
 
 See the [Chat & Responses API reference](/api/chat) for full type documentation.
 
+## System One Decisions
+
+| Export | Description |
+| --- | --- |
+| [SystemOneClient](/api/system-one) | On-device, decision-only client with shared state and named questions |
+| [choice()](/api/system-one#choice-instructions-criteria) | Pick one typed label and return a distribution |
+| [score()](/api/system-one#score-instructions-criteria) | Evaluate an ordered rubric |
+| [noul()](/api/system-one#noul-instructions-criteria) | Estimate the probability of a yes/no judgment |
+
+```ts
+import { SystemOneClient, choice, score, noul } from "tsfm-sdk/system1";
+```
+
+`tsfm-sdk/jev` is an alias with a `TypeSafeClient` compatibility export. See the
+[System One API reference](/api/system-one) and [guide](/guide/system-one).
+
 ## Installation
 
 ```ts
@@ -62,4 +78,7 @@ import {
 
 // Chat API compatible interface
 import Client from "tsfm-sdk/chat";
+
+// Decision-only API
+import { SystemOneClient, choice, score, noul } from "tsfm-sdk/system1";
 ```

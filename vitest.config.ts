@@ -6,6 +6,8 @@ export default defineConfig({
     alias: {
       "tsfm-sdk/chat": resolve(import.meta.dirname, "src/compat/index.js"),
       "tsfm-sdk/openai": resolve(import.meta.dirname, "src/compat/index.js"),
+      "tsfm-sdk/system1": resolve(import.meta.dirname, "src/system-one.js"),
+      "tsfm-sdk/jev": resolve(import.meta.dirname, "src/system-one.js"),
       "tsfm-sdk": resolve(import.meta.dirname, "src/index.js"),
     },
   },
