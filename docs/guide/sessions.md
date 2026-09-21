@@ -91,8 +91,8 @@ promise settles later. What to expect:
 - Requests queued behind the cancelled one wait until it settles; `cancel()`
   doesn't remove them from the queue.
 - For streams, cancellation unblocks a waiting iterator and the consumer loop
-  exits on its next iteration. Cleanup releases the queue so later requests can
-  run on the same session; see
+  exits on its next iteration. Cleanup waits for native completion before
+  releasing the queue so later requests can run on the same session; see
   [Streaming](/guide/streaming#cancellation).
 
 ## Checking State

@@ -99,6 +99,9 @@ import { recordToolFailure, type ToolCallBudget } from "../../src/tool-budget.js
 beforeEach(() => {
   vi.clearAllMocks();
   lastRegisteredCallback = null;
+  mockFns.FMRequestCancel.mockImplementation((handle) => {
+    if (handle === "mock-stream-pointer") lastRegisteredCallback?.(23, "Stream cancelled");
+  });
 });
 
 // A test that fails before restoring real timers would otherwise leave fake
@@ -1267,7 +1270,7 @@ describe("LanguageModelSession", () => {
     });
 
     it("cancel() unblocks a waiting stream consumer and cancels the native request", async () => {
-      // The callback never fires — the stream blocks until cancel() is called.
+      // No snapshots arrive; cancellation supplies the terminal callback.
       mockFns.FMLanguageModelSessionResponseStreamIterate.mockImplementation(() => {});
 
       const session = new LanguageModelSession();
@@ -1292,6 +1295,7 @@ describe("LanguageModelSession", () => {
       });
       mockFns.FMRequestCancel.mockImplementation((handle) => {
         if (released.has(handle)) throw new Error("The request has been released");
+        if (handle === "mock-stream-pointer") lastRegisteredCallback?.(23, "Stream cancelled");
       });
       mockFns.FMLanguageModelSessionRespond.mockImplementationOnce(
         textRequest(() => lastRegisteredCallback?.(0, "after cancel")),

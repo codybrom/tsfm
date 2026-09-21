@@ -74,6 +74,7 @@ class NeverReturnsTool extends Tool {
 async function cancelWithPendingTool(
   kind: "stream" | "text" | "schema" | "json",
   disposeTool = false,
+  timing?: { cancel: number; late: number },
 ): Promise<void> {
   let called!: () => void;
   const didCall = new Promise<void>((resolve) => (called = resolve));
@@ -108,6 +109,11 @@ async function cancelWithPendingTool(
       throw new Error("The request finished without invoking the tool");
     }),
   ]);
+  const cancelDelay = Number(timing?.cancel ?? process.env.TSFM_STRESS_CANCEL_MS ?? 0);
+  const lateDelay = Number(timing?.late ?? process.env.TSFM_STRESS_LATE_MS ?? 100);
+  assert.ok(Number.isInteger(cancelDelay) && cancelDelay >= 0 && cancelDelay <= 1000);
+  assert.ok(Number.isInteger(lateDelay) && lateDelay >= 0 && lateDelay <= 1000);
+  if (cancelDelay) await tick(cancelDelay);
   session.cancel();
   if (kind === "stream") await pending;
   else await assert.rejects(pending, CancelledError);
@@ -120,7 +126,7 @@ async function cancelWithPendingTool(
     (response) => ({ response }),
     (error: unknown) => ({ error }),
   );
-  await tick(100);
+  await tick(lateDelay);
   if (disposeTool) tool.dispose();
   else finishTool("A day has 24 hours.");
   const outcome = await result;
@@ -130,7 +136,7 @@ async function cancelWithPendingTool(
   await tick(100);
 }
 
-// Both sessions share one native tool. Cancelling A must stop its JS timer
+// Both sessions share one JavaScript tool. Cancelling A must stop its JS timer
 // without touching B's signal or its work.
 async function cancelSharedTool(): Promise<void> {
   const calls: Array<{ signal: AbortSignal; stopped: Promise<void> }> = [];
@@ -234,10 +240,132 @@ async function sharedToolBudgets(): Promise<void> {
   assert.ok((await first) instanceof CancelledError);
 }
 
+// Four live sessions share one stateful tool across all response APIs. Hold
+// every invocation open, then independently cancel, dispose, finish, and close
+// the owner. This catches cross-session routing errors hidden by serial tests.
+async function sharedToolFourSessions(): Promise<void> {
+  const calls: Array<{
+    signal: AbortSignal;
+    resolve: (value: string) => void;
+    aborted: Promise<void>;
+  }> = [];
+  let entered = Promise.withResolvers<void>();
+  class SharedTool extends NeverReturnsTool {
+    override async call(_args?: GeneratedContent, context?: ToolCallContext): Promise<string> {
+      assert.ok(context);
+      const result = Promise.withResolvers<string>();
+      const aborted = Promise.withResolvers<void>();
+      calls.push({ signal: context.signal, resolve: result.resolve, aborted: aborted.promise });
+      context.signal.addEventListener(
+        "abort",
+        () => {
+          result.reject(context.signal.reason);
+          aborted.resolve();
+        },
+        {
+          once: true,
+        },
+      );
+      entered.resolve();
+      return result.promise;
+    }
+  }
+  using tool = new SharedTool(() => {});
+  using a = new LanguageModelSession({ tools: [tool] });
+  using b = new LanguageModelSession({ tools: [tool] });
+  using c = new LanguageModelSession({ tools: [tool] });
+  using source = new LanguageModelSession();
+  using d = LanguageModelSession.fromTranscript(Transcript.fromJson(source.transcript.toJson()), {
+    tools: [tool],
+  });
+  const schema = new GenerationSchema("Fact").property("fact", "string");
+  const prompt = "Use lookup to find a fact.";
+  const opts = { options: { toolCallingMode: "required", maximumToolCalls: 1 } } as const;
+  const starts = [
+    () => a.respond(prompt, opts),
+    () => b.streamResponse(prompt, opts).collect(),
+    () => c.respondWithSchema(prompt, schema, opts),
+    () => d.respondWithJsonSchema(prompt, schema.toDict(), opts),
+  ];
+  const pending: Promise<unknown>[] = [];
+  for (const start of starts) {
+    entered = Promise.withResolvers<void>();
+    const result = start().then(
+      () => {
+        throw new Error("Expected the required loop to fail");
+      },
+      (error: unknown) => error,
+    );
+    pending.push(result);
+    await Promise.race([
+      entered.promise,
+      result.then((error) => {
+        throw error;
+      }),
+    ]);
+  }
+  assert.equal(calls.length, 4);
+  a.cancel();
+  assert.ok((await pending[0]) instanceof CancelledError);
+  await calls[0].aborted;
+  assert.equal(calls[0].signal.aborted, true);
+  assert.ok(calls.slice(1).every(({ signal }) => !signal.aborted));
+  b.dispose();
+  assert.ok((await pending[1]) instanceof Error);
+  assert.equal(calls[1].signal.aborted, true);
+  assert.ok(calls.slice(2).every(({ signal }) => !signal.aborted));
+  calls[2].resolve("A day has 24 hours.");
+  assert.ok((await pending[2]) instanceof ToolCallLimitExceededError);
+  assert.equal(calls[3].signal.aborted, false);
+  tool.dispose();
+  assert.ok((await pending[3]) instanceof Error);
+  assert.equal(calls[3].signal.aborted, true);
+  assert.equal(calls.length, 4);
+  console.log("four simultaneous tool invocations isolated across text, stream, schema and JSON");
+}
+
+// A long-lived user Tool must not keep every session's private registration
+// alive. Half are disposed explicitly and half are abandoned to the GC.
+async function sharedToolLifetime(): Promise<void> {
+  const registrations: WeakRef<Tool>[] = [];
+  class TrackedTool extends NeverReturnsTool {
+    override _bindToSession(): Tool {
+      const bound = super._bindToSession();
+      registrations.push(new WeakRef(bound));
+      return bound;
+    }
+  }
+  using tool = new TrackedTool(() => {});
+  const create = () => {
+    for (let i = 0; i < 200; i++) {
+      const session = new LanguageModelSession({ tools: [tool] });
+      if (i % 2 === 0) session.dispose();
+    }
+  };
+  create();
+  let alive = registrations.length;
+  for (let attempt = 0; attempt < 20 && alive; attempt++) {
+    // WeakRef targets remain alive until the current job ends.
+    await tick(10);
+    globalThis.gc?.();
+    await tick(10);
+    alive = registrations.filter((ref) => ref.deref()).length;
+  }
+  assert.equal(alive, 0, "the shared Tool retained abandoned session registrations");
+  // It must remain reusable after all the old registrations are gone.
+  using session = new LanguageModelSession({ tools: [tool] });
+  assert.ok(session._nativeSession);
+  console.log("collected 200 session registrations; shared tool remains usable");
+}
+
 const scenarios: Record<string, () => Promise<void>> = {
   "shared-tool-budgets": sharedToolBudgets,
+  "shared-tool-lifetime": sharedToolLifetime,
+  "shared-tool-four-sessions": sharedToolFourSessions,
   "cancel-shared-tool": cancelSharedTool,
   "cancel-stream-reuse-late-tool": () => cancelWithPendingTool("stream"),
+  "cancel-stream-reuse-delayed-tool": () =>
+    cancelWithPendingTool("stream", false, { cancel: 1, late: 500 }),
   "cancel-stream-reuse-disposed-tool": () => cancelWithPendingTool("stream", true),
   "cancel-text-reuse-late-tool": () => cancelWithPendingTool("text"),
   "cancel-schema-reuse-late-tool": () => cancelWithPendingTool("schema"),

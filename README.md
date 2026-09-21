@@ -83,7 +83,10 @@ npm test                   # run all tests
 npm run test:unit          # unit tests only (works on any machine)
 npm run test:integration   # integration tests (requires macOS 26+ and Apple Intelligence)
 npm run test:integration:sdk27  # the same, in a host built with the macOS 27 SDK
+npm run test:stress        # 10 rounds of native tool lifecycle/race tests (seed 41)
 ```
+
+See [tests/README.md](tests/README.md) for stress seeds, PCC testing, and coverage limits.
 
 ## Contributing
 

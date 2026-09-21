@@ -291,7 +291,7 @@ export class LanguageModelSession {
    * after calling `cancel()`.
    *
    * For streams, cancellation unblocks a waiting iterator; iteration ends on
-   * its next step. The stream's cleanup releases the request and queue lock,
+   * its next step. Cleanup waits for native completion before releasing the queue lock,
    * so the session can be used again. `collect()` returns the text received so
    * far. For one-shot requests, await settlement before treating cancellation
    * as complete; a stopped request rejects with `CancelledError`.
@@ -450,6 +450,9 @@ export class LanguageModelSession {
     let request: RequestHandle | null = null;
     let idleTimer: ReturnType<typeof setTimeout> | null = null;
     let streamDone = false;
+    // Stopping the consumer does not mean Apple's generation has stopped.
+    // Keep the session queue locked until its terminal native callback arrives.
+    const nativeFinished = Promise.withResolvers<void>();
     let composedPrompt: NativePointer | null = null;
 
     type QueueItem = { content: string } | { done: true; error?: Error };
@@ -506,6 +509,7 @@ export class LanguageModelSession {
       // text at the end, or a non-zero status on error. It keeps the process
       // alive until then, and absorbs anything after the consumer stops.
       const onChunk = (status: number, text: string | null) => {
+        if (status !== 0 || text === null) nativeFinished.resolve();
         if (streamDone) return; // stopped, timed out or cancelled
         if (status !== 0) {
           queue.push({ done: true, error: statusToError(status, text) });
@@ -576,6 +580,7 @@ export class LanguageModelSession {
           // native task ends and its final call is absorbed by the addon.
           try {
             fn.FMRequestCancel(request);
+            await nativeFinished.promise;
           } finally {
             fn.FMRelease(request);
           }

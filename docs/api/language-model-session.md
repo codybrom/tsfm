@@ -162,7 +162,8 @@ tools must honor the signal to stop work. Any late result is ignored.
 Queued requests wait for the cancelled one to
 settle. For streams, `cancel()` unblocks the iterator and iteration ends normally
 on its next step; `collect()` returns the text received so far. Stream cleanup
-releases the queue lock so later requests can run on the same session.
+waits for the terminal native callback before releasing the queue lock, so later
+requests cannot overlap the cancelled generation.
 See [Cancellation](/guide/sessions#cancellation).
 
 ```ts

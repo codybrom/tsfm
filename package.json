@@ -45,6 +45,7 @@
     "test:integration": "vitest run --project integration",
     "test:integration:sdk27": "bash -c '\"$(bash scripts/sdk27-node.sh)\" node_modules/vitest/vitest.mjs run --project integration \"$@\"' --",
     "test:integration:pcc": "TSFM_PCC_REQUIRE=1 bash -c '\"$(bash scripts/pcc-host.sh)\" node_modules/vitest/vitest.mjs run --project integration tests/integration/pcc.test.ts \"$@\"' --",
+    "test:stress": "node --import tsx scripts/stress-tools.ts",
     "test:coverage": "vitest run --coverage",
     "example": "tsx scripts/run-example.ts",
     "typecheck": "tsc --noEmit"

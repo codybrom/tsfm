@@ -85,8 +85,10 @@ const { content: next } = await session.respond("Summarize what you said");
 ## Cancellation
 
 Call `session.cancel()` to stop a stream mid-generation. A waiting iterator is
-unblocked, and iteration ends on its next step. Cleanup releases the request and
-the session's queue lock, allowing later requests to run:
+unblocked, and iteration ends on its next step. Cleanup waits for the terminal
+native callback before releasing the request and queue lock, so a later request
+cannot overlap the cancelled generation. Breaking out of the loop follows the
+same cleanup path:
 
 ```ts
 // From another context (e.g. a timeout or user action)

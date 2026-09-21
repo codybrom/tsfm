@@ -110,6 +110,31 @@ describe("session tool registrations", () => {
     expect(tool.signals[0].aborted).toBe(false);
   });
 
+  it("cleans up a partially bound session without disposing an existing shared registration", async () => {
+    using tool = new SharedTool();
+    using bad = new SharedTool();
+    bad.name = "invalid";
+    bad.argumentsSchema = null as never;
+    using _existing = new LanguageModelSession({ tools: [tool] });
+    expect(() => new LanguageModelSession({ tools: [tool, bad] })).toThrow("argumentsSchema");
+    const first = fn.FMBridgedToolCreate.mock.results[0].value.value;
+    const abandoned = fn.FMBridgedToolCreate.mock.results[1].value.value;
+    expect(fn.FMRelease).toHaveBeenCalledWith(abandoned);
+    expect(fn.FMRelease).not.toHaveBeenCalledWith(first);
+    fn.FMBridgedToolCreate.mock.calls[0][3]("still-live", 1);
+    await vi.waitFor(() => expect(tool.signals).toHaveLength(1));
+    expect(tool.signals[0].aborted).toBe(false);
+  });
+
+  it("releases registrations when transcript restoration fails", () => {
+    using tool = new SharedTool();
+    fn.FMLanguageModelSessionCreateFromTranscript.mockReturnValueOnce(null as never);
+    expect(() =>
+      LanguageModelSession.fromTranscript(Transcript.fromJson("{}"), { tools: [tool] }),
+    ).toThrow("Failed to create");
+    expect(fn.FMRelease).toHaveBeenCalledWith(fn.FMBridgedToolCreate.mock.results[0].value.value);
+  });
+
   it("releases registrations if session construction fails", () => {
     using tool = new SharedTool();
     fn.FMLanguageModelSessionCreateFromSystemLanguageModel.mockReturnValueOnce(null as never);
