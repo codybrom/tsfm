@@ -457,6 +457,17 @@ export function statusToError(status: number, detail?: string | null): Generatio
         if (/ModelManagerError[:\s](?:Code=)?1013/.test(detail)) {
           return new SystemPressureError(/\["([^"]+)"\]/.exec(detail)?.[1], detail);
         }
+        // Observed from every generation API and Apple's own `fm respond`
+        // while `fm available` and isAvailable() still said yes. During the
+        // refusal contextSize was 0 and the variant degraded from Core
+        // Advanced to Core. Another independently developed Foundation Models
+        // wrapper identifies 1008 as the model still provisioning, so surface
+        // it as the generation-time equivalent of availability's MODEL_NOT_READY.
+        if (/ModelManagerError(?:\s+error|\s+Code=|:)?\s*1008\b/.test(detail)) {
+          return new AssetsUnavailableError(
+            `The on-device model is not ready and may still be provisioning; retry shortly${suffix}`,
+          );
+        }
         if (detail.includes("SensitiveContentAnalysisML")) {
           return new ServiceCrashedError(detail);
         }

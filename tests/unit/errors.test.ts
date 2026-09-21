@@ -316,6 +316,17 @@ describe("statusToError", () => {
     expect(err).toBeInstanceOf(SystemPressureError);
   });
 
+  it.each([
+    "ModelManagerServices.ModelManagerError error 1008.",
+    "ModelManagerServices.ModelManagerError Code=1008",
+    "ModelManagerServices.ModelManagerError:1008",
+  ])("maps the model manager's 1008 refusal to AssetsUnavailableError", (detail) => {
+    const err = statusToError(255, detail);
+    expect(err).toBeInstanceOf(AssetsUnavailableError);
+    expect(err.message).toContain("may still be provisioning");
+    expect(err.message).toContain(detail);
+  });
+
   it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
     const detail = "ModelManagerServices.ModelManagerError Code=1041 - schema rejected";
     const err = statusToError(255, detail);

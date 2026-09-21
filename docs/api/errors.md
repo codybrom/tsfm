@@ -43,7 +43,7 @@ a tool throws, not what tsfm throws (see below).
 | Error | Code | When |
 | --- | --- | --- |
 | `ExceededContextWindowSizeError` | 1 | Session history too long |
-| `AssetsUnavailableError` | 2 | Model not downloaded |
+| `AssetsUnavailableError` | 2 or 255 | Model not downloaded or ready. Private ModelManager error 1008 maps here even when availability reports success. |
 | `GuardrailViolationError` | 3 | Content policy violation |
 | `UnsupportedGuideError` | 4 | Unsupported generation guide |
 | `UnsupportedLanguageOrLocaleError` | 5 | Language not supported |

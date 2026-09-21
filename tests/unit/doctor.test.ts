@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { formatDoctorReport, collectDoctorReport, main } from "../../src/cli/doctor.js";
+import {
+  formatDoctorReport,
+  collectDoctorReport,
+  main,
+  onDeviceModelCheck,
+} from "../../src/cli/doctor.js";
 
 vi.mock("node:child_process", () => ({
   spawnSync: vi.fn(),
@@ -21,6 +26,52 @@ describe("formatDoctorReport", () => {
         "· fm CLI           not found",
       ].join("\n"),
     );
+  });
+});
+
+describe("onDeviceModelCheck", () => {
+  it("reports an installed zero-context model as unhealthy", () => {
+    const check = onDeviceModelCheck({
+      available: true,
+      variant: "AFM 3 Core",
+      contextSize: 0,
+      capabilities: ["guidedGeneration"],
+    });
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("0-token context");
+    expect(check.detail).toContain("model runtime is not ready");
+    expect(check.detail).toContain("still be provisioning");
+    expect(check.detail).toContain("log out or restart");
+  });
+
+  it("reports an available model with a context window as healthy", () => {
+    const check = onDeviceModelCheck({
+      available: true,
+      variant: "AFM 3 Core Advanced",
+      contextSize: 8192,
+      capabilities: ["guidedGeneration"],
+    });
+    expect(check).toEqual({
+      label: "On-device model",
+      ok: true,
+      detail: "AFM 3 Core Advanced, 8192-token context, capabilities: guidedGeneration",
+    });
+  });
+
+  it("preserves the framework's unavailable reason", () => {
+    expect(
+      onDeviceModelCheck({
+        available: false,
+        unavailableReason: "MODEL_NOT_READY",
+        variant: null,
+        contextSize: 0,
+        capabilities: null,
+      }),
+    ).toEqual({
+      label: "On-device model",
+      ok: false,
+      detail: "unavailable: MODEL_NOT_READY",
+    });
   });
 });
 

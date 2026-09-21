@@ -18,6 +18,42 @@ export interface DoctorCheck {
   detail: string;
 }
 
+/** @internal Turn model metadata into the doctor's on-device health check. */
+export function onDeviceModelCheck(info: {
+  available: boolean;
+  unavailableReason?: string;
+  variant: string | null;
+  contextSize: number;
+  capabilities: string[] | null;
+}): DoctorCheck {
+  const metadata = [
+    info.variant,
+    `${info.contextSize}-token context`,
+    info.capabilities && `capabilities: ${info.capabilities.join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join(", ");
+
+  if (!info.available) {
+    return {
+      label: "On-device model",
+      ok: false,
+      detail: `unavailable: ${info.unavailableReason ?? "UNKNOWN"}`,
+    };
+  }
+  if (info.contextSize === 0) {
+    return {
+      label: "On-device model",
+      ok: false,
+      detail:
+        `${metadata} — installed, but the model runtime is not ready; assets may still be ` +
+        "provisioning, or system pressure may be blocking them. Keep the Mac on power and Wi-Fi, " +
+        "free memory, and retry in a few minutes; log out or restart if it persists",
+    };
+  }
+  return { label: "On-device model", ok: true, detail: metadata };
+}
+
 function tsfmVersion(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
   for (const candidate of ["../../package.json", "../../../package.json"]) {
@@ -98,19 +134,20 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
     loaded = true;
 
     const availability = model.isAvailable();
-    checks.push({
-      label: "On-device model",
-      ok: availability.available,
-      detail: availability.available
-        ? [
-            model.variant,
-            `${model.contextSize}-token context`,
-            model.capabilities && `capabilities: ${model.capabilities.join(", ")}`,
-          ]
-            .filter(Boolean)
-            .join(", ")
-        : `unavailable: ${core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff]}`,
-    });
+    const metadata = availability.available
+      ? {
+          variant: model.variant,
+          contextSize: model.contextSize,
+          capabilities: model.capabilities,
+        }
+      : { variant: null, contextSize: 0, capabilities: null };
+    checks.push(
+      onDeviceModelCheck({
+        available: availability.available,
+        unavailableReason: core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff],
+        ...metadata,
+      }),
+    );
     model.dispose();
 
     const pcc = new core.PrivateCloudComputeLanguageModel();

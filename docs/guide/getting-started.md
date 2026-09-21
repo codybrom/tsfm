@@ -6,22 +6,37 @@ TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js â
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
+## Why Use On-Device Apple Models?
+
+On-device models let focused language features run locally, without sending each prompt to a cloud
+service. That makes them a strong fit for private or offline workflows, interactive features where
+network latency would get in the way, and applications that should not require an API key or hosted
+model deployment.
+
+Apple's developer-facing documentation positions its model for bounded app features such as
+summarization, entity extraction, text understanding and refinement, short dialog, and creative
+content. It is not designed as a general world-knowledge chatbot. Tools are the intended way to give
+it current, private, or application-specific information.
+
+In practice, prefer a focused prompt, a schema, and a small set of relevant tools over an open-ended
+agent prompt with a large tool catalog. See Apple's
+[Foundation Models documentation](https://developer.apple.com/documentation/foundationmodels).
+
 ## Requirements
 
-- **macOS 26** or later, Apple Silicon. A few features need macOS 27; see below.
+- **macOS 26** or later, Apple Silicon. Some features are only available on macOS 26.4+ or macOS 27 (see below).
 - **Apple Intelligence** enabled in System Settings
 - **Node.js 24+**
 
 ### macOS 26 and macOS 27
 
-tsfm runs on both. Features built on macOS 27 APIs don't crash on macOS 26: each
-reports a clear reason your app can check.
+In v1.x, tsfm supports the two newest major versions of macOS. Some SDK features are only available on macOS 26.4+ or macOS 27+, and will throw a clear error if used on an older, incompatible OS.
 
-| Feature | On macOS 26 |
+| Feature | Available on macOS 26 Tahoe |
 | --- | --- |
 | Token usage (`response.usage`, `session.usage`) | `null` |
 | `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27` |
-| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`; using it throws `UnsupportedCapabilityError` |
+| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`, using it throws `UnsupportedCapabilityError` |
 | [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
 | `model.variant`, `model.capabilities` | `null` |
 | `model.tokenCount()` (needs macOS 26.4) | On 26.0â€“26.3, rejects with `UnsupportedCapabilityError` with `minimumRequiredMacOS: 26.4` |

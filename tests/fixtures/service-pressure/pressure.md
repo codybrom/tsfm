@@ -10,6 +10,21 @@ This is not a crash, and it is not tsfm: Apple's own `fm respond` failed the
 same way throughout. It happened twice in one day on a machine running builds,
 Xcode and test suites.
 
+An opaque variant was captured again on 2026-09-21: every tsfm request and
+Apple's own `fm respond` failed immediately with `ModelManagerError` **1008**.
+It exposed no system-state text, but had the same health signature below:
+`isAvailable()` and `fm available` both claimed the model was available,
+`contextSize` was 0, and the variant had degraded to "AFM 3 Core". See
+`model-manager-1008.json`. The zero-sized context and consistent request
+failures indicate that the runtime was not actually ready, so tsfm maps the
+error to `AssetsUnavailableError`. Apple doesn't publish definitions for the
+code's meaning, so the original detail is retained and provisioning remains an
+inference rather than a guaranteed interpretation.
+
+The undocumented `fm respond --show-assets` flag printed no asset bindings
+before returning `1008` on this host. That is consistent with a failure before
+model assets bind, but it does not prove the provisioning interpretation.
+
 ## What tsfm reports
 
 - **Requests fail**: `respond`, `streamResponse`, `respondWithSchema`,
@@ -34,6 +49,8 @@ Xcode and test suites.
 - **`variant` degrades**: "AFM 3 Core" here, "AFM 3 Core Advanced" when healthy.
 
 Either of the last two is a usable signal that the system won't serve requests.
+`fm available` can produce the same false positive. An actual `fm respond`
+request is the useful CLI comparison.
 
 ## Recovery
 

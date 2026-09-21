@@ -2,8 +2,14 @@
 
 `PrivateCloudComputeLanguageModel` runs Apple's server model on Private Cloud
 Compute (PCC) instead of on the device. It has a 32K-token context (larger
-than the on-device model's; read `model.contextSize` for either) and can reason before answering. Each user gets a daily
-request quota.
+than the on-device model's) and can reason before answering. Read `systemModel.contextSize`
+on-device or call `await pccModel.contextSize()` for PCC instead of hard-coding either limit. Each
+user gets a daily request quota.
+
+The macOS 27 model family includes **AFM 3 Cloud** and **AFM 3 Cloud Pro**.
+`PrivateCloudComputeLanguageModel` provides a single server-model interface. Apple does not expose
+a model selector or report which backend handled a request. See
+[Model Configuration](/guide/model-configuration#model-variants) for the full model table.
 
 PCC is opt-in and needs an entitlement that most Node processes won't have, so
 read [Requirements](#requirements) first.

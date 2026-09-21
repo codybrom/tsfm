@@ -23,6 +23,29 @@ const model = new SystemLanguageModel({
 
 Both options are optional and default to the values shown above.
 
+## Model Variants
+
+Apple updates its models through OS releases. `SystemLanguageModel` runs on the device, while
+`PrivateCloudComputeLanguageModel` sends requests to Apple's server model. The operating system and
+PCC service choose the exact model. Applications cannot force Core Advanced or Cloud Pro.
+
+| Model | OS version | Runs on | Access from tsfm |
+| --- | --- | --- | --- |
+| *AFM 1 Core*[^early-core-names] | macOS 26.0–26.3 | On device | Available through `SystemLanguageModel` |
+| *AFM 2 Core*[^early-core-names] | macOS 26.4+ | On device | Available through `SystemLanguageModel`, with improved instruction following and tool calling |
+| **AFM 3 Core** | [macOS 27.0](https://machinelearning.apple.com/research/introducing-third-generation-of-apple-foundation-models) | On device | 3B dense model available through `SystemLanguageModel` |
+| **AFM 3 Core Advanced** | macOS 27.0 | On device | 20B sparse multimodal model. macOS activates roughly 1B–4B parameters and selects this variant only on supported hardware. |
+| **AFM 3 Cloud** | macOS 27.0 | PCC on Apple silicon | Served behind `PrivateCloudComputeLanguageModel`. The backend model is not selectable or reported. |
+| **AFM 3 Cloud Pro** | macOS 27.0 | PCC on NVIDIA GPUs | More capable model for complex reasoning and agentic tool use. It is not directly selectable or reported. |
+| **ADM 3 Cloud (Image)** | macOS 27.0 | PCC on Apple silicon | Image generation and editing model. It is not exposed by the Foundation Models language API. |
+
+[^early-core-names]: **AFM 1 Core** and **AFM 2 Core** are informal names for the `SystemLanguageModel` versions included with macOS 26.0–26.3 and macOS 26.4+, respectively. Apple has not published either as an official model name or API identifier.
+
+On macOS 27, inspect `model.variant` to see whether `SystemLanguageModel` selected AFM 3 Core or Core
+Advanced. The property is unavailable on macOS 26. See
+[Private Cloud Compute](/guide/private-cloud-compute) for server-model capabilities and
+requirements.
+
 ## Guardrails
 
 Guardrails control how the model handles potentially unsafe content in prompts and responses.

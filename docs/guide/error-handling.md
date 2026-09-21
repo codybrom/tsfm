@@ -61,6 +61,14 @@ The session's accumulated context has exceeded the model's limit. All content (i
 
 The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session — it will resolve once the assets are ready.
 
+Error `1008` is a special case: macOS may say the model is available even though the model runtime
+cannot accept requests.
+
+tsfm converts `1008` to `AssetsUnavailableError` so applications can handle it as a temporary
+availability problem. Wait a few minutes and retry. If it persists, free memory or restart the Mac.
+Apple does not document what `1008` means, so tsfm keeps the original error details and does not
+assume a specific cause.
+
 ### GuardrailViolationError
 
 The model's safety [guardrails](/guide/model-configuration#guardrails) flagged the prompt or the generated response. With `DEFAULT` guardrails, this means unsafe content was detected and blocked. With `PERMISSIVE_CONTENT_TRANSFORMATIONS`, you should see this less often as the model will attempt to transform content instead of rejecting it. Either way, you should attempt to catch this and surface a user-friendly message.
@@ -115,12 +123,9 @@ Nothing is wrong with your code or the model. It clears on its own, usually
 within a few minutes; retry then, and free memory if it persists. `launchctl`
 can't restart these services while System Integrity Protection is on.
 
-While this lasts, `isAvailable()` still reports `{ available: true }` — it
-describes whether the model is installed and the device eligible, not whether
-the system will serve a request. Two properties do change, and either works as a
-health check: `contextSize` reads `0` instead of its usual value, and `variant`
-drops to a lesser model. Recorded behaviour is in
-`tests/fixtures/service-pressure/`.
+While this lasts, `isAvailable()` may still report `{ available: true }`. It describes whether the
+model is installed and the device is eligible, not whether the runtime will accept a request.
+`tsfm doctor` performs an additional health check and reports a zero-token context as unhealthy.
 
 ### ToolCallError
 
