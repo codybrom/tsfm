@@ -57,6 +57,7 @@ request is the useful CLI comparison.
 It clears on its own, in minutes, once memory frees up. `launchctl kickstart` is
 refused while System Integrity Protection is on, so there is nothing to restart
 by hand; freeing memory is the actionable step.
+If it persists, log out or restart the Mac. The same applies to the 1008 variant.
 
 ## The model manager's other refusals
 

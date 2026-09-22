@@ -65,9 +65,12 @@ Error `1008` is a special case: macOS may say the model is available even though
 cannot accept requests.
 
 tsfm converts `1008` to `AssetsUnavailableError` so applications can handle it as a temporary
-availability problem. Wait a few minutes and retry. If it persists, free memory or restart the Mac.
-Apple does not document what `1008` means, so tsfm keeps the original error details and does not
-assume a specific cause.
+availability problem. `waitUntilAvailable()` won't help here, because availability already reports
+success; it resolves immediately and the next request fails the same way. Instead, wait a few
+minutes and retry. If it persists, free memory, then log out or restart the Mac. While the model is
+in this state, `model.contextSize` reads `0`, so you can check it before retrying (see
+[SystemPressureError](#systempressureerror)). Apple does not document what `1008` means, so tsfm
+keeps the original error details and does not assume a specific cause.
 
 ### GuardrailViolationError
 
@@ -87,7 +90,7 @@ The model generated output during structured generation, but it couldn't be deco
 
 ### RateLimitedError
 
-Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit; macOS 27 generalises it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background, which matters for Node daemons. On macOS 27 the framework's error carries a reset date; tsfm doesn't surface it yet, so back off and retry after a short delay.
+Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit; macOS 27 generalizes it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background, which matters for Node daemons. On macOS 27 the framework's error carries a reset date; tsfm doesn't surface it yet, so back off and retry after a short delay.
 
 ### ConcurrentRequestsError
 
@@ -125,7 +128,14 @@ can't restart these services while System Integrity Protection is on.
 
 While this lasts, `isAvailable()` may still report `{ available: true }`. It describes whether the
 model is installed and the device is eligible, not whether the runtime will accept a request.
-`tsfm doctor` performs an additional health check and reports a zero-token context as unhealthy.
+`contextSize` is a better signal: it reads `0` while the runtime is refusing work.
+
+```ts
+const model = new SystemLanguageModel();
+const ready = model.isAvailable().available && model.contextSize > 0;
+```
+
+`tsfm doctor` runs the same check and reports a zero-token context as unhealthy.
 
 ### ToolCallError
 

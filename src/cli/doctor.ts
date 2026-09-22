@@ -47,8 +47,8 @@ export function onDeviceModelCheck(info: {
       ok: false,
       detail:
         `${metadata} — installed, but the model runtime is not ready; assets may still be ` +
-        "provisioning, or system pressure may be blocking them. Keep the Mac on power and Wi-Fi, " +
-        "free memory, and retry in a few minutes; log out or restart if it persists",
+        "provisioning, or system pressure may be blocking them. Retry in a few minutes; if it " +
+        "persists, free memory, then log out or restart",
     };
   }
   return { label: "On-device model", ok: true, detail: metadata };
