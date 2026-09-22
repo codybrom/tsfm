@@ -687,6 +687,15 @@ private func frameworkErrorDescription(for error: Error) -> String {
   {
     return failure.message
   }
+  // tsfm: the only way a rate limit's reset date reaches JavaScript, which
+  // strips this marker in statusToError().
+  if #available(macOS 27, iOS 27, visionOS 27, *),
+    case .rateLimited(let limit)? = error as? LanguageModelError,
+    let resetDate = limit.resetDate
+  {
+    let iso = ISO8601DateFormatter().string(from: resetDate)
+    return "[tsfm-reset-date:\(iso)] \(error.localizedDescription)"
+  }
   return error.localizedDescription
 }
 

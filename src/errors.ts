@@ -114,10 +114,18 @@ export class DecodingFailureError extends GenerationError {
   }
 }
 
+/**
+ * Too many requests to the model in a short window. On macOS 27 the framework
+ * can say when the limit resets, and `resetDate` holds that time.
+ */
 export class RateLimitedError extends GenerationError {
-  constructor(msg = "Rate limited") {
+  /** When the rate limit resets, if the framework reported it. macOS 27 only. */
+  readonly resetDate?: Date;
+
+  constructor(msg = "Rate limited", options: { resetDate?: Date } = {}) {
     super(msg);
     this.name = "RateLimitedError";
+    if (options.resetDate !== undefined) this.resetDate = options.resetDate;
   }
 }
 
@@ -316,13 +324,15 @@ export class RequestFailedByToolError extends GenerationError {
 /**
  * The model manager refused the request because of the machine's state, most
  * often memory pressure: "Not executed due to current system state
- * ["CriticalMemoryPressure"], try again later". The model is installed and
- * `isAvailable()` still reports available; only running it is refused.
+ * ["CriticalMemoryPressure"], try again later". It also covers the model
+ * manager reporting insufficient system resources, which names no state. The
+ * model is installed and `isAvailable()` still reports available. Only running
+ * it is refused.
  *
  * Recorded behaviour while this lasts is in tests/fixtures/service-pressure/.
  */
 export class SystemPressureError extends GenerationError {
-  /** The state the model manager named, such as `CriticalMemoryPressure`. */
+  /** The state the model manager named, such as `CriticalMemoryPressure`, if it named one. */
   readonly state?: string;
 
   constructor(state?: string, detail?: string) {
@@ -372,7 +382,23 @@ export class ToolCallError extends FoundationModelsError {
   }
 }
 
+/**
+ * The model manager's error code, which reaches us spelled several ways:
+ * "ModelManagerError Code=1013" nested under the safety classifier,
+ * "ModelManagerError:1013" from a tool call, and "ModelManagerError error
+ * 1008." from the error's localized description.
+ */
+function parseModelManagerCode(detail: string): number | undefined {
+  const match = /ModelManagerError(?:\s+error|\s+Code=|:)?\s*(\d+)\b/.exec(detail);
+  return match ? Number(match[1]) : undefined;
+}
+
 export function statusToError(status: number, detail?: string | null): GenerationError {
+  // The bridge prefixes a rate limit's detail with its reset date, since the
+  // callback has no other field to carry it.
+  const resetMarker = detail ? /^\[tsfm-reset-date:([^\]]+)\] /.exec(detail) : null;
+  if (resetMarker) detail = detail!.slice(resetMarker[0].length);
+  const resetDate = resetMarker ? new Date(resetMarker[1]) : undefined;
   const suffix = detail ? `: ${detail}` : "";
   switch (status) {
     case GenerationErrorCode.EXCEEDED_CONTEXT_WINDOW_SIZE:
@@ -388,7 +414,9 @@ export function statusToError(status: number, detail?: string | null): Generatio
     case GenerationErrorCode.DECODING_FAILURE:
       return new DecodingFailureError(`Decoding failure${suffix}`);
     case GenerationErrorCode.RATE_LIMITED:
-      return new RateLimitedError(`Rate limited${suffix}`);
+      return new RateLimitedError(`Rate limited${suffix}`, {
+        resetDate: resetDate && !Number.isNaN(resetDate.getTime()) ? resetDate : undefined,
+      });
     case GenerationErrorCode.CONCURRENT_REQUESTS:
       return new ConcurrentRequestsError(`Concurrent request${suffix}`);
     case GenerationErrorCode.REFUSAL:
@@ -450,23 +478,18 @@ export function statusToError(status: number, detail?: string | null): Generatio
       );
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
-        // 1013 is "not executed due to current system state". It reaches us
-        // formatted two ways -- "ModelManagerError Code=1013" nested under the
-        // safety classifier, and "ModelManagerError:1013" from a tool call --
-        // so match the code rather than one spelling.
-        if (/ModelManagerError[:\s](?:Code=)?1013/.test(detail)) {
-          return new SystemPressureError(/\["([^"]+)"\]/.exec(detail)?.[1], detail);
-        }
-        // Observed from every generation API and Apple's own `fm respond`
-        // while `fm available` and isAvailable() still said yes. During the
-        // refusal contextSize was 0 and the variant degraded from Core
-        // Advanced to Core. Another independently developed Foundation Models
-        // wrapper identifies 1008 as the model still provisioning, so surface
-        // it as the generation-time equivalent of availability's MODEL_NOT_READY.
-        if (/ModelManagerError(?:\s+error|\s+Code=|:)?\s*1008\b/.test(detail)) {
-          return new AssetsUnavailableError(
-            `The on-device model is not ready and may still be provisioning; retry shortly${suffix}`,
-          );
+        const modelManagerCode = parseModelManagerCode(detail);
+        // Codes decoded from ModelManagerServices on macOS 27.0 (see
+        // tests/fixtures/service-pressure/pressure.md). 1008 is deliberately
+        // absent: it's unrecognizedUnderlyingError, a wrapper for any failure
+        // the model manager didn't classify, so it names no cause to map.
+        switch (modelManagerCode) {
+          case 1012: // insufficientSystemResources
+            return new SystemPressureError(undefined, detail);
+          case 1013: // deniedDueToSystemState, with the state in brackets
+            return new SystemPressureError(/\["([^"]+)"\]/.exec(detail)?.[1], detail);
+          case 1032: // inferenceProviderCrashed
+            return new ServiceCrashedError(detail);
         }
         if (detail.includes("SensitiveContentAnalysisML")) {
           return new ServiceCrashedError(detail);
@@ -484,7 +507,9 @@ export function statusToError(status: number, detail?: string | null): Generatio
         if (/(not available in|not found in) Model Catalog/i.test(detail)) {
           return new AssetsUnavailableError(`Assets unavailable${suffix}`);
         }
-        if (detail.includes("ModelManagerError Code=1041")) {
+        // 1041 is ipcError by name. It was mapped here before the codes were
+        // decoded, and no fixture records a schema rejection arriving this way.
+        if (modelManagerCode === 1041) {
           return new InvalidGenerationSchemaError(
             `The on-device model rejected the schema${suffix}`,
           );

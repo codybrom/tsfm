@@ -43,12 +43,12 @@ a tool throws, not what tsfm throws (see below).
 | Error | Code | When |
 | --- | --- | --- |
 | `ExceededContextWindowSizeError` | 1 | Session history too long |
-| `AssetsUnavailableError` | 2 or 255 | Model not downloaded or ready. Private ModelManager error 1008 maps here even when availability reports success. |
+| `AssetsUnavailableError` | 2 | Model not downloaded |
 | `GuardrailViolationError` | 3 | Content policy violation |
 | `UnsupportedGuideError` | 4 | Unsupported generation guide |
 | `UnsupportedLanguageOrLocaleError` | 5 | Language not supported |
 | `DecodingFailureError` | 6 | Structured output parse failure |
-| `RateLimitedError` | 7 | Too many requests |
+| `RateLimitedError` | 7 | Too many requests. `resetDate` is when the limit resets, if the framework says (macOS 27) |
 | `ConcurrentRequestsError` | 8 | Session already responding |
 | `RefusalError` | 9 | Model declined to answer |
 | `InvalidGenerationSchemaError` | 10 | Malformed schema, including an undefined `$ref` or a JSON schema nested more than 128 levels deep |
@@ -65,7 +65,7 @@ a tool throws, not what tsfm throws (see below).
 | `TranscriptMutationWhileRespondingError` | 21 | The transcript was changed while the session was responding¹ |
 | `RequestFailedByToolError` | 22 | A tool threw `FailRequestError`. `toolName` says which, and `cause` is that error. This is also how a tool ends a `toolCallingMode: "required"` request |
 | `ServiceCrashedError` | 255 | An Apple Intelligence system service failed for a reason other than the machine's state; wait for macOS to restart it, then retry with a new session |
-| `SystemPressureError` | 255 | The system refused to run the model because of its current state, usually memory pressure. `state` names it. Transient — retry in a few minutes |
+| `SystemPressureError` | 255 | The system refused to run the model because of its current state, usually memory pressure. `state` names it, when the system does. Transient, and may clear if retried after a few minutes |
 | `PromptAttachmentError` | — | Attachment refused; see `reason` |
 | `ToolCallError` | — | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
 | `FailRequestError` | — | Thrown by a tool's `call()`, on purpose, to fail the request instead of answering the model. `respond()` then rejects with `RequestFailedByToolError` |

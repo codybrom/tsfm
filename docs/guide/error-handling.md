@@ -61,17 +61,6 @@ The session's accumulated context has exceeded the model's limit. All content (i
 
 The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session — it will resolve once the assets are ready.
 
-Error `1008` is a special case: macOS may say the model is available even though the model runtime
-cannot accept requests.
-
-tsfm converts `1008` to `AssetsUnavailableError` so applications can handle it as a temporary
-availability problem. `waitUntilAvailable()` won't help here, because availability already reports
-success; it resolves immediately and the next request fails the same way. Instead, wait a few
-minutes and retry. If it persists, free memory, then log out or restart the Mac. While the model is
-in this state, `model.contextSize` reads `0`, so you can check it before retrying (see
-[SystemPressureError](#systempressureerror)). Apple does not document what `1008` means, so tsfm
-keeps the original error details and does not assume a specific cause.
-
 ### GuardrailViolationError
 
 The model's safety [guardrails](/guide/model-configuration#guardrails) flagged the prompt or the generated response. With `DEFAULT` guardrails, this means unsafe content was detected and blocked. With `PERMISSIVE_CONTENT_TRANSFORMATIONS`, you should see this less often as the model will attempt to transform content instead of rejecting it. Either way, you should attempt to catch this and surface a user-friendly message.
@@ -90,7 +79,7 @@ The model generated output during structured generation, but it couldn't be deco
 
 ### RateLimitedError
 
-Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit; macOS 27 generalizes it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background, which matters for Node daemons. On macOS 27 the framework's error carries a reset date; tsfm doesn't surface it yet, so back off and retry after a short delay.
+Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit while macOS 27 generalizes it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background (an important difference for Node-based daemons). On macOS 27 the framework's error can carry a reset date, which tsfm exposes as `err.resetDate`. Wait until then before retrying. Without one, back off and retry after a short delay.
 
 ### ConcurrentRequestsError
 
@@ -120,11 +109,16 @@ The system refused to run the model because of the machine's current state,
 most often memory pressure: "Not executed due to current system state
 [\"CriticalMemoryPressure\"], try again later". `err.state` names the state.
 It also covers a request preempted by a higher-priority one (`state:
-"Preempted"`).
+"Preempted"`), and the system reporting insufficient resources, which names no
+state (`state` is `undefined`).
 
 Nothing is wrong with your code or the model. It clears on its own, usually
-within a few minutes; retry then, and free memory if it persists. `launchctl`
-can't restart these services while System Integrity Protection is on.
+within a few minutes. Retry then, and free memory if it persists. If it still
+fails, log out or restart the Mac. `launchctl` can't restart these services
+while System Integrity Protection is on.
+
+Don't call `waitUntilAvailable()` here: availability already reports success,
+so it returns at once and the next request fails the same way.
 
 While this lasts, `isAvailable()` may still report `{ available: true }`. It describes whether the
 model is installed and the device is eligible, not whether the runtime will accept a request.
