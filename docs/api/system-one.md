@@ -76,6 +76,9 @@ The subpath exports:
 - `SystemOneRequest`, `SystemOneRequestOptions`, `SystemOneClientConfig`
 - `SystemOneResult`, `SystemOneUsage`
 
+For Jev SDK-shaped imports, `RequestOptions`, `TypeSafeClientConfig`, and `Usage` are aliases of the
+corresponding System One types.
+
 `SystemOneUsage` is `{ input_tokens, output_tokens }`, or `null` on macOS 26.
 
 ::: warning Estimated, not calibrated

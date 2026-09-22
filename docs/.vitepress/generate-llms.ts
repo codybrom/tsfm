@@ -161,6 +161,11 @@ const sections: Section[] = [
         url: "/examples/chat-api",
         summary: "Chat Completions and Responses API examples",
       },
+      {
+        label: "System One Decisions",
+        url: "/examples/system-one",
+        summary: "Typed Choice, Score, and Noul decisions with confidence-gated routing",
+      },
     ],
   },
   {
@@ -223,6 +228,7 @@ const docOrder = [
   "examples/transcript.md",
   "examples/content-tagging.md",
   "examples/chat-api.md",
+  "examples/system-one.md",
   "changelog.md",
 ];
 

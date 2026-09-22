@@ -34,7 +34,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Added
 
-- `tsfm-sdk/system1`, with `tsfm-sdk/jev` as an alias: a local, Jev-shaped decision API with `SystemOneClient` (`TypeSafeClient` alias), `systemOne()`, and typed `choice`, `score`, and `noul` questions. It batches named decisions over shared state into one guided-generation request. Probabilities are model-estimated rather than Jev-calibrated, and `confidence` is derived from distribution concentration.
+- `tsfm-sdk/system1`, with `tsfm-sdk/jev` as an alias: a local, Jev-shaped decision API with `SystemOneClient` (`TypeSafeClient` alias), `systemOne()`, and typed `choice`, `score`, and `noul` questions. It batches named decisions over shared state into one guided-generation request, validates runtime inputs before creating a session, and exports Jev-shaped aliases for the common SDK types. Probabilities are model-estimated rather than Jev-calibrated, and `confidence` is derived from distribution concentration.
 - Tools receive a per-invocation `ToolCallContext` with an `AbortSignal`. Pass it to `fetch()` or other cancellable APIs to stop work when the request is cancelled or the tool is disposed. Existing one-argument tool implementations remain supported. Cancellation cannot forcibly stop code that ignores the signal.
 - Token usage (macOS 27): `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts. `null` on macOS 26.
 - `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.

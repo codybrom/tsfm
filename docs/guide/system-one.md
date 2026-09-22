@@ -55,6 +55,29 @@ All questions share one state and one guided-generation request. They are presen
 judgments and cannot depend on another answer. If one answer determines what data to fetch or what to
 ask next, make a second call.
 
+## Design Questions Like Decisions
+
+A System One question should ask for one narrow semantic judgment that a knowledgeable person could
+make quickly from the supplied state. Code still owns exact rules, arithmetic, policy, and control
+flow.
+
+- Put every fact needed for the judgment in `state`. Use named object fields when it has several
+  parts.
+- Write the complete judgment in `instructions`. Question-map keys identify answers for code, but are
+  not presented to the model as meaningful instructions.
+- Use `choice` to select one defined alternative, `noul` for an independent yes/no condition, and
+  `score` for degree along an ordered rubric.
+- Add an `other` or `none` choice when the listed alternatives may not cover the state.
+- Ask independent questions over the same state together. Do not ask one question to reason from
+  another answer in the same call.
+- Generate candidate strings elsewhere, then use a decision to select one. Do counting, date
+  comparison, multi-step calculations, and hard policy checks in ordinary code.
+
+These practices come from the System One programming model and also make the local Apple adapter's
+job more constrained. See TypeSafe's guides to [System One](https://docs.typesafe.ai/concepts/system-one)
+and [building with System One](https://docs.typesafe.ai/concepts/how-to-build-with-system-one) for the
+model-independent design approach.
+
 ## What “Jev-like” Means
 
 The programming model is Jev-like; the underlying model is not Jev.

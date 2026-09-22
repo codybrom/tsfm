@@ -14,7 +14,10 @@ import {
   score,
   type ChoiceResponse,
   type NoulResponse,
+  type RequestOptions,
   type ScoreResponse,
+  type TypeSafeClientConfig,
+  type Usage,
 } from "../../src/system-one.js";
 
 beforeEach(() => {
@@ -38,12 +41,23 @@ describe("System One question builders", () => {
     });
     const urgency = score("How urgent?", ["Can wait", "Today", "Now"]);
 
-    expect(yes).toEqual({ type: "noul", instructions: "Is this urgent?" });
+    expect(yes).toEqual({ type: "noul", instructions: "Is this urgent?", criteria: undefined });
     expect(route.type).toBe("choice");
     expect(urgency.type).toBe("score");
     expectTypeOf<ChoiceResponse<typeof route.criteria>["choice"]>().toEqualTypeOf<
       "billing" | "technical"
     >();
+    expectTypeOf<Usage>().toEqualTypeOf<{
+      readonly input_tokens: number;
+      readonly output_tokens: number;
+    }>();
+    expectTypeOf<RequestOptions>().toHaveProperty("generationOptions");
+    expectTypeOf<TypeSafeClientConfig>().toHaveProperty("model");
+  });
+
+  it("rejects obviously malformed builder inputs immediately", () => {
+    expect(() => choice("Pick", [] as never)).toThrow("must be an object");
+    expect(() => score("Rate", {} as never)).toThrow("must be an array");
   });
 
   it("exports TypeSafeClient as a compatibility name", () => {
@@ -190,6 +204,35 @@ describe("SystemOneClient", () => {
         questions: { yes: noul("True?") },
       }),
     ).rejects.toThrow("local tsfm model");
+    await expect(
+      client.systemOne({
+        state: { invalid: Number.NaN } as never,
+        questions: { yes: noul("True?") },
+      }),
+    ).rejects.toThrow("finite numbers");
+    await expect(
+      client.systemOne({
+        state: { invalid: undefined } as never,
+        questions: { yes: noul("True?") },
+      }),
+    ).rejects.toThrow("JSON-compatible");
+    await expect(
+      client.systemOne({
+        state: "x",
+        questions: { bad: noul("True?", [] as never) },
+      }),
+    ).rejects.toThrow("criteria object or null");
+    expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
+    client.dispose();
+  });
+
+  it("rejects circular state before creating a session", async () => {
+    const state: { self?: unknown } = {};
+    state.self = state;
+    const client = new SystemOneClient();
+    await expect(
+      client.systemOne({ state: state as never, questions: { yes: noul("True?") } }),
+    ).rejects.toThrow("circular references");
     expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
     client.dispose();
   });
@@ -205,6 +248,58 @@ describe("SystemOneClient", () => {
     ).rejects.toThrow("expected a probability between 0 and 1");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-content");
     expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
+    client.dispose();
+  });
+
+  it("rejects a response missing a required answer", async () => {
+    respondWith("{}");
+    const client = new SystemOneClient();
+    await expect(
+      client.systemOne({ state: "x", questions: { yes: noul("True?") } }),
+    ).rejects.toThrow("missing required answer");
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-content");
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
+    client.dispose();
+  });
+
+  it("cancels an active decision when its AbortSignal fires", async () => {
+    let finish!: (result: { status: number; content: null; message: string }) => void;
+    mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON.mockReturnValueOnce([
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+      "system-one-request",
+    ] as never);
+
+    const controller = new AbortController();
+    const client = new SystemOneClient();
+    const response = client.systemOne(
+      { state: "x", questions: { yes: noul("True?") } },
+      { signal: controller.signal },
+    );
+    await vi.waitFor(() =>
+      expect(mockFns.FMLanguageModelSessionRespondWithSchemaFromJSON).toHaveBeenCalled(),
+    );
+
+    controller.abort();
+    expect(mockFns.FMRequestCancel).toHaveBeenCalledWith("system-one-request");
+    finish({ status: 20, content: null, message: "cancelled" });
+    await expect(response).rejects.toThrow("cancelled");
+    expect(mockFns.FMRelease).toHaveBeenCalledWith("mock-session-pointer");
+    client.dispose();
+  });
+
+  it("rejects a pre-aborted decision without creating a session", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const client = new SystemOneClient();
+    await expect(
+      client.systemOne(
+        { state: "x", questions: { yes: noul("True?") } },
+        { signal: controller.signal },
+      ),
+    ).rejects.toThrow("cancelled");
+    expect(mockFns.FMLanguageModelSessionCreateFromSystemLanguageModel).not.toHaveBeenCalled();
     client.dispose();
   });
 

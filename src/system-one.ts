@@ -100,6 +100,9 @@ export interface SystemOneUsage {
   readonly output_tokens: number;
 }
 
+/** Jev SDK-compatible name for {@link SystemOneUsage}. */
+export type Usage = SystemOneUsage;
+
 /** Typed answers plus information about the local model that produced them. */
 export interface SystemOneResult<Q extends Questions> {
   readonly model: string;
@@ -128,20 +131,24 @@ export interface SystemOneClientConfig {
   readonly instructions?: string;
 }
 
+/** Jev SDK-compatible name for {@link SystemOneClientConfig}. */
+export type TypeSafeClientConfig = SystemOneClientConfig;
+
 /** Per-request cancellation and generation settings. */
 export interface SystemOneRequestOptions {
   readonly signal?: AbortSignal;
   readonly generationOptions?: GenerationOptions;
 }
 
+/** Jev SDK-compatible name for {@link SystemOneRequestOptions}. */
+export type RequestOptions = SystemOneRequestOptions;
+
 /** Build a yes/no question. */
 export function noul(
   instructions: EntryType = null,
   criteria?: NoulQuestion["criteria"],
 ): NoulQuestion {
-  return criteria === undefined
-    ? { type: "noul", instructions }
-    : { type: "noul", instructions, criteria };
+  return { type: "noul", instructions, criteria };
 }
 
 /** Build a multiple-choice question while preserving its label types. */
@@ -149,6 +156,9 @@ export function choice<const T extends ChoiceCriteria>(
   instructions: EntryType,
   criteria: T,
 ): ChoiceQuestion<T> {
+  if (!criteria || typeof criteria !== "object" || Array.isArray(criteria)) {
+    throw new TypeError("Choice criteria must be an object of labels and descriptions");
+  }
   return { type: "choice", instructions, criteria };
 }
 
@@ -157,6 +167,9 @@ export function score<const T extends ScoreCriteria>(
   instructions: EntryType,
   criteria: T,
 ): ScoreQuestion<T> {
+  if (!Array.isArray(criteria)) {
+    throw new TypeError("Score criteria must be an array indexed from zero");
+  }
   return { type: "score", instructions, criteria };
 }
 
@@ -232,13 +245,56 @@ function probabilityArraySchema(size: number, description: string): JsonSchema {
   };
 }
 
-function validateSerializable(value: unknown, name: string): void {
+function validateJsonValue(value: unknown, name: string, ancestors = new Set<object>()): void {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError(`${name} must contain only finite numbers`);
+    return;
+  }
+  if (typeof value !== "object") throw new TypeError(`${name} must be JSON-compatible`);
+
+  if (ancestors.has(value)) throw new TypeError(`${name} must not contain circular references`);
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError(`${name} must contain only plain objects and arrays`);
+  }
+
+  ancestors.add(value);
   try {
-    if (JSON.stringify(value) === undefined) throw new TypeError(`${name} is not JSON-compatible`);
-  } catch (error) {
-    if (error instanceof TypeError && error.message === `${name} is not JSON-compatible`)
-      throw error;
-    throw new TypeError(`${name} must be JSON-compatible`, { cause: error });
+    if (Array.isArray(value)) {
+      for (let index = 0; index < value.length; index++) {
+        if (!Object.hasOwn(value, index)) {
+          throw new TypeError(`${name} must not contain sparse arrays`);
+        }
+        validateJsonValue(value[index], name, ancestors);
+      }
+      return;
+    }
+
+    if (Object.getOwnPropertySymbols(value).length > 0) {
+      throw new TypeError(`${name} must not contain symbol keys`);
+    }
+    for (const entry of Object.values(value)) validateJsonValue(entry, name, ancestors);
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function validateEntry(value: unknown, name: string): asserts value is EntryType {
+  if (
+    value !== null &&
+    typeof value !== "string" &&
+    !Array.isArray(value) &&
+    (typeof value !== "object" || value === null)
+  ) {
+    throw new TypeError(`${name} must be text, a JSON object or array, or null`);
+  }
+  validateJsonValue(value, name);
+}
+
+function validateInstructions(question: Question, id: string): void {
+  if (question.instructions !== undefined) {
+    validateEntry(question.instructions, `Instructions for question '${id}'`);
   }
 }
 
@@ -266,12 +322,25 @@ function prepareQuestions(questions: Questions): {
     if (!Object.hasOwn(question, "type")) {
       throw new TypeError(`Question '${id}' must have its own 'type' property`);
     }
-    validateSerializable(question, `Question '${id}'`);
+    validateInstructions(question as Question, id);
 
     const output = `q${index}`;
     required.push(output);
 
     if (question.type === "noul") {
+      if (
+        question.criteria !== undefined &&
+        question.criteria !== null &&
+        (typeof question.criteria !== "object" || Array.isArray(question.criteria))
+      ) {
+        throw new TypeError(`Noul question '${id}' must have a criteria object or null`);
+      }
+      if (question.criteria && question.criteria.true !== undefined) {
+        validateEntry(question.criteria.true, `True criterion for question '${id}'`);
+      }
+      if (question.criteria && question.criteria.false !== undefined) {
+        validateEntry(question.criteria.false, `False criterion for question '${id}'`);
+      }
       prepared.push({ id, output, question });
       encoded.push({
         output,
@@ -304,6 +373,9 @@ function prepareQuestions(questions: Questions): {
       if (labels.some((label) => label.length === 0)) {
         throw new TypeError(`Choice question '${id}' has an empty label`);
       }
+      for (const label of labels) {
+        validateEntry(question.criteria[label], `Criterion '${label}' for question '${id}'`);
+      }
       prepared.push({ id, output, question, labels });
       encoded.push({
         output,
@@ -325,6 +397,9 @@ function prepareQuestions(questions: Questions): {
       const size = question.criteria.length;
       if (size < 2 || size > 10) {
         throw new RangeError(`Score question '${id}' must have between 2 and 10 criteria`);
+      }
+      for (const [score, description] of question.criteria.entries()) {
+        validateEntry(description, `Criterion ${score} for question '${id}'`);
       }
       prepared.push({ id, output, question });
       encoded.push({
@@ -365,6 +440,7 @@ function answerQuestions<Q extends Questions>(
 
   for (const item of prepared) {
     const { id, output, question } = item;
+    if (!Object.hasOwn(raw, output)) throw outputError(output, "missing required answer");
     const value = raw[output];
     if (question.type === "noul") {
       answers[id] = { type: "noul", noul: probability(value, output) } satisfies NoulResponse;
@@ -441,12 +517,15 @@ export class SystemOneClient {
     options: SystemOneRequestOptions = {},
   ): Promise<SystemOneResult<Q>> {
     if (this.disposed) throw new FoundationModelsError("SystemOneClient has been disposed");
+    if (!request || typeof request !== "object" || Array.isArray(request)) {
+      throw new TypeError("System One request must be an object");
+    }
     if (request.model !== undefined && !LOCAL_MODEL_NAMES.has(request.model)) {
       throw new TypeError(
         `'model' selects only a local tsfm model; remove '${request.model}' or use 'system'`,
       );
     }
-    validateSerializable(request.state, "'state'");
+    validateEntry(request.state, "'state'");
     const { prepared, encoded, schema } = prepareQuestions(request.questions);
     const prompt = `STATE_AND_QUESTIONS_JSON\n${JSON.stringify({
       state: request.state,
@@ -465,8 +544,11 @@ export class SystemOneClient {
         options: options.generationOptions ?? this.generationOptions,
       });
       try {
-        const raw = response.content.toObject<Record<string, unknown>>();
-        const answers = answerQuestions<Q>(raw, prepared);
+        const raw = response.content.toObject<unknown>();
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          throw outputError("response", "expected an object");
+        }
+        const answers = answerQuestions<Q>(raw as Record<string, unknown>, prepared);
         const usage = response.usage
           ? {
               input_tokens: response.usage.input.totalTokens,

@@ -18,3 +18,4 @@ Runnable examples demonstrating each feature of the SDK. All examples are in the
 | [Journal](/examples/journal) | Tool subclasses, `onCall` callback, `generable()`, streaming, transcript persistence |
 | [Email Triage](/examples/email-triage) | JSON Schema, streaming drafts, per-call generation options, tools |
 | [Chat & Responses APIs](/examples/chat-api) | Chat-style and Responses-style API interface |
+| [System One Decisions](/examples/system-one) | Typed Choice, Score, and Noul decisions with confidence-gated routing |

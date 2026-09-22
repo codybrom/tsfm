@@ -73,6 +73,7 @@ function guideSidebar() {
         { text: "Journal", link: "/examples/journal" },
         { text: "Email Triage", link: "/examples/email-triage" },
         { text: "Chat & Responses APIs", link: "/examples/chat-api" },
+        { text: "System One Decisions", link: "/examples/system-one" },
       ],
     },
     {

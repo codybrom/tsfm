@@ -37,3 +37,4 @@ npx tsx examples/<name>/<name>.ts
 | [contact-card](./contact-card/) | Extract structured contacts from messy text with nested generable() schemas |
 | [journal](./journal/) | Private mood-tracking journal with real tool calls and transcript persistence |
 | [email-triage](./email-triage/) | Inbox triage with JSON Schema, streaming drafts, and per-call generation options |
+| [system-one](./system-one/) | Typed Choice, Score, and Noul decisions with confidence-gated routing |
