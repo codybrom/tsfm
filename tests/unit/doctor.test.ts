@@ -32,21 +32,18 @@ describe("formatDoctorReport", () => {
 describe("onDeviceModelCheck", () => {
   it("reports an installed zero-context model as unhealthy", () => {
     const check = onDeviceModelCheck({
-      available: true,
       variant: "AFM 3 Core",
       contextSize: 0,
       capabilities: ["guidedGeneration"],
     });
     expect(check.ok).toBe(false);
     expect(check.detail).toContain("0-token context");
-    expect(check.detail).toContain("model runtime is not ready");
-    expect(check.detail).toContain("still be provisioning");
+    expect(check.detail).toContain("not accepting requests");
     expect(check.detail).toContain("log out or restart");
   });
 
   it("reports an available model with a context window as healthy", () => {
     const check = onDeviceModelCheck({
-      available: true,
       variant: "AFM 3 Core Advanced",
       contextSize: 8192,
       capabilities: ["guidedGeneration"],
@@ -59,15 +56,7 @@ describe("onDeviceModelCheck", () => {
   });
 
   it("preserves the framework's unavailable reason", () => {
-    expect(
-      onDeviceModelCheck({
-        available: false,
-        unavailableReason: "MODEL_NOT_READY",
-        variant: null,
-        contextSize: 0,
-        capabilities: null,
-      }),
-    ).toEqual({
+    expect(onDeviceModelCheck("MODEL_NOT_READY")).toEqual({
       label: "On-device model",
       ok: false,
       detail: "unavailable: MODEL_NOT_READY",

@@ -18,40 +18,42 @@ export interface DoctorCheck {
   detail: string;
 }
 
-/** @internal Turn model metadata into the doctor's on-device health check. */
-export function onDeviceModelCheck(info: {
-  available: boolean;
-  unavailableReason?: string;
+/** What the on-device model reports about itself when it's available. */
+interface OnDeviceModelMetadata {
   variant: string | null;
   contextSize: number;
   capabilities: string[] | null;
-}): DoctorCheck {
-  const metadata = [
-    info.variant,
-    `${info.contextSize}-token context`,
-    info.capabilities && `capabilities: ${info.capabilities.join(", ")}`,
+}
+
+/**
+ * @internal Turn the on-device model's state into the doctor's health check.
+ * Pass the framework's unavailable reason as a string, or the model's
+ * metadata when it reports itself available.
+ */
+export function onDeviceModelCheck(state: string | OnDeviceModelMetadata): DoctorCheck {
+  const label = "On-device model";
+  if (typeof state === "string") {
+    return { label, ok: false, detail: `unavailable: ${state}` };
+  }
+  const detail = [
+    state.variant,
+    `${state.contextSize}-token context`,
+    state.capabilities && `capabilities: ${state.capabilities.join(", ")}`,
   ]
     .filter(Boolean)
     .join(", ");
-
-  if (!info.available) {
+  // isAvailable() only says the model is installed and the device eligible.
+  // A zero-token context means the runtime is refusing work.
+  if (state.contextSize === 0) {
     return {
-      label: "On-device model",
-      ok: false,
-      detail: `unavailable: ${info.unavailableReason ?? "UNKNOWN"}`,
-    };
-  }
-  if (info.contextSize === 0) {
-    return {
-      label: "On-device model",
+      label,
       ok: false,
       detail:
-        `${metadata} — installed, but the model runtime is not ready; assets may still be ` +
-        "provisioning, or system pressure may be blocking them. Retry in a few minutes; if it " +
-        "persists, free memory, then log out or restart",
+        `${detail}. Installed, but the model runtime is not accepting requests. Retry in a ` +
+        "few minutes. If it persists, free memory, then log out or restart",
     };
   }
-  return { label: "On-device model", ok: true, detail: metadata };
+  return { label, ok: true, detail };
 }
 
 function tsfmVersion(): string {
@@ -134,19 +136,16 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
     loaded = true;
 
     const availability = model.isAvailable();
-    const metadata = availability.available
-      ? {
-          variant: model.variant,
-          contextSize: model.contextSize,
-          capabilities: model.capabilities,
-        }
-      : { variant: null, contextSize: 0, capabilities: null };
     checks.push(
-      onDeviceModelCheck({
-        available: availability.available,
-        unavailableReason: core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff],
-        ...metadata,
-      }),
+      onDeviceModelCheck(
+        availability.available
+          ? {
+              variant: model.variant,
+              contextSize: model.contextSize,
+              capabilities: model.capabilities,
+            }
+          : (core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff] ?? "UNKNOWN"),
+      ),
     );
     model.dispose();
 
