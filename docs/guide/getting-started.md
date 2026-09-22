@@ -6,21 +6,13 @@ TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js â
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
-## Why Use On-Device Apple Models?
+## What the On-Device Model Is For
 
-On-device models let focused language features run locally, without sending each prompt to a cloud
-service. That makes them a strong fit for private or offline workflows, interactive features where
-network latency would get in the way, and applications that should not require an API key or hosted
-model deployment.
-
-Apple's developer-facing documentation positions its model for bounded app features such as
-summarization, entity extraction, text understanding and refinement, short dialog, and creative
-content. It is not designed as a general world-knowledge chatbot. Tools are the intended way to give
-it current, private, or application-specific information.
-
-In practice, prefer a focused prompt, a schema, and a small set of relevant tools over an open-ended
-agent prompt with a large tool catalog. See Apple's
-[Foundation Models documentation](https://developer.apple.com/documentation/foundationmodels).
+The on-device model is small and built for focused tasks: summarizing,
+extracting entities, classifying, rewriting, short dialog. It isn't a chatbot with broad world
+knowledge. When it needs current, private or app-specific information, give it
+[tools](/guide/tools). A narrow prompt with a schema and a few tools works much better than an
+open-ended agent with dozens. All requests stay on the Mac, work offline and need no API key.
 
 ## Requirements
 
@@ -30,15 +22,15 @@ agent prompt with a large tool catalog. See Apple's
 
 ### macOS 26 and macOS 27
 
-In v1.x, tsfm supports the two newest major versions of macOS. Some SDK features are only available on macOS 26.4+ or macOS 27+, and will throw a clear error if used on an older, incompatible OS.
+tsfm runs on both. Features built on newer APIs won't crash on macOS 26, but will return `null` or reports a clear unavailablity reason your app can check.
 
-| Feature | Available on macOS 26 Tahoe |
+| Feature | On macOS 26 |
 | --- | --- |
-| Token usage (`response.usage`, `session.usage`) | `null` |
+| Token usage (`response.usage`, `session.usage`) | Responds `null` |
 | `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27` |
-| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`, using it throws `UnsupportedCapabilityError` |
+| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS` and throws `UnsupportedCapabilityError` |
 | [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
-| `model.variant`, `model.capabilities` | `null` |
+| `model.variant`, `model.capabilities` | Responds `null` |
 | `model.tokenCount()` (needs macOS 26.4) | On 26.0â€“26.3, rejects with `UnsupportedCapabilityError` with `minimumRequiredMacOS: 26.4` |
 
 Everything else works on both, including text, streaming, structured output,

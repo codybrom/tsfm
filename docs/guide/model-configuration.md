@@ -25,26 +25,27 @@ Both options are optional and default to the values shown above.
 
 ## Model Variants
 
-Apple updates its models through OS releases. `SystemLanguageModel` runs on the device, while
-`PrivateCloudComputeLanguageModel` sends requests to Apple's server model. The operating system and
-PCC service choose the exact model. Applications cannot force Core Advanced or Cloud Pro.
+The model ships with macOS, so it is updated alongside macOS. On macOS 27, the system picks the
+on-device variant based on device hardware, available memory, and suitability for the job. Private Cloud Compute automatically determines which server model to use. For now, there is no ability to force which model is used via API.
 
-| Model | OS version | Runs on | Access from tsfm |
+| Model | macOS | Runs on | Reached through |
 | --- | --- | --- | --- |
-| *AFM 1 Core*[^early-core-names] | macOS 26.0–26.3 | On device | Available through `SystemLanguageModel` |
-| *AFM 2 Core*[^early-core-names] | macOS 26.4+ | On device | Available through `SystemLanguageModel`, with improved instruction following and tool calling |
-| **AFM 3 Core** | [macOS 27.0](https://machinelearning.apple.com/research/introducing-third-generation-of-apple-foundation-models) | On device | 3B dense model available through `SystemLanguageModel` |
-| **AFM 3 Core Advanced** | macOS 27.0 | On device | 20B sparse multimodal model. macOS activates roughly 1B–4B parameters and selects this variant only on supported hardware. |
-| **AFM 3 Cloud** | macOS 27.0 | PCC on Apple silicon | Served behind `PrivateCloudComputeLanguageModel`. The backend model is not selectable or reported. |
-| **AFM 3 Cloud Pro** | macOS 27.0 | PCC on NVIDIA GPUs | More capable model for complex reasoning and agentic tool use. It is not directly selectable or reported. |
-| **ADM 3 Cloud (Image)** | macOS 27.0 | PCC on Apple silicon | Image generation and editing model. It is not exposed by the Foundation Models language API. |
+| On-device model ("AFM 1 Core") | 26.0–26.3 | Mac | `SystemLanguageModel` |
+| On-device model ("AFM 2 Core") | 26.4–26.x | Mac | `SystemLanguageModel` |
+| AFM 3 Core | 27.0 | Mac | `SystemLanguageModel` |
+| AFM 3 Core Advanced | 27.0 | Mac, on the most capable Apple silicon | `SystemLanguageModel` |
+| AFM 3 Cloud | 27.0 | Private Cloud Compute, Apple silicon | `PrivateCloudComputeLanguageModel` |
+| AFM 3 Cloud Pro | 27.0 | Private Cloud Compute, NVIDIA GPUs in Google Cloud | `PrivateCloudComputeLanguageModel` |
 
-[^early-core-names]: **AFM 1 Core** and **AFM 2 Core** are informal names for the `SystemLanguageModel` versions included with macOS 26.0–26.3 and macOS 26.4+, respectively. Apple has not published either as an official model name or API identifier.
+Apple has never officially named the two macOS 26 models. According to
+[Apple's most recent model announcement](https://machinelearning.apple.com/research/introducing-third-generation-of-apple-foundation-models),
+AFM 3 Core is a 3-billion-parameter dense model. AFM 3 Core Advanced has 20 billion parameters
+but is sparse, activating 1 to 4 billion at a time. Cloud Pro handles the most demanding work,
+such as agentic tool use and complex reasoning.
 
-On macOS 27, inspect `model.variant` to see whether `SystemLanguageModel` selected AFM 3 Core or Core
-Advanced. The property is unavailable on macOS 26. See
-[Private Cloud Compute](/guide/private-cloud-compute) for server-model capabilities and
-requirements.
+On macOS 27, `model.variant` tells you which on-device model is used. It always returns `null` on macOS 26.
+`PrivateCloudComputeLanguageModel` doesn't report which server model answered. See
+[Private Cloud Compute](/guide/private-cloud-compute) for its requirements.
 
 ## Guardrails
 

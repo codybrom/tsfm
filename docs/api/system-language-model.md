@@ -82,22 +82,15 @@ The maximum number of tokens the model's context window can hold. All input — 
 readonly contextSize: number
 ```
 
-The size varies by model version and variant, so read it at runtime rather than hard-coding a limit.
-The value is the entire session budget, not the largest user prompt. Instructions, framework-added
-formatting, tools, schemas, history, and output all need room.
+The size is per host and per model version, so read it rather than assuming it. Apple's documentation gives 4,096 tokens. On macOS 27.0, tsfm measured 8,192 with AFM 3 Core Advanced and 4,096 with AFM 3 Core. It's the budget for the whole session, not one prompt: instructions, tools, schemas, history and output all share it.
+
+It reads `0` when the system is refusing to run the model (see [`SystemPressureError`](/guide/error-handling#systempressureerror)), so `contextSize > 0` doubles as a health check.
 
 ### `variant` <Badge type="warning" text="macOS 27" />
 
 The on-device model's variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26.
 
-On macOS 27, `variant` distinguishes AFM 3 Core from AFM 3 Core Advanced. It is `null` on macOS 26,
-so use the OS version instead. This guide informally calls the macOS 26.0–26.3 model AFM 1 Core and
-the macOS 26.4+ model AFM 2 Core. Apple advises re-testing prompts whenever the system model changes.
-
-AFM 3 Core is a dense 3-billion-parameter model. AFM 3 Core Advanced is a sparse
-20-billion-parameter model that activates roughly 1–4 billion parameters per request on capable
-hardware. macOS automatically selects between them and the API doesn't expose a variant selector. See
-[Model variants](/guide/model-configuration#model-variants).
+There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Apple advises re-testing prompts against a new one. `variant` is how you tell which one you're running against on macOS 27: AFM 3 Core, or AFM 3 Core Advanced on the Macs that support it. You can't choose between them. See [Model variants](/guide/model-configuration#model-variants).
 
 ```ts
 readonly variant: string | null
@@ -105,8 +98,7 @@ readonly variant: string | null
 
 ### `capabilities` <Badge type="warning" text="macOS 27" />
 
-What the active model can do, or `null` on macOS 26. Read this property instead of assuming a fixed
-capability set for every model variant.
+What the model can do, or `null` on macOS 26. On macOS 27.0 with AFM 3 Core, tsfm observes `"vision"`, `"toolCalling"` and `"guidedGeneration"`, and not `"reasoning"`.
 
 ```ts
 readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[] | null
@@ -140,8 +132,10 @@ await model.tokenCount({ schema: ContactCard.schema });
 await model.tokenCount({ transcript: session.transcript });
 ```
 
-Use this to stay inside `contextSize` before sending a request. Tool definitions and schemas often
-consume more context than their visible text suggests.
+Useful for staying inside `contextSize` before sending a request. Tool
+definitions and schemas are often larger than they look. Measured against the
+on-device model, a five-word prompt costs 15 tokens while a single-argument
+tool definition costs 83.
 
 ## Enums
 
