@@ -60,6 +60,15 @@ export {
 export { Tool, type ToolCallContext } from "./tool.js";
 
 export {
+  fitNoulCalibration,
+  fitDistributionCalibration,
+  type NoulExample,
+  type DistributionExample,
+  type NoulCalibration,
+  type DistributionCalibration,
+} from "./calibration.js";
+
+export {
   FoundationModelsError,
   GenerationError,
   GenerationErrorCode,
