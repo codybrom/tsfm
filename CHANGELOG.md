@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tsfm-sdk/system1`, with `tsfm-sdk/jev` as an alias: a local, Jev-shaped decision API with `SystemOneClient` (`TypeSafeClient` alias), `systemOne()`, and typed `choice`, `score`, and `noul` questions. It batches named decisions over shared state into one guided-generation request, validates runtime inputs before creating a session, and exports Jev-shaped aliases for the common SDK types. Probabilities are model-estimated rather than Jev-calibrated, and `confidence` is derived from distribution concentration.
+- System One decisions default to greedy sampling, which measured better than the framework's own sampling on JevBench. Three opt-in settings, each given on the client or overridden per request: `ensemble` repeats a request and averages the answers, rotating the order of questions and Choice criteria between samples to cancel the on-device model's position bias; `perQuestionCalls` asks each question in its own request, so an answer doesn't depend on what else was asked; and `polarityDebias` also asks every Noul for P(false) and averages the two, cancelling the model's lean toward "true". `fitNoulCalibration()` and `fitDistributionCalibration()`, exported from both `tsfm-sdk` and `tsfm-sdk/system1`, fit temperature scaling to your own labelled decisions.
+
 ## [1.0.0-beta.1] - 2026-09-19
 
 The first 1.0 beta. It publishes under npm's `beta` tag (`npm install tsfm-sdk@beta`); `latest` stays on 0.5 until 1.0.0.
@@ -34,7 +41,6 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Added
 
-- `tsfm-sdk/system1`, with `tsfm-sdk/jev` as an alias: a local, Jev-shaped decision API with `SystemOneClient` (`TypeSafeClient` alias), `systemOne()`, and typed `choice`, `score`, and `noul` questions. It batches named decisions over shared state into one guided-generation request, validates runtime inputs before creating a session, and exports Jev-shaped aliases for the common SDK types. Probabilities are model-estimated rather than Jev-calibrated, and `confidence` is derived from distribution concentration.
 - Tools receive a per-invocation `ToolCallContext` with an `AbortSignal`. Pass it to `fetch()` or other cancellable APIs to stop work when the request is cancelled or the tool is disposed. Existing one-argument tool implementations remain supported. Cancellation cannot forcibly stop code that ignores the signal.
 - Token usage (macOS 27): `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts. `null` on macOS 26.
 - `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
@@ -312,6 +318,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `build-native.sh` script for building the dylib from vendored Swift source
 - `verify-native.js` postinstall script for SHA256 verification with automatic rebuild
 
+[Unreleased]: https://github.com/codybrom/tsfm/compare/v1.0.0-beta.1...HEAD
 [1.0.0-beta.1]: https://github.com/codybrom/tsfm/compare/v0.5.1...v1.0.0-beta.1
 [0.5.1]: https://github.com/codybrom/tsfm/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/codybrom/tsfm/compare/v0.4.0...v0.5.0

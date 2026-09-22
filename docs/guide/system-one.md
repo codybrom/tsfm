@@ -89,7 +89,12 @@ The programming model is Jev-like; the underlying model is not Jev.
 - `confidence` measures distribution concentration: zero for a uniform distribution and one for a
   one-hot distribution. It is not a calibrated probability of correctness.
 - Several questions are batched into one request, but Apple's model still generates the structured
-  response autoregressively. Jev's latency and calibration claims do not transfer to this adapter.
+  response autoregressively, so batching is not neutral here the way it is for Jev. Measured over a
+  22-question rubric, Jev returned the same answer for every question whether
+  it was batched or asked alone; this adapter agreed with itself 68% of the time. Enable `ensemble`
+  with `permute` to average that sensitivity out, or `perQuestionCalls` to avoid batching entirely.
+- Jev's latency and calibration claims do not transfer. On the same rubric Jev answered in 230ms at
+  the median against this adapter's 4.7s, and its answers moved a twentieth as much across repeats.
 
 Treat the values as model estimates. Evaluate them on labeled examples from your application before
 using thresholds for consequential automation.
@@ -123,22 +128,72 @@ HTTP retries, model listing, and hosted model names such as `jev-latest` do not 
 [`SystemLanguageModel.variant`](/api/system-language-model#variant) for the system-wide behavior.
 Model selection is determined by the system.
 
-Supply an existing model when you need custom guardrails or shared ownership:
+`SystemOneClient` defaults to greedy (deterministic) sampling when no `generationOptions` are given.
+On the public JevBench cases this was a consistent, no-downside improvement to decision quality and
+calibration over the framework's own default sampling. Other generation options, such as
+`maximumResponseTokens`, leave greedy sampling on; setting `sampling` or `temperature` replaces it,
+and `sampling: SamplingMode.random()` asks for the framework's default:
 
 ```ts
-import { SystemLanguageModel } from "tsfm-sdk";
+import { SamplingMode, SystemLanguageModel } from "tsfm-sdk";
 import { SystemOneClient } from "tsfm-sdk/system1";
 
 const model = new SystemLanguageModel();
 const client = new SystemOneClient({
   model,
-  generationOptions: { temperature: 0 },
+  generationOptions: { sampling: SamplingMode.random() }, // the framework's own sampling
 });
 
 // The caller owns a supplied model.
 client.dispose();
 model.dispose();
 ```
+
+### Ensembling
+
+`ensemble` evaluates a request several times and averages the answers. It is the one setting we
+tested that improved decisions *and* calibration together, and it is the recommended
+starting point when answer quality matters more than cost:
+
+```ts
+const client = new SystemOneClient({
+  ensemble: { samples: 3, permute: true },
+});
+```
+
+`permute` rotates the questions, and each Choice question's criteria, between samples. The
+on-device model is sensitive to both orderings — on JevBench it picked the second of
+six criteria far less often than the labels warranted, and agreeing with itself only ~68% of the
+time between a question asked inside a rubric and the same question asked alone. Rotation turns
+that sensitivity into ensemble diversity rather than a fixed bias. It cancels the position bias
+fully only when every label visits every position — `samples` at least as large as the longest
+Choice's criteria; fewer samples reduce the bias without removing it.
+
+Measured against the plain greedy default on the same prompt: on 120 JevBench easy and standard
+decisions, accuracy rose from 70.8% to 75.0%, Brier loss fell 29%, and expected calibration error
+halved. On a rubric-shaped case, accuracy rose from 68.2% to 81.8% — though that is 15 to 18 of 22
+decisions, so read it as direction rather than size. Each sample is a full generation call, so a
+request costs up to `samples` times as much.
+
+When several samples disagree completely, the averaged distribution ties and `confidence` reports
+close to zero. That is common — about a third of Choice answers across all JevBench tiers — and
+those answers are worth routing to a person: they were right 30% of the time (14 of 47), against 70%
+for answers the samples agreed on.
+
+### Other knobs
+
+These are off by default.
+
+- `perQuestionCalls: true` — evaluates each question in its own generation call instead of batching a
+  request's questions into one, so an answer no longer depends on what else was asked alongside it.
+  That buys reproducibility rather than accuracy: over a 22-question rubric, batched and isolated
+  answers disagreed on 5 questions, and the batched answer was right on 2 of them and the isolated
+  one on 3. It costs `N` calls for `N` questions.
+- `polarityDebias: true` — also asks every Noul in mirror image, for the probability that it is
+  *false*, and averages the two estimates. The on-device model says "true" more often than the
+  labels warrant, and asking both ways cancels that lean. Over 36 JevBench Nouls it left accuracy
+  unchanged at 83.3% and cut Noul Brier loss by 19%, from 0.347 to 0.281. It costs one extra call for
+  each request that contains a Noul, and none for a request that does not.
 
 When the client creates its own model, `dispose()` releases it. Each `systemOne()` call creates and
 releases a fresh session so calls do not leak conversational state into later decisions. Pass an
