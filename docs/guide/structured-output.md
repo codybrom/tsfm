@@ -191,11 +191,11 @@ const person = content.toObject();
 // { name: "Ada Lovelace", age: 36, occupation: "Mathematician" }
 ```
 
-The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
+The SDK converts JSON Schema to the native Foundation Models format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
 
 Shared shapes can go in `$defs` and be referenced with `$ref`, like
-`{ "$ref": "#/$defs/Person" }`. Apple names each definition by its title, so
-the SDK sets each definition's title to its key; a different `title` on a
+`{ "$ref": "#/$defs/Person" }`. Foundation Models names each definition by its title, so
+the SDK sets each definition's title to its key, and a different `title` on a
 definition is replaced. A schema can nest at most 128 levels of JSON deep.
 
 `toObject()` returns `JsonObject` by default. Pass the shape your schema
@@ -213,7 +213,7 @@ person.age; // number
 ```
 
 The type argument is a claim about model output that guided generation
-enforces when the response is produced — it is not a runtime check, so it does
+enforces when the response is produced. It is not a runtime check, so it does
 not validate the JSON a second time.
 
 ## Picking a Schema Format

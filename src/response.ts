@@ -2,7 +2,7 @@
  * Token usage for one response, or accumulated across a session.
  *
  * `input.totalTokens` counts everything the model read for the request,
- * including the session's earlier turns; `input.cachedTokens` is the part of
+ * including the session's earlier turns. `input.cachedTokens` is the part of
  * that the model reused from its cache.
  */
 export interface Usage {
@@ -63,7 +63,7 @@ export function parseUsage(json: string | null): Usage | null {
     if (!_warnedMalformedUsage) {
       _warnedMalformedUsage = true;
       console.warn(
-        `[tsfm] Unexpected token usage from the native bridge; reporting zeros: ` +
+        `[tsfm] Unexpected token usage from the native bridge, reporting zeros: ` +
           // A preview: enough to diagnose, and the other bridge-JSON parsers
           // truncate the same way.
           `${json.slice(0, 200)}${json.length > 200 ? "…" : ""}`,
@@ -100,7 +100,7 @@ export function usageBetween(before: Usage | null, after: Usage | null): Usage |
 }
 
 /**
- * A streaming response. Iterate it with `for await` to receive text deltas;
+ * A streaming response. Iterate it with `for await` to receive text deltas.
  * `usage` is set once the stream finishes. A stream can be iterated only once.
  *
  * ```ts

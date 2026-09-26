@@ -87,7 +87,7 @@ export interface GenerationOptions {
   maximumToolCalls?: number;
   /**
    * How much the model reasons before answering. Only
-   * `PrivateCloudComputeLanguageModel` reasons; the on-device model rejects it
+   * `PrivateCloudComputeLanguageModel` reasons. The on-device model rejects it
    * with `UnsupportedCapabilityError`.
    */
   reasoningLevel?: ReasoningLevel;

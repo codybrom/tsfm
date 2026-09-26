@@ -29,11 +29,11 @@ function structuredRequest(impl?: Impl) {
   return (...args: unknown[]) => {
     let resolve!: (result: unknown) => void;
     const result = new Promise((r) => (resolve = r));
-    lastRegisteredCallback = (status, content) =>
+    lastRegisteredCallback = (status, content, message) =>
       resolve(
         status === 0
           ? { status, content, message: null }
-          : { status, content: null, message: null },
+          : { status, content: null, message: (message as string | null) ?? null },
       );
     impl?.(...args);
     return [result, "mock-task-pointer"] as never;
@@ -87,8 +87,10 @@ import {
   FailRequestError,
   FoundationModelsError,
   GenerationError,
+  GenerationErrorCode,
   InvalidGenerationSchemaError,
   PromptAttachmentError,
+  RateLimitedError,
   RequestFailedByToolError,
   UnsupportedCapabilityError,
   UnsupportedGuideError,
@@ -560,6 +562,33 @@ describe("LanguageModelSession", () => {
         "Guardrail violation",
       );
       // The addon reads the error message from the content and releases it.
+    });
+
+    it("decodes the JSON-quoted message of a failed structured request", async () => {
+      // The addon reads the bridge's error content as JSON, so a message the
+      // bridge built from a string arrives quoted and escaped.
+      mockFns.FMLanguageModelSessionRespondWithSchema.mockImplementation(
+        structuredRequest(() => {
+          setTimeout(() => {
+            lastRegisteredCallback?.(
+              GenerationErrorCode.RATE_LIMITED,
+              null,
+              JSON.stringify('[tsfm-reset-date:2026-09-22T18:30:00Z] Too "many" requests'),
+            );
+          }, 0);
+          return "mock-task-pointer";
+        }),
+      );
+
+      const session = new LanguageModelSession();
+      const mockSchema = { _nativeSchema: "mock-schema-pointer" };
+      const err = await session
+        .respondWithSchema("Describe", mockSchema as never)
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(RateLimitedError);
+      expect((err as RateLimitedError).resetDate).toEqual(new Date("2026-09-22T18:30:00Z"));
+      expect((err as Error).message).toContain('Too "many" requests');
+      expect((err as Error).message).not.toContain("tsfm-reset-date");
     });
 
     it("passes generation options to the C function", async () => {

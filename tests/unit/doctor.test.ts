@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { formatDoctorReport, collectDoctorReport, main } from "../../src/cli/doctor.js";
+import {
+  formatDoctorReport,
+  collectDoctorReport,
+  main,
+  onDeviceModelCheck,
+  appleSiliconCheck,
+} from "../../src/cli/doctor.js";
 
 vi.mock("node:child_process", () => ({
   spawnSync: vi.fn(),
@@ -21,6 +27,50 @@ describe("formatDoctorReport", () => {
         "· fm CLI           not found",
       ].join("\n"),
     );
+  });
+});
+
+describe("onDeviceModelCheck", () => {
+  it("reports an installed zero-context model as unhealthy", () => {
+    const check = onDeviceModelCheck({
+      variant: "AFM 3 Core",
+      contextSize: 0,
+      capabilities: ["guidedGeneration"],
+    });
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("0-token context");
+    expect(check.detail).toContain("not accepting requests");
+    expect(check.detail).toContain("log out or restart");
+  });
+
+  it("reports an available model with a context window as healthy", () => {
+    const check = onDeviceModelCheck({
+      variant: "AFM 3 Core Advanced",
+      contextSize: 8192,
+      capabilities: ["guidedGeneration"],
+    });
+    expect(check).toEqual({
+      label: "On-device model",
+      ok: true,
+      detail: "AFM 3 Core Advanced, 8192-token context, capabilities: guidedGeneration",
+    });
+  });
+
+  it("leaves capabilities out when the model lists none", () => {
+    const check = onDeviceModelCheck({
+      variant: "AFM 3 Core",
+      contextSize: 4096,
+      capabilities: [],
+    });
+    expect(check.detail).toBe("AFM 3 Core, 4096-token context");
+  });
+
+  it("preserves the framework's unavailable reason", () => {
+    expect(onDeviceModelCheck("MODEL_NOT_READY")).toEqual({
+      label: "On-device model",
+      ok: false,
+      detail: "unavailable: MODEL_NOT_READY",
+    });
   });
 });
 
@@ -165,5 +215,28 @@ describe("main", () => {
       stderrWrite.mockRestore();
       process.exitCode = undefined;
     }
+  });
+});
+
+describe("appleSiliconCheck", () => {
+  it("passes for an arm64 process", () => {
+    expect(appleSiliconCheck("arm64", true)).toEqual({
+      label: "Apple silicon",
+      ok: true,
+      detail: "yes",
+    });
+  });
+
+  it("blames the Node.js binary, not the Mac, for x64 on Apple silicon", () => {
+    const check = appleSiliconCheck("x64", true);
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("this Mac is Apple silicon");
+    expect(check.detail).toContain("Install an arm64 Node.js");
+  });
+
+  it.each([false, null])("blames the Mac for x64 when the hardware is %s", (hardware) => {
+    const check = appleSiliconCheck("x64", hardware);
+    expect(check.ok).toBe(false);
+    expect(check.detail).toBe("x64, Apple Intelligence needs Apple silicon");
   });
 });

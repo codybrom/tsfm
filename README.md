@@ -17,7 +17,7 @@
 
 ---
 
-- On-device inference by default — your data never leaves the machine; opt in to Apple's Private Cloud Compute model when you need more
+- On-device inference by default, so your data never leaves the machine. Opt in to Apple's Private Cloud Compute model when you need more
 - Covers two of the framework's three model paths: `SystemLanguageModel` and `PrivateCloudComputeLanguageModel`, not custom `LanguageModel` implementations ([what tsfm doesn't expose](https://tsfm.dev/guide/getting-started#what-tsfm-doesnt-expose))
 - Streaming text generation
 - Structured output with typed schemas and generation guides
@@ -58,14 +58,14 @@ model.dispose();
 
 **[Read the full docs →](https://tsfm.dev/)**
 
-- [Getting Started](https://tsfm.dev/guide/getting-started) — installation, requirements, first steps, and [what tsfm doesn't expose](https://tsfm.dev/guide/getting-started#what-tsfm-doesnt-expose) of the framework
-- [Sessions](https://tsfm.dev/guide/sessions) — text generation, concurrency, cancellation
-- [Streaming](https://tsfm.dev/guide/streaming) — token-by-token response streaming
-- [Structured Output](https://tsfm.dev/guide/structured-output) — typed schemas with generation guides
-- [Tools](https://tsfm.dev/guide/tools) — function calling
-- [Chat & Responses APIs](https://tsfm.dev/guide/chat-api) — familiar Chat-style and Responses-style interfaces
-- [API Reference](https://tsfm.dev/api/) — complete API docs
-- [Examples](https://tsfm.dev/examples/) — runnable code for every feature
+- [Getting Started](<https://tsfm.dev/guide/getting-started>: installation, requirements, first steps, and [what tsfm doesn't expose](https://tsfm.dev/guide/getting-started#what-tsfm-doesnt-expose) of the framework
+- [Sessions](https://tsfm.dev/guide/sessions): text generation, concurrency, cancellation
+- [Streaming](https://tsfm.dev/guide/streaming): token-by-token response streaming
+- [Structured Output](https://tsfm.dev/guide/structured-output): typed schemas with generation guides
+- [Tools](https://tsfm.dev/guide/tools): function calling
+- [Chat & Responses APIs](https://tsfm.dev/guide/chat-api): familiar Chat-style and Responses-style interfaces
+- [API Reference](https://tsfm.dev/api/): complete API docs
+- [Examples](https://tsfm.dev/examples/): runnable code for every feature
 
 ## Requirements
 

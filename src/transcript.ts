@@ -54,7 +54,7 @@ export interface TranscriptEntry {
 }
 
 export class Transcript {
-  /** @internal raw session pointer — backs the live session's native handle */
+  /** @internal raw session pointer, backs the live session's native handle */
   _nativeSession: NativePointer;
 
   /**
@@ -101,7 +101,7 @@ export class Transcript {
   /**
    * @internal The native pointer, for building a session or counting tokens.
    * Throws a FoundationModelsError once the transcript is disposed or its
-   * session is; the addon would refuse the released handle anyway, but with a
+   * session is. The addon would refuse the released handle anyway, but with a
    * bare Error.
    */
   _pointer(): NativePointer {
@@ -154,7 +154,7 @@ export class Transcript {
    *
    * **Lifetime note:** instances created by `new LanguageModelSession()` or
    * `LanguageModelSession.fromTranscript()` are backed by the live session's
-   * C state. Export the transcript before disposing the session; afterwards
+   * C state. Export the transcript before disposing the session. Afterwards
    * `toJson()` throws.
    *
    * Instances created via the static `Transcript.fromJson()` /

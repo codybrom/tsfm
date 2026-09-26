@@ -9,12 +9,12 @@ export enum PrivateCloudComputeUnavailableReason {
   SYSTEM_NOT_READY = 2,
   /**
    * The host process isn't signed with the managed entitlement
-   * `com.apple.developer.private-cloud-compute`. Plain `node` can't carry it;
-   * it has to be an app (e.g. Electron) signed with a provisioning profile that
+   * `com.apple.developer.private-cloud-compute`. Plain `node` can't carry it.
+   * It has to be an app (e.g. Electron) signed with a provisioning profile that
    * includes the entitlement.
    */
   ENTITLEMENT_MISSING = 3,
-  /** This Mac runs macOS 26; Private Cloud Compute needs macOS 27 or later. */
+  /** This Mac runs macOS 26. Private Cloud Compute needs macOS 27 or later. */
   REQUIRES_NEWER_OS = 4,
   UNKNOWN = 0xff,
 }
@@ -33,9 +33,26 @@ export interface PrivateCloudComputeQuotaUsage {
   resetDate: Date | null;
 }
 
+/** The bridge's quota JSON, or a typed error like the other parsers. */
+function parseQuotaUsage(json: string): Record<string, unknown> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    raw = undefined;
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new FoundationModelsError(
+      `Failed to parse Private Cloud Compute quota JSON: ${json.slice(0, 200)}`,
+    );
+  }
+  return raw as Record<string, unknown>;
+}
+
 /**
- * Apple's server model, run on Private Cloud Compute: a 32K-token context and
- * reasoning (`GenerationOptions.reasoningLevel`), with a daily per-user quota.
+ * The Foundation Models server model, run on Private Cloud Compute: a 32K-token
+ * context and reasoning (`GenerationOptions.reasoningLevel`), with a daily
+ * per-user quota.
  *
  * Opt-in, and only usable on macOS 27 or later from a host process signed with
  * the managed entitlement `com.apple.developer.private-cloud-compute`. Check
@@ -53,22 +70,6 @@ export interface PrivateCloudComputeQuotaUsage {
  * }
  * ```
  */
-/** The bridge's quota JSON, or a typed error like the other parsers. */
-function parseQuotaUsage(json: string): Record<string, unknown> {
-  let raw: unknown;
-  try {
-    raw = JSON.parse(json);
-  } catch {
-    raw = undefined;
-  }
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    throw new FoundationModelsError(
-      `Failed to parse Private Cloud Compute quota JSON: ${json.slice(0, 200)}`,
-    );
-  }
-  return raw as Record<string, unknown>;
-}
-
 export class PrivateCloudComputeLanguageModel {
   /** @internal */
   _nativeModel: NativePointer | null;
@@ -119,7 +120,7 @@ export class PrivateCloudComputeLanguageModel {
     return { available: false, reason };
   }
 
-  /** Polls while the system isn't ready yet; returns at once for other reasons. */
+  /** Polls while the system isn't ready yet, and returns at once for other reasons. */
   async waitUntilAvailable(
     timeoutMs = 30_000,
     intervalMs = 500,
@@ -148,7 +149,7 @@ export class PrivateCloudComputeLanguageModel {
    * The language identifiers the model supports, as minimal BCP 47 language tags (e.g. `["en-GB", "fr-CA", "de", "ja"]`), not full locales.
    *
    * **Asynchronous**, unlike `SystemLanguageModel.supportedLanguages` (a
-   * synchronous getter): Apple defined it `async throws` on
+   * synchronous getter): Foundation Models defined it `async throws` on
    * `PrivateCloudComputeLanguageModel`, as with `contextSize()`. Resolves `[]`
    * on macOS 26, which has no Private Cloud Compute.
    */
@@ -178,11 +179,11 @@ export class PrivateCloudComputeLanguageModel {
   }
 
   /**
-   * Whether the model supports a locale; the host's current locale when none is
-   * given, as Apple's `supportsLocale(_:)` defaults to `.current`.
+   * Whether the model supports a locale (the host's current locale when none is
+   * given), as the Foundation Models `supportsLocale(_:)` defaults to `.current`.
    *
    * **Asynchronous**, unlike `SystemLanguageModel.supportsLocale()` (synchronous):
-   * Apple defined it `async throws` on `PrivateCloudComputeLanguageModel`.
+   * Foundation Models defined it `async throws` on `PrivateCloudComputeLanguageModel`.
    * Resolves `false` on macOS 26, which has no Private Cloud Compute.
    *
    * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)

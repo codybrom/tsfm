@@ -27,7 +27,7 @@ const { content: reply } = await session.respond("Write a haiku about rain", {
 | Option | Type | Description |
 | --- | --- | --- |
 | `temperature` | `number` | Influences the confidence of the model's response, from `0` (most deterministic) to `1` (most varied) inclusive. |
-| `maximumResponseTokens` | `number` | Maximum tokens the model is allowed to produce. When the limit is reached the framework ends the response early without throwing, so the result can be cut off mid-sentence; nothing tells you it was truncated. Check the output yourself if that matters. |
+| `maximumResponseTokens` | `number` | Maximum tokens the model is allowed to produce. When the limit is reached the framework ends the response early without throwing, so the result can be cut off mid-sentence. Nothing tells you it was truncated. Check the output yourself if that matters. |
 | `sampling` | `SamplingMode` | Controls how the model picks tokens from its probability distribution (see below). |
 
 ## Sampling Modes

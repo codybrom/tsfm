@@ -1,0 +1,14 @@
+{
+  "description": "Opaque ModelManagerError 1008 while the installed model refused all work. See pressure.md.",
+  "capturedOn": "2026-09-21",
+  "os": "macOS 27.0",
+  "observations": {
+    "model.isAvailable": { "available": true },
+    "model.contextSize": 0,
+    "model.variant": "AFM 3 Core",
+    "fm.available": "System model available",
+    "fm.respond": "Error: The operation couldn’t be completed. (ModelManagerServices.ModelManagerError error 1008.)",
+    "fm.respond.showAssets": "No assets listed; the request failed immediately with ModelManagerError error 1008.",
+    "tsfm.respond": "Unknown error (code 255): Error FoundationModels.LanguageModelSession.GenerationError:-1 - The operation couldn’t be completed. (ModelManagerServices.ModelManagerError error 1008.)"
+  }
+}

@@ -67,13 +67,13 @@ using transcript = Transcript.fromJson(savedJson);
 ```
 
 Safe to call more than once, and a no-op on the transcript reached through
-`session.transcript` — the session owns that pointer and frees it in
+`session.transcript`. The session owns that pointer and frees it in
 `session.dispose()`.
 
 Only a transcript you restored yourself can be passed to
 `LanguageModelSession.fromTranscript()`. The one reached through
-`session.transcript` belongs to that session — the bridge represents both as
-the same kind of native object — so handing it over would redirect the original
+`session.transcript` belongs to that session (the bridge represents both as
+the same kind of native object), so handing it over would redirect the original
 session's transcript at the new session and break it when that session is
 disposed. tsfm refuses it with `FoundationModelsError`. To branch a
 conversation, export and restore:
@@ -89,7 +89,7 @@ the instance releases its own C object and reads from the new session from then
 on (it is that session's `transcript`), and once that session is disposed the
 instance is detached and its methods throw `FoundationModelsError`. Export it
 first if you need the history afterwards, and don't reuse one instance for a
-second `fromTranscript()` call; create a fresh one from the saved JSON.
+second `fromTranscript()` call. Create a fresh one from the saved JSON.
 
 Anything you miss is released when the handle is garbage collected, but that
 runs at the collector's discretion, so prefer disposing explicitly. Reading a

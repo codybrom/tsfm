@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `tsfm doctor` — reports whether this machine can run tsfm, and why not.
+ * `tsfm doctor` reports whether this machine can run tsfm, and why not.
  *
  * Read-only: it never changes settings, downloads models, or agrees to the fm
  * CLI's license (it only reads `fm license --status`).
@@ -13,9 +13,81 @@ import { macOSMajorVersion } from "../bindings.js";
 
 export interface DoctorCheck {
   label: string;
-  /** true: fine; false: a problem; null: informational. */
+  /** true means fine, false a problem, and null informational. */
   ok: boolean | null;
   detail: string;
+}
+
+/** What the on-device model reports about itself when it's available. */
+interface OnDeviceModelMetadata {
+  variant: string | null;
+  contextSize: number;
+  capabilities: string[] | null;
+}
+
+/**
+ * @internal Turn the on-device model's state into the doctor's health check.
+ * Pass the framework's unavailable reason as a string, or the model's
+ * metadata when it reports itself available.
+ */
+export function onDeviceModelCheck(state: string | OnDeviceModelMetadata): DoctorCheck {
+  const label = "On-device model";
+  if (typeof state === "string") {
+    return { label, ok: false, detail: `unavailable: ${state}` };
+  }
+  const detail = [
+    state.variant,
+    `${state.contextSize}-token context`,
+    state.capabilities?.length ? `capabilities: ${state.capabilities.join(", ")}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  // isAvailable() only says the model is installed and the device eligible.
+  // A zero-token context means the runtime is refusing work.
+  if (state.contextSize === 0) {
+    return {
+      label,
+      ok: false,
+      detail:
+        `${detail}. Installed, but the model runtime is not accepting requests. Retry in a ` +
+        "few minutes. If it persists, free memory, then log out or restart",
+    };
+  }
+  return { label, ok: true, detail };
+}
+
+/**
+ * Whether the hardware is Apple silicon, whatever architecture this process
+ * runs as. `hw.optional.arm64` is 1 on an Apple silicon Mac even for an x64
+ * process under Rosetta, so it tells the Mac apart from the Node.js binary.
+ * Null when it can't be read.
+ */
+function hardwareIsAppleSilicon(): boolean | null {
+  const result = spawnSync("sysctl", ["-n", "hw.optional.arm64"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 5_000,
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout.trim() === "1";
+}
+
+/**
+ * @internal The Apple silicon check. Foundation Models needs an arm64 process
+ * on an Apple silicon Mac, and an x64 Node.js on one is a different problem
+ * from an Intel Mac, so the two are reported apart.
+ */
+export function appleSiliconCheck(arch: string, hardware: boolean | null): DoctorCheck {
+  const label = "Apple silicon";
+  if (arch === "arm64") return { label, ok: true, detail: "yes" };
+  if (hardware) {
+    return {
+      label,
+      ok: false,
+      detail: `this Mac is Apple silicon, but Node.js is ${arch} (running under Rosetta?). Install an arm64 Node.js`,
+    };
+  }
+  return { label, ok: false, detail: `${arch}, Apple Intelligence needs Apple silicon` };
 }
 
 function tsfmVersion(): string {
@@ -40,12 +112,12 @@ function fmLicenseStatus(): string {
     // was refused. Only ENOENT means it isn't installed.
     const code = (result.error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") return "fm CLI not found (not needed by tsfm)";
-    return `fm CLI found, but couldn't be run (${code ?? result.error.message}); not needed by tsfm`;
+    return `fm CLI found, but couldn't be run (${code ?? result.error.message}), not needed by tsfm`;
   }
   if (result.status === 0) return "installed, license agreed";
   // 69 is what `fm license --status` exits with before the license is agreed,
-  // in every stdin mode; see tests/fixtures/fm/unlicensed.json, recorded on
-  // macOS 27.0 before this machine agreed. Its stderr is also where the
+  // in every stdin mode (see tests/fixtures/fm/unlicensed.json, recorded on
+  // macOS 27.0 before this machine agreed). Its stderr is also where the
   // remediation comes from: agreeing is the user's decision, and `fm license`
   // records it for every user on the machine, hence sudo.
   if (result.status === 69) {
@@ -66,25 +138,20 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
     ok: process.platform === "darwin" && macOS !== null && macOS >= 26,
     detail:
       process.platform !== "darwin"
-        ? `${process.platform} — tsfm needs macOS`
+        ? `tsfm needs macOS, found ${process.platform}`
         : macOS === null
           ? "version unknown"
           : macOS >= 27
             ? `macOS ${macOS}`
             : macOS === 26
-              ? "macOS 26 — supported; token usage, toolCallingMode, Private Cloud Compute, " +
+              ? "macOS 26 (supported). Token usage, toolCallingMode, Private Cloud Compute, " +
                 "attachments and model info need macOS 27, and token counting needs 26.4"
-              : `macOS ${macOS} — tsfm needs macOS 26 or later`,
+              : `macOS ${macOS}, tsfm needs macOS 26 or later`,
   });
   if (process.platform === "darwin") {
-    checks.push({
-      label: "Apple silicon",
-      ok: process.arch === "arm64",
-      detail:
-        process.arch === "arm64"
-          ? "yes"
-          : `${process.arch} — Apple Intelligence needs Apple silicon`,
-    });
+    checks.push(
+      appleSiliconCheck(process.arch, process.arch === "arm64" ? true : hardwareIsAppleSilicon()),
+    );
   }
 
   let core: typeof import("../index.js") | null = null;
@@ -98,19 +165,17 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
     loaded = true;
 
     const availability = model.isAvailable();
-    checks.push({
-      label: "On-device model",
-      ok: availability.available,
-      detail: availability.available
-        ? [
-            model.variant,
-            `${model.contextSize}-token context`,
-            model.capabilities && `capabilities: ${model.capabilities.join(", ")}`,
-          ]
-            .filter(Boolean)
-            .join(", ")
-        : `unavailable: ${core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff]}`,
-    });
+    checks.push(
+      onDeviceModelCheck(
+        availability.available
+          ? {
+              variant: model.variant,
+              contextSize: model.contextSize,
+              capabilities: model.capabilities,
+            }
+          : (core.SystemLanguageModelUnavailableReason[availability.reason ?? 0xff] ?? "UNKNOWN"),
+      ),
+    );
     model.dispose();
 
     const pcc = new core.PrivateCloudComputeLanguageModel();
@@ -124,7 +189,7 @@ export async function collectDoctorReport(): Promise<DoctorCheck[]> {
           (pccAvailability.reason === core.PrivateCloudComputeUnavailableReason.ENTITLEMENT_MISSING
             ? " (expected for plain node; PCC is optional)"
             : pccAvailability.reason === core.PrivateCloudComputeUnavailableReason.REQUIRES_NEWER_OS
-              ? " (needs macOS 27; PCC is optional)"
+              ? " (needs macOS 27, PCC is optional)"
               : ""),
     });
     pcc.dispose();

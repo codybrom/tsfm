@@ -1,5 +1,5 @@
 /**
- * GenerationSchema — describes the structure of a guided-generation response.
+ * GenerationSchema: describes the structure of a guided-generation response.
  *
  * Use these classes to tell the model what shape of data to produce.
  * This mirrors the Python SDK's GenerationSchema / GenerationSchemaProperty / GenerationGuide.
@@ -357,7 +357,7 @@ function arrayElementTypeName(def: PropertyDef): string {
 
 /** Where a property sits while `generable()` builds a schema. */
 interface SchemaBuildContext {
-  /** The schema passed to the request; every reference schema is registered on it. */
+  /** The schema passed to the request. Every reference schema is registered on it. */
   root: GenerationSchema;
   /** Reference schema names already used under `root`. */
   usedNames: Set<string>;
@@ -498,7 +498,7 @@ export function generable<const T extends Record<string, PropertyDef>>(
 // ---------------------------------------------------------------------------
 
 /**
- * The deepest JSON nesting a schema may have. Apple's framework decodes a
+ * The deepest JSON nesting a schema may have. The Foundation Models framework decodes a
  * schema recursively on a background thread with a small stack, and a schema
  * nested a few hundred levels deep overflows it, which kills the process
  * (Swift can't catch a stack overflow). Real schemas are nowhere near this.
@@ -511,7 +511,7 @@ export const MAX_SCHEMA_DEPTH = 128;
  * Returns how deeply `value` nests objects and arrays, counting up to `limit`
  * and stopping there. Iterative, so hostile input can't overflow the JS stack.
  * An object that contains itself is infinitely deep, so a cycle returns
- * `Infinity`; an object shared by several parents is not a cycle.
+ * `Infinity`. An object shared by several parents is not a cycle.
  *
  * @internal
  */
@@ -540,8 +540,8 @@ export function jsonNestingDepth(value: unknown, limit = Infinity): number {
 }
 
 /**
- * Claims `title` for one object, adding a numeric suffix if it's taken. Apple
- * resolves object types by title, so a duplicate makes one object adopt the
+ * Claims `title` for one object, adding a numeric suffix if it's taken. Foundation
+ * Models resolves object types by title, so a duplicate makes one object adopt the
  * other's properties.
  */
 function reserveTitle(title: string, used: Set<string>): string {
@@ -625,7 +625,7 @@ function collectTitles(
 }
 
 /**
- * `path` is where this subschema sits, used to title untitled objects; `used`
+ * `path` is where this subschema sits, used to title untitled objects. `used`
  * holds the titles already taken, because the framework keys object types by
  * title and two objects sharing one silently take the same shape.
  */
@@ -703,8 +703,8 @@ function formatSchema(
 /**
  * The structured content returned from guided-generation requests.
  *
- * Call `dispose()` when done to release the underlying C object immediately;
- * otherwise it is released automatically when the instance is garbage collected.
+ * Call `dispose()` when done to release the underlying C object immediately.
+ * Otherwise it is released automatically when the instance is garbage collected.
  */
 export class GeneratedContent {
   /** @internal */
@@ -746,8 +746,8 @@ export class GeneratedContent {
   /**
    * Returns the parsed JSON object.
    *
-   * Pass a type argument to get the shape the schema guarantees — e.g.
-   * `toObject<{ results: TriageResult[] }>()` — instead of asserting at the
+   * Pass a type argument to get the shape the schema guarantees (e.g.
+   * `toObject<{ results: TriageResult[] }>()`) instead of asserting at the
    * call site. Like `value<T>()`, the type argument is a claim about model
    * output that guided generation enforces at generation time, not a runtime
    * check. Defaults to `JsonObject`.
@@ -769,7 +769,7 @@ export class GeneratedContent {
   /**
    * Returns the value of a named property, parsed from JSON.
    *
-   * Tries the C API's per-property accessor first; falls back to parsing the
+   * Tries the C API's per-property accessor first, and falls back to parsing the
    * full JSON object when the C API returns null.
    *
    * **Type safety note:** when the C API returns a non-JSON string for a

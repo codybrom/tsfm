@@ -101,7 +101,7 @@ export type ResponseFormat =
  * Request params for `chat.completions.create()`.
  *
  * All standard params are accepted for type compatibility. Supported params are
- * mapped to Foundation Models GenerationOptions; unsupported params are warned
+ * mapped to Foundation Models GenerationOptions. Unsupported params are warned
  * and silently ignored at runtime (see `mapParams()` and `UNSUPPORTED_PARAMS`).
  */
 export type ChatCompletionCreateParams = {
@@ -218,7 +218,7 @@ export type ChatCompletionChunk = {
   created: number;
   model: string;
   choices: ChatCompletionChunkChoice[];
-  /** Set only on the final chunk, when `stream_options.include_usage` is true; its `choices` is empty. */
+  /** Set only on the final chunk, when `stream_options.include_usage` is true. Its `choices` is empty. */
   usage: CompletionUsage | null;
   system_fingerprint: null;
 };

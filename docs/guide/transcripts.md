@@ -20,7 +20,7 @@ The **Swift** equivalent is [`Transcript.Entry`](https://developer.apple.com/doc
 | `user` | User input passed to `respond()` or `streamResponse()`. |
 | `response` | Model-generated output (text, structured content, or tool calls). |
 | `tool` | Results returned from executed tools. |
-| `reasoning` | The model's reasoning before a response. Only [Private Cloud Compute](/guide/private-cloud-compute) requests with a `reasoningLevel` produce these. The `reasoning.contents` text is often empty; `reasoning.signature` lets the model continue from it. |
+| `reasoning` | The model's reasoning before a response. Only [Private Cloud Compute](/guide/private-cloud-compute) requests with a `reasoningLevel` produce these. The `reasoning.contents` text is often empty. `reasoning.signature` lets the model continue from it. |
 
 ## Inspecting Entries
 

@@ -98,7 +98,7 @@ export type ResponseTextConfig = {
  * Request params for `responses.create()`.
  *
  * All Responses API params are accepted for type compatibility. Supported
- * params are mapped to Foundation Models GenerationOptions; unsupported params
+ * params are mapped to Foundation Models GenerationOptions. Unsupported params
  * are warned and silently ignored at runtime.
  */
 export type ResponseCreateParams = {

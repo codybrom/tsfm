@@ -1,5 +1,5 @@
 /**
- * Tool — base class for tools the model can invoke during generation.
+ * Tool: base class for tools the model can invoke during generation.
  *
  * Subclass this, implement name/description/argumentsSchema/call,
  * then pass instances to LanguageModelSession's tools option.
@@ -34,7 +34,7 @@ export abstract class Tool {
    * output. The model then continues generation with that result in context.
    *
    * **Error handling:** if `call()` throws, the error is caught, converted to
-   * a string message, and sent back to the model as the tool's output — the
+   * a string message, and sent back to the model as the tool's output. The
    * generation does **not** fail. To fail the whole request instead, throw
    * `FailRequestError`: the request then rejects with
    * `RequestFailedByToolError` naming this tool, with the `FailRequestError`
@@ -49,7 +49,7 @@ export abstract class Tool {
    * `context.signal` is specific to this invocation. Pass it to `fetch()` or
    * check `signal.throwIfAborted()` to stop work when the request is cancelled
    * or its session or this tool is disposed. Existing implementations may ignore the second
-   * argument; JavaScript work is only stopped cooperatively.
+   * argument. JavaScript work is only stopped cooperatively.
    */
   abstract call(args: GeneratedContent, context: ToolCallContext): Promise<string>;
 
@@ -90,7 +90,7 @@ export abstract class Tool {
     return bound;
   }
 
-  /** @internal Registers a native callback; also used for tool token counts. */
+  /** @internal Registers a native callback, also used for tool token counts. */
   _register(): void {
     if (this._nativeTool) return; // already registered
 
@@ -151,7 +151,7 @@ export abstract class Tool {
             callId,
             GenerationErrorCode.TOOL_CALL_LIMIT_EXCEEDED,
             `The request reached its limit of ${spent.max} tool call${spent.max === 1 ? "" : "s"} ` +
-              `(maximumToolCalls); ` +
+              `(maximumToolCalls). ` +
               `'${owner.name}' was not run.`,
           );
           return;

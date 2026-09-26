@@ -12,5 +12,5 @@ Generate typed objects using `GenerationSchema` and `respondWithSchema()`.
 4. Map results to a TypeScript interface
 
 ::: tip
-For new code, consider [`generable()`](/guide/structured-output#declarative-schemas-with-generable) — it builds the schema and gives you a typed `parse()` method in one step, eliminating the manual interface and `value()` calls.
+For new code, consider [`generable()`](/guide/structured-output#declarative-schemas-with-generable). It builds the schema and gives you a typed `parse()` method in one step, eliminating the manual interface and `value()` calls.
 :::

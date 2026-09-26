@@ -88,11 +88,11 @@ promise settles later. What to expect:
 - A request waiting on a `Tool.call()` can be cancelled too. Its
   `context.signal` is aborted so the tool can stop work cooperatively. A tool
   that ignores the signal may keep running, but its eventual result is ignored. It cannot resume the cancelled generation after the session has been reused.
-- Requests queued behind the cancelled one wait until it settles; `cancel()`
+- Requests queued behind the cancelled one wait until it settles, and `cancel()`
   doesn't remove them from the queue.
 - For streams, cancellation unblocks a waiting iterator and the consumer loop
   exits on its next iteration. Cleanup waits for native completion before
-  releasing the queue so later requests can run on the same session; see
+  releasing the queue so later requests can run on the same session. See
   [Streaming](/guide/streaming#cancellation).
 
 ## Checking State
@@ -105,7 +105,7 @@ if (session.isResponding) {
 }
 ```
 
-Apple's guidance is not to call `respond()` while `isResponding` is `true`. tsfm queues requests per session and runs them one at a time, so you don't have to check first; a second call waits for the first. That's also why `ConcurrentRequestsError` is nearly unreachable through tsfm.
+Foundation Models' guidance is not to call `respond()` while `isResponding` is `true`. tsfm queues requests per session and runs them one at a time, so you don't have to check first. A second call waits for the first. That's also why `ConcurrentRequestsError` is nearly unreachable through tsfm.
 
 ## Cleanup
 

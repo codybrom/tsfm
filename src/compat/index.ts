@@ -84,7 +84,7 @@ class Completions {
   /**
    * Create a chat completion, mirroring the `chat.completions.create()` API.
    *
-   * Supported params are mapped to native GenerationOptions; unsupported params
+   * Supported params are mapped to native GenerationOptions. Unsupported params
    * (e.g. `n`, `logprobs`, `tool_choice`) are warned and ignored. See
    * `mapParams()` for the full mapping. Sessions are created and disposed
    * automatically per call.

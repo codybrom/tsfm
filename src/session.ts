@@ -83,6 +83,24 @@ function assertModelNotDisposed(
 }
 
 /**
+ * The error message of a failed structured request. The addon reads it from
+ * the bridge's error content as JSON, and the bridge builds that content from
+ * a string, so it arrives quoted and escaped. Text and stream errors arrive
+ * plain, and statusToError matches the reset-date marker at the start of the
+ * message, so the quotes have to come off first.
+ */
+function decodeStructuredMessage(message: string | null): string | undefined {
+  if (message == null) return undefined;
+  try {
+    const decoded: unknown = JSON.parse(message);
+    if (typeof decoded === "string") return decoded;
+  } catch {
+    // Not JSON, so it is already the plain message.
+  }
+  return message;
+}
+
+/**
  * A request's rejection, with the tool's name and error filled in when a tool
  * failed it with FailRequestError (see ToolCallBudget.failures).
  */
@@ -106,7 +124,7 @@ function bindTools(tools: Tool[]): Tool[] {
     const other = seen.get(t.name);
     if (other === t) throw new FoundationModelsError(`Tool '${t.name}' is listed more than once`);
     if (other)
-      throw new FoundationModelsError(`Two tools are named '${t.name}'; names must be unique`);
+      throw new FoundationModelsError(`Two tools are named '${t.name}'. Names must be unique`);
     seen.set(t.name, t);
   }
   const bound: Tool[] = [];
@@ -143,12 +161,12 @@ export class LanguageModelSession {
   private _activeTask: RequestHandle | null = null;
   private _queue = Promise.resolve();
 
-  /** Callback set by an active stream generator; called by cancel() to unblock it. */
+  /** Callback set by an active stream generator, called by cancel() to unblock it. */
   private _cancelStream: (() => void) | null = null;
 
-  /** Set synchronously by dispose(); checked by _assertNotDisposed(). */
+  /** Set synchronously by dispose(), checked by _assertNotDisposed(). */
   private _disposed = false;
-  /** Tools the session was created with; each request lends them a call budget. */
+  /** Tools the session was created with. Each request lends them a call budget. */
   private _tools: Tool[] = [];
   /** Whether requests run on Private Cloud Compute rather than on-device. */
   private _usesPrivateCloudCompute = false;
@@ -209,7 +227,7 @@ export class LanguageModelSession {
    * Create a session pre-loaded with a saved transcript.
    *
    * The supplied `transcript` object is updated in-place to reflect the new
-   * session's pointer; any subsequent `transcript.toJson()` calls will read
+   * session's pointer. Any subsequent `transcript.toJson()` calls will read
    * from the new session, and once that session is disposed the transcript is
    * detached and throws. A transcript that is already disposed or detached is
    * refused with FoundationModelsError.
@@ -265,7 +283,7 @@ export class LanguageModelSession {
 
   /**
    * Preload model resources and optionally cache a prompt prefix to reduce
-   * first-response latency. Fire-and-forget — the prewarm runs in the
+   * first-response latency. Fire-and-forget: the prewarm runs in the
    * background on the native side.
    *
    * @param promptPrefix  Optional text the model should expect at the start of the first prompt.
@@ -290,11 +308,11 @@ export class LanguageModelSession {
    * after `cancel()` returns. Callers should discard any result that arrives
    * after calling `cancel()`.
    *
-   * For streams, cancellation unblocks a waiting iterator; iteration ends on
+   * For streams, cancellation unblocks a waiting iterator. Iteration ends on
    * its next step. Cleanup waits for native completion before releasing the queue lock,
    * so the session can be used again. `collect()` returns the text received so
    * far. For one-shot requests, await settlement before treating cancellation
-   * as complete; a stopped request rejects with `CancelledError`.
+   * as complete. A stopped request rejects with `CancelledError`.
    */
   cancel(): void {
     if (this._disposed) return;
@@ -328,7 +346,7 @@ export class LanguageModelSession {
    * Send a prompt and return the model's plain-text response with its token
    * usage. Read the text from `.content`.
    *
-   * Concurrent calls are serialized — they queue up and run one at a time
+   * Concurrent calls are serialized: they queue up and run one at a time
    * rather than racing over the same session. Throws a `GenerationError`
    * subclass on failure.
    */
@@ -395,7 +413,7 @@ export class LanguageModelSession {
    *
    * Returns a `ResponseStream`: iterate it for string deltas, then read
    * `.usage` once it finishes (or call `.collect()` for the full `Response`).
-   * The underlying stream delivers cumulative snapshots; each is diffed
+   * The underlying stream delivers cumulative snapshots. Each is diffed
    * against the previous to emit only the new suffix.
    *
    * **Queue lock:** the session's request queue is held for the duration of
@@ -537,7 +555,7 @@ export class LanguageModelSession {
       this._activeTask = request;
       if (!request) {
         streamDone = true;
-        throw new FoundationModelsError("The stream couldn't start; check the generation options.");
+        throw new FoundationModelsError("The stream couldn't start. Check the generation options.");
       }
 
       // Apple's ResponseStream yields cumulative snapshots, not deltas.
@@ -665,7 +683,7 @@ export class LanguageModelSession {
     }
     if (options?.reasoningLevel !== undefined && !this._usesPrivateCloudCompute) {
       throw new UnsupportedCapabilityError(
-        "reasoningLevel needs PrivateCloudComputeLanguageModel; the on-device model doesn't reason.",
+        "reasoningLevel needs PrivateCloudComputeLanguageModel. The on-device model doesn't reason.",
       );
     }
   }
@@ -739,7 +757,7 @@ export class LanguageModelSession {
     this._activeTask = request;
     try {
       const { status, content, message } = await result;
-      if (status !== 0) throw statusToError(status, message ?? undefined);
+      if (status !== 0) throw statusToError(status, decodeStructuredMessage(message));
       if (!content) throw new FoundationModelsError("The response had no content");
       return new GeneratedContent(content);
     } finally {

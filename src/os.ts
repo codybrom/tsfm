@@ -4,7 +4,7 @@
  * tsfm supports macOS 26 and 27. Features built on macOS 27 APIs (token usage,
  * tool-calling modes, Private Cloud Compute, prompt attachments, model
  * capabilities and variant) fail on macOS 26 with an error that says so, so an
- * app can handle it; they never crash. The native bridge guards every macOS 27
+ * app can handle it. They never crash. The native bridge guards every macOS 27
  * API as well, so these checks only make the error earlier and clearer.
  */
 import { readFileSync } from "node:fs";
@@ -37,7 +37,7 @@ export function runtimeMacOSMajor(): number | null {
   return _runtimeMacOS;
 }
 
-/** @internal Overrides the detected version in tests; `undefined` re-detects. */
+/** @internal Overrides the detected version in tests. `undefined` re-detects. */
 export function _setRuntimeMacOSMajorForTesting(version: number | null | undefined): void {
   _runtimeMacOS = version;
 }
@@ -55,7 +55,7 @@ export function hasMacOS27(): boolean {
 export function requireMacOS27(feature: string): void {
   if (hasMacOS27()) return;
   throw new UnsupportedCapabilityError(
-    `${feature} requires macOS ${MACOS_27} or later; this Mac runs macOS ${runtimeMacOSMajor()}.`,
+    `${feature} requires macOS ${MACOS_27} or later. This Mac runs macOS ${runtimeMacOSMajor()}.`,
     { minimumRequiredMacOS: MACOS_27 },
   );
 }
