@@ -5,6 +5,7 @@ import {
   collectDoctorReport,
   main,
   onDeviceModelCheck,
+  appleSiliconCheck,
 } from "../../src/cli/doctor.js";
 
 vi.mock("node:child_process", () => ({
@@ -53,6 +54,15 @@ describe("onDeviceModelCheck", () => {
       ok: true,
       detail: "AFM 3 Core Advanced, 8192-token context, capabilities: guidedGeneration",
     });
+  });
+
+  it("leaves capabilities out when the model lists none", () => {
+    const check = onDeviceModelCheck({
+      variant: "AFM 3 Core",
+      contextSize: 4096,
+      capabilities: [],
+    });
+    expect(check.detail).toBe("AFM 3 Core, 4096-token context");
   });
 
   it("preserves the framework's unavailable reason", () => {
@@ -205,5 +215,28 @@ describe("main", () => {
       stderrWrite.mockRestore();
       process.exitCode = undefined;
     }
+  });
+});
+
+describe("appleSiliconCheck", () => {
+  it("passes for an arm64 process", () => {
+    expect(appleSiliconCheck("arm64", true)).toEqual({
+      label: "Apple silicon",
+      ok: true,
+      detail: "yes",
+    });
+  });
+
+  it("blames the Node.js binary, not the Mac, for x64 on Apple silicon", () => {
+    const check = appleSiliconCheck("x64", true);
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("this Mac is Apple silicon");
+    expect(check.detail).toContain("Install an arm64 Node.js");
+  });
+
+  it.each([false, null])("blames the Mac for x64 when the hardware is %s", (hardware) => {
+    const check = appleSiliconCheck("x64", hardware);
+    expect(check.ok).toBe(false);
+    expect(check.detail).toBe("x64, Apple Intelligence needs Apple silicon");
   });
 });
