@@ -83,6 +83,24 @@ function assertModelNotDisposed(
 }
 
 /**
+ * The error message of a failed structured request. The addon reads it from
+ * the bridge's error content as JSON, and the bridge builds that content from
+ * a string, so it arrives quoted and escaped. Text and stream errors arrive
+ * plain, and statusToError matches the reset-date marker at the start of the
+ * message, so the quotes have to come off first.
+ */
+function decodeStructuredMessage(message: string | null): string | undefined {
+  if (message == null) return undefined;
+  try {
+    const decoded: unknown = JSON.parse(message);
+    if (typeof decoded === "string") return decoded;
+  } catch {
+    // Not JSON, so it is already the plain message.
+  }
+  return message;
+}
+
+/**
  * A request's rejection, with the tool's name and error filled in when a tool
  * failed it with FailRequestError (see ToolCallBudget.failures).
  */
@@ -739,7 +757,7 @@ export class LanguageModelSession {
     this._activeTask = request;
     try {
       const { status, content, message } = await result;
-      if (status !== 0) throw statusToError(status, message ?? undefined);
+      if (status !== 0) throw statusToError(status, decodeStructuredMessage(message));
       if (!content) throw new FoundationModelsError("The response had no content");
       return new GeneratedContent(content);
     } finally {
