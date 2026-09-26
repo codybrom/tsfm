@@ -354,21 +354,25 @@ describe("statusToError", () => {
     expect(err).toBeInstanceOf(ServiceCrashedError);
   });
 
-  it.each([
-    ["ModelManagerServices.ModelManagerError error 1013.", SystemPressureError],
-    ["ModelManagerServices.ModelManagerError error 1041.", InvalidGenerationSchemaError],
-    ["ModelManagerServices.ModelManagerError:1041", InvalidGenerationSchemaError],
-  ])("recognizes %s whatever the spelling", (detail, type) => {
-    expect(statusToError(255, detail)).toBeInstanceOf(type);
-  });
+  it.each([["ModelManagerServices.ModelManagerError error 1013.", SystemPressureError]])(
+    "recognizes %s whatever the spelling",
+    (detail, type) => {
+      expect(statusToError(255, detail)).toBeInstanceOf(type);
+    },
+  );
 
   it("doesn't mistake a longer code for a known one", () => {
     const err = statusToError(255, "ModelManagerServices.ModelManagerError error 10080.");
     expect(err).not.toBeInstanceOf(SystemPressureError);
   });
 
-  it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
-    const detail = "ModelManagerServices.ModelManagerError Code=1041 - schema rejected";
+  it.each([
+    "ModelManagerServices.ModelManagerError Code=1041 - schema rejected",
+    "ModelManagerServices.ModelManagerError error 1041.",
+    "ModelManagerServices.ModelManagerError:1041",
+  ])("leaves the model manager's ipcError 1041 generic: %s", (detail) => {
+    // 1041 is a failure to reach the model manager, so it must not read as a
+    // rejected schema, which would send the caller to rewrite a correct one.
     const err = statusToError(255, detail);
     expect(err).toBeInstanceOf(InvalidGenerationSchemaError);
     expect(err.message).toContain("rejected the schema");

@@ -141,7 +141,7 @@ Re-check before trusting a new code on a new OS.
 | 1038 | `inferenceProviderNotFound(…)` | |
 | 1039 | `cannotPerformHostInference` | |
 | 1040 | `invalidRemoteDeviceType(…)` | |
-| 1041 | `ipcError(…)` | `InvalidGenerationSchemaError`, mapped before decoding and unconfirmed |
+| 1041 | `ipcError(…)` | left generic, since it is a failure to reach the model manager and no fixture shows a schema rejection arriving as one |
 | 1042 | `invalidClientIdentifier` | |
 | 1043 | `rateLimited` | `RateLimitedError` (matched on its message) |
 | 1044 | `invalidInferenceProvider` | |

@@ -507,13 +507,9 @@ export function statusToError(status: number, detail?: string | null): Generatio
         if (/(not available in|not found in) Model Catalog/i.test(detail)) {
           return new AssetsUnavailableError(`Assets unavailable${suffix}`);
         }
-        // 1041 is ipcError by name. It was mapped here before the codes were
-        // decoded, and no fixture records a schema rejection arriving this way.
-        if (modelManagerCode === 1041) {
-          return new InvalidGenerationSchemaError(
-            `The on-device model rejected the schema${suffix}`,
-          );
-        }
+        // 1041 is ipcError by name, a failure to reach the model manager, and
+        // no fixture records a schema rejection arriving as one. It stays
+        // generic so a transient failure isn't reported as a bad schema.
       }
       return new GenerationError(`Unknown error (code ${status})${suffix}`);
   }
