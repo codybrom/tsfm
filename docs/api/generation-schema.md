@@ -23,7 +23,7 @@ property(name: string, type: PropertyType | `array<${string}>`, options?: {
 ```
 
 ::: warning
-Bare `"array"` is not accepted — use a compound form like `"array<string>"` or `"array<integer>"`. For object arrays, use `generable()` which resolves types automatically.
+Bare `"array"` is not accepted. Use a compound form like `"array<string>"` or `"array<integer>"`. For object arrays, use `generable()` which resolves types automatically.
 :::
 
 ### `toDict()`
@@ -59,7 +59,7 @@ GenerationGuide.regex(pattern: string)      // regex pattern (see supported synt
 ### Regex patterns
 
 The on-device model supports a subset of regex syntax in `regex` guides and JSON
-Schema `pattern`. Apple documents no restrictions; this table is tsfm's own
+Schema `pattern`. Foundation Models documents no restrictions. This table is tsfm's own
 measurement on macOS 27.0 (AFM 3 Core Advanced), and a later model may differ:
 
 | Supported | Not supported |
@@ -68,7 +68,7 @@ measurement on macOS 27.0 (AFM 3 Core Advanced), and a later model may differ:
 | `\d`, `\w`, `\s` | Anchors `^`, `$` (patterns already match the whole value) |
 | Escaped punctuation: `\.`, `\-`, `\(`, `\[`, `\^`, `\$`, `\{` … | Other escapes: `\D`, `\W`, `\S`, `\b`, `\n`, `\t`, `\p{…}`, `\x41`, `\\` |
 | Groups `(…)`, nested and quantified, with `\|` | `(?…)` groups: non-capturing, lookaround, named |
-| `*`, `+`, `?`, `{m}`, `{m,n}` | Lazy or possessive quantifiers: `+?`, `*+`, `{2,3}?`; backreferences |
+| `*`, `+`, `?`, `{m}`, `{m,n}` | Lazy or possessive quantifiers: `+?`, `*+`, `{2,3}?`, and backreferences |
 
 `respondWithSchema()` and `respondWithJsonSchema()` check patterns before the
 request and throw `UnsupportedGuideError` naming the construct and where it is.
@@ -142,7 +142,7 @@ Whether the model finished generating the full content.
 
 ### `dispose()`
 
-Release resources held by this content. Safe to call multiple times. After disposal, `value()`, `toJson()`, and `isComplete` throw; `toObject()` still works if the result was previously cached.
+Release resources held by this content. Safe to call multiple times. After disposal, `value()`, `toJson()`, and `isComplete` throw, while `toObject()` still works if the result was previously cached.
 
 ```ts
 dispose(): void

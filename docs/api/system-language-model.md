@@ -68,7 +68,7 @@ dispose(): void
 
 ### `supportedLanguages`
 
-Returns the language identifiers the model supports, as minimal BCP 47 language tags. Some carry a region where the model distinguishes one (e.g. `["en-GB", "en-AU", "fr-CA", "es-US", "de", "ja", "zh-TW"]`); they are languages, not full locales.
+Returns the language identifiers the model supports, as minimal BCP 47 language tags. Some carry a region where the model distinguishes one (e.g. `["en-GB", "en-AU", "fr-CA", "es-US", "de", "ja", "zh-TW"]`). They are languages, not full locales.
 
 ```ts
 readonly supportedLanguages: string[]
@@ -76,7 +76,7 @@ readonly supportedLanguages: string[]
 
 ### `contextSize`
 
-The maximum number of tokens the model's context window can hold. All input — instructions, prompts, tool definitions, and responses — counts against this limit.
+The maximum number of tokens the model's context window can hold. All input (instructions, prompts, tool definitions, and responses) counts against this limit.
 
 ```ts
 readonly contextSize: number
@@ -121,7 +121,7 @@ type TokenCountInput =
   | { transcript: Transcript };
 ```
 
-Exactly one field applies per call — the C bridge exposes a separate entry point
+Exactly one field applies per call, because the C bridge exposes a separate entry point
 for each kind of input:
 
 ```ts

@@ -30,7 +30,7 @@ profile that includes it. A library can't carry it, so:
 
 Without the entitlement, `isAvailable()` reports `ENTITLEMENT_MISSING`, and
 requests fail with `PrivateCloudComputeEntitlementError`. (Apple's own
-availability check reports PCC as available even then; tsfm checks the
+availability check reports PCC as available even then, but tsfm checks the
 entitlement itself.)
 
 ## Usage
@@ -69,7 +69,7 @@ and they are stricter. In tsfm's tests PCC rejected a benign prompt containing
 
 `reasoningLevel` (`"light"`, `"moderate"` or `"deep"`) sets how much the model
 reasons before answering. Deeper reasoning is slower and uses more of the context
-window. Only PCC reasons; on the on-device model `reasoningLevel` fails with
+window. Only PCC reasons. On the on-device model `reasoningLevel` fails with
 `UnsupportedCapabilityError`.
 
 ### Quota
@@ -80,7 +80,7 @@ const { limitReached, approachingLimit, resetDate } = model.quotaUsage;
 
 When the quota runs out, requests fail with `PrivateCloudComputeQuotaExceededError`.
 Users can raise their limit with iCloud+. `resetDate` is normally `null` while
-the user is well below their limit; expect a date only as they approach it or
+the user is well below their limit. Expect a date only as they approach it or
 once they've reached it.
 
 ### Supported languages
@@ -95,8 +95,8 @@ await model.supportsLocale(); // the host's current locale
 
 Note the asymmetry with the on-device model: `SystemLanguageModel.supportedLanguages`
 and `supportsLocale()` are **synchronous**, but on `PrivateCloudComputeLanguageModel`
-both are **asynchronous** (they return a `Promise`). Apple defined them that way —
-`async throws` on PCC, plain on-device — as it did for `contextSize`. On macOS 26
+both are **asynchronous** (they return a `Promise`). Apple defined them that way (`async throws`
+on PCC, plain on-device), as it did for `contextSize`. On macOS 26
 they resolve to `[]` and `false`.
 
 ## With the Chat and Responses APIs
@@ -111,7 +111,7 @@ The compatibility client sends a request to PCC when its `model` is
 | Error | When |
 | --- | --- |
 | `PrivateCloudComputeEntitlementError` | The host isn't signed with the PCC entitlement |
-| `PrivateCloudComputeNetworkError` | PCC couldn't be reached; retrying on-device is reasonable |
+| `PrivateCloudComputeNetworkError` | PCC couldn't be reached, and retrying on-device is reasonable |
 | `PrivateCloudComputeQuotaExceededError` | The user's daily quota is used up |
 | `PrivateCloudComputeUnavailableError` | PCC is temporarily unavailable |
 

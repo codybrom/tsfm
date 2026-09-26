@@ -3,7 +3,7 @@
 All SDK errors extend `FoundationModelsError`. Generation-specific errors extend `GenerationError`, which itself extends `FoundationModelsError`. TSFM also adds `ServiceCrashedError`, `SystemPressureError` and `ToolCallError`.
 
 ::: info
-The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com/documentation/foundationmodels/languagemodelerror) (macOS 27) together with [`LanguageModelSession.Error`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/error), [`SystemLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/error) and [`PrivateCloudComputeLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel/error). The older `LanguageModelSession.GenerationError` is deprecated in macOS 27; hosts built against older SDKs still receive it, and tsfm maps both to the same classes.
+The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com/documentation/foundationmodels/languagemodelerror) (macOS 27) together with [`LanguageModelSession.Error`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/error), [`SystemLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/error) and [`PrivateCloudComputeLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel/error). The older `LanguageModelSession.GenerationError` is deprecated in macOS 27. Hosts built against older SDKs still receive it, and tsfm maps both to the same classes.
 :::
 
 ## Error Hierarchy
@@ -11,7 +11,7 @@ The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com
 ::: info FoundationModelsError
 All errors inherit from `FoundationModelsError`.
 
-**GenerationError** — errors during generation:
+**GenerationError**: errors during generation:
 
 - `ExceededContextWindowSizeError`
 - `AssetsUnavailableError`
@@ -26,7 +26,7 @@ All errors inherit from `FoundationModelsError`.
 - `ServiceCrashedError`
 - `SystemPressureError`
 
-**ToolCallError** — a tool's `call()` method threw
+**ToolCallError**: a tool's `call()` method threw
 :::
 
 ## Catching Errors
@@ -59,7 +59,7 @@ The session's accumulated context has exceeded the model's limit. All content (i
 
 ### AssetsUnavailableError
 
-The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session — it will resolve once the assets are ready.
+The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session. It will resolve once the assets are ready.
 
 ### GuardrailViolationError
 
@@ -71,7 +71,7 @@ A `GenerationGuide` on one of your schema properties isn't supported by the curr
 
 ### UnsupportedLanguageOrLocaleError
 
-The system locale or the language of the prompt isn't supported by the on-device model. Foundation Models supports a subset of languages — this error means you've hit one it can't handle.
+The system locale or the language of the prompt isn't supported by the on-device model. Foundation Models supports a subset of languages. This error means you've hit one it can't handle.
 
 ### DecodingFailureError
 
@@ -83,11 +83,11 @@ Too many requests to the on-device model in a short window. This is an OS-level 
 
 ### ConcurrentRequestsError
 
-Apple says not to call `respond()` on a session while `isResponding` is `true`; doing so in Swift throws this. tsfm queues requests on a session and runs them one at a time instead, so a second `respond()` waits rather than failing, and this error is nearly unreachable through tsfm. If you see it, a session is being driven from outside tsfm's queue (for example through the transcript of a session that's still responding).
+Foundation Models says not to call `respond()` on a session while `isResponding` is `true`. Doing so in Swift throws this. tsfm queues requests on a session and runs them one at a time instead, so a second `respond()` waits rather than failing, and this error is nearly unreachable through tsfm. If you see it, a session is being driven from outside tsfm's queue (for example through the transcript of a session that's still responding).
 
 ### RefusalError
 
-The model declined to generate a response. This is distinct from `GuardrailViolationError` — refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
+The model declined to generate a response. This is distinct from `GuardrailViolationError`: refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
 
 Only guided generation (`respondWithSchema()`, `respondWithJsonSchema()`) throws this. For a plain-text `respond()` or `streamResponse()`, a refusal comes back as ordinary text, and Apple says you may not be able to tell a refusal from a normal answer programmatically. So in the common case you won't see `RefusalError` from `respond()`.
 
@@ -135,7 +135,7 @@ const ready = model.isAvailable().available && model.contextSize > 0;
 
 Your tool's `call()` method threw during execution. The SDK wraps the original
 error with the tool name and sends its message back to the model as tool output.
-The response continues; `ToolCallError` is not thrown by `respond()`.
+The response continues, and `ToolCallError` is not thrown by `respond()`.
 
 To stop generation, throw `FailRequestError` instead. Text, structured and
 streaming requests then reject with `RequestFailedByToolError`. Check its

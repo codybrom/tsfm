@@ -6,14 +6,14 @@ macOS 27, and still runs on macOS 26. Most apps need one small change: read
 
 ::: info 1.0 is in beta
 Install it with `npm install tsfm-sdk@beta`. Until 1.0.0 is released, a plain
-`npm install tsfm-sdk` installs 0.5. APIs can still change between betas; the
+`npm install tsfm-sdk` installs 0.5. APIs can still change between betas. The
 [changelog](/changelog) lists what did.
 :::
 
 ## Requirements
 
 - **macOS 26** or later, as before. Token usage, tool-calling modes, Private
-  Cloud Compute, attachments and model info need macOS 27; on macOS 26 each
+  Cloud Compute, attachments and model info need macOS 27. On macOS 26 each
   reports a clear reason instead. See
   [macOS 26 and macOS 27](/guide/getting-started#macos-26-and-macos-27).
 - **Xcode 27** to build from source. Installing from npm doesn't need Xcode.
@@ -93,7 +93,7 @@ await session.respond(prompt, { options: { maximumToolCalls: 100 } });
 The macOS 27 on-device model supports only part of regex syntax, and notably not
 character classes like `[a-z]`. On macOS 27, unsupported patterns now throw
 `UnsupportedGuideError` before the request, naming the construct. See the
-[supported syntax](/api/generation-schema#regex-patterns); most classes have a
+[supported syntax](/api/generation-schema#regex-patterns). Most classes have a
 replacement, such as `[0-9]` → `\d`. On macOS 26, patterns aren't checked, as
 in 0.x.
 
@@ -101,7 +101,7 @@ in 0.x.
 
 `PrivateCloudComputeLanguageModel` runs Apple's server model, with a 32K context
 and `reasoningLevel`. It's opt-in and needs a host signed with Apple's PCC
-entitlement; plain `node` can't use it. See
+entitlement. Plain `node` can't use it. See
 [Private Cloud Compute](/guide/private-cloud-compute).
 
 ## Safer lifetimes and schemas

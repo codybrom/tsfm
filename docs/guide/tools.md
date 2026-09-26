@@ -69,7 +69,7 @@ request:
 
 `"required"` and `"disallowed"` need macOS 27. On macOS 26 they throw
 `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27`, before the request is
-sent; `"allowed"` works on both.
+sent, and `"allowed"` works on both.
 
 ```ts
 // Skip tools when the answer is already in the conversation
@@ -78,7 +78,7 @@ await session.respond("Summarize what you found", {
 });
 ```
 
-With `"required"`, the model keeps calling tools; it doesn't stop by itself. The
+With `"required"`, the model keeps calling tools. It doesn't stop by itself. The
 request ends with `ToolCallLimitExceededError` when it reaches `maximumToolCalls`,
 so set a small limit and catch the error:
 
@@ -102,13 +102,13 @@ call past the limit isn't run, and the request fails with
 fresh limit.
 
 A tool instance can be shared by concurrent sessions. Each request counts only
-its own tool calls toward `maximumToolCalls`; another session's calls cannot
+its own tool calls toward `maximumToolCalls`. Another session's calls cannot
 consume its allowance. The tool's JavaScript state is still shared.
 
 ## Error Handling
 
 If `call()` throws, the request does **not** fail. The error is wrapped in a
-`ToolCallError` and its message — the tool's name and the original error — is
+`ToolCallError` and its message (the tool's name and the original error) is
 sent back to the model as the tool's result, so the model can explain the
 failure or try something else. The response you await is the model's, and it
 usually mentions that the tool failed.
@@ -126,7 +126,7 @@ class WeatherTool extends Tool {
 To fail the whole request instead, throw `FailRequestError` from `call()`.
 The request rejects with `RequestFailedByToolError`, whose `toolName` identifies
 the tool and whose `cause` is the original `FailRequestError`. Synchronous throws
-and rejected Promises behave alike; see [Failing the request](/api/tool#failing-the-request).
+and rejected Promises behave alike. See [Failing the request](/api/tool#failing-the-request).
 
 If concurrent sessions share a tool, each failed request keeps the error from
 its own invocation, including when the messages are identical.
@@ -140,7 +140,7 @@ session.dispose();
 tool.dispose();
 ```
 
-Tools can be reused across sessions — just dispose after all sessions are done.
+Tools can be reused across sessions. Just dispose after all sessions are done.
 
 ## `onCall` Callback
 
@@ -154,7 +154,7 @@ tool.onCall = (name, args) => {
 };
 ```
 
-The callback receives the tool name and the parsed arguments object. It is best-effort — if it throws, the tool call still proceeds.
+The callback receives the tool name and the parsed arguments object. It is best-effort. If it throws, the tool call still proceeds.
 
 ## Best Practices
 
@@ -166,7 +166,7 @@ Apple's [Managing the context window](https://developer.apple.com/documentation/
 
 ## Tool Chaining
 
-The model can call multiple tools in sequence within a single `respond()` call. If the first tool's output informs a second tool call, the model handles the chaining automatically — you don't need to loop.
+The model can call multiple tools in sequence within a single `respond()` call. If the first tool's output informs a second tool call, the model handles the chaining automatically, so you don't need to loop.
 
 ## Chat API Tool Calling
 
@@ -197,7 +197,7 @@ class FetchPage extends Tool {
 
 The signal belongs to one invocation, even when sessions share the same tool.
 `session.cancel()` and stopping a stream early cancel the relevant native
-request; its cancellation notification aborts the signal. `tool.dispose()`
+request, and its cancellation notification aborts the signal. `tool.dispose()`
 aborts all pending invocations of that tool.
 
 Cancellation is cooperative: pass the signal to APIs that support it, and check

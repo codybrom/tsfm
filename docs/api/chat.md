@@ -1,6 +1,6 @@
 # Chat & Responses API Reference
 
-API reference for `tsfm-sdk/chat` (also available as `tsfm-sdk/openai`; both import paths load the same module). This module provides a compatibility layer with a Responses API and Chat Completions API backed by on-device Apple Intelligence.
+API reference for `tsfm-sdk/chat` (also available as `tsfm-sdk/openai`, and both import paths load the same module). This module provides a compatibility layer with a Responses API and Chat Completions API backed by on-device Apple Intelligence.
 
 ```ts
 import Client, { Stream, ResponseStream, MODEL_DEFAULT } from "tsfm-sdk/chat";
@@ -62,7 +62,7 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `input` | `string \| ResponseInputItem[]` | Yes | Text prompt or array of input items |
-| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `instructions` | `string` | No | System instructions |
 | `stream` | `boolean` | No | Enable streaming |
 | `temperature` | `number` | No | Sampling temperature. Foundation Models accepts 0 to 1, so a value above 1 is clamped to 1 with a warning |
@@ -72,7 +72,7 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | `tools` | `FunctionTool[]` | No | Tool definitions |
 | `tool_choice` | `string \| object` | No | Accepted but ignored |
 | `text` | `ResponseTextConfig` | No | Structured output configuration |
-| `reasoning` | `{ effort?, summary? }` | No | `effort` maps to `reasoningLevel` for Private Cloud Compute; ignored with a warning for the on-device model. `summary` isn't supported. |
+| `reasoning` | `{ effort?, summary? }` | No | `effort` maps to `reasoningLevel` for Private Cloud Compute, and is ignored with a warning for the on-device model. `summary` isn't supported. |
 
 All other params (`previous_response_id`, `conversation`, `store`, `truncation`, `metadata`, etc.) are accepted but ignored with a runtime warning.
 
@@ -139,7 +139,7 @@ Only `input_text` is supported. Other types log a warning and are skipped.
 
 #### FunctionTool
 
-Flat format — `name` and `parameters` are top-level (not nested under `function`):
+Flat format: `name` and `parameters` are top-level (not nested under `function`):
 
 ```ts
 {
@@ -332,7 +332,7 @@ Request parameters for `create()`.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `messages` | `ChatCompletionMessageParam[]` | Yes | Conversation messages |
-| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
+| `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`. `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `stream` | `boolean` | No | Enable streaming |
 | `stream_options` | `{ include_usage?: boolean }` | No | With `include_usage`, the stream ends with a chunk that carries `usage` |
 | `reasoning_effort` | `string` | No | Maps to `reasoningLevel` for Private Cloud Compute, and is ignored with a warning for the on-device model |

@@ -56,7 +56,7 @@ a tool throws, not what tsfm throws (see below).
 | `TimeoutError` | 12 | The model didn't finish in time¹ |
 | `UnsupportedCapabilityError` | 13 | The request needs a capability the model or this Mac doesn't have, such as a macOS 27 feature on macOS 26 (see `minimumRequiredMacOS`)² |
 | `UnsupportedTranscriptContentError` | 14 | The transcript has content the model can't accept¹ |
-| `ToolCallLimitExceededError` | 15 | A request reached `maximumToolCalls`; the extra call wasn't run |
+| `ToolCallLimitExceededError` | 15 | A request reached `maximumToolCalls`, so the extra call wasn't run |
 | `PrivateCloudComputeNetworkError` | 16 | [PCC](/guide/private-cloud-compute) couldn't be reached |
 | `PrivateCloudComputeQuotaExceededError` | 17 | The user's daily PCC quota is used up |
 | `PrivateCloudComputeUnavailableError` | 18 | PCC is temporarily unavailable |
@@ -64,11 +64,11 @@ a tool throws, not what tsfm throws (see below).
 | `CancelledError` | 20 | The request was stopped by `session.cancel()`, or its stream was dropped, before it finished |
 | `TranscriptMutationWhileRespondingError` | 21 | The transcript was changed while the session was responding¹ |
 | `RequestFailedByToolError` | 22 | A tool threw `FailRequestError`. `toolName` says which, and `cause` is that error. This is also how a tool ends a `toolCallingMode: "required"` request |
-| `ServiceCrashedError` | 255 | An Apple Intelligence system service failed for a reason other than the machine's state; wait for macOS to restart it, then retry with a new session |
+| `ServiceCrashedError` | 255 | An Apple Intelligence system service failed for a reason other than the machine's state. Wait for macOS to restart it, then retry with a new session |
 | `SystemPressureError` | 255 | The system refused to run the model because of its current state, usually memory pressure. `state` names it, when the system does. Transient, and may clear if retried after a few minutes |
-| `PromptAttachmentError` | — | Attachment refused; see `reason` |
-| `ToolCallError` | — | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
-| `FailRequestError` | — | Thrown by a tool's `call()`, on purpose, to fail the request instead of answering the model. `respond()` then rejects with `RequestFailedByToolError` |
+| `PromptAttachmentError` | none | Attachment refused, see `reason` |
+| `ToolCallError` | none | Tool's `call()` threw. Not thrown to your `respond()`: its message goes back to the model as the tool's result |
+| `FailRequestError` | none | Thrown by a tool's `call()`, on purpose, to fail the request instead of answering the model. `respond()` then rejects with `RequestFailedByToolError` |
 
 ¹ Only reported when the host process (Node, Electron, your app) was built with the macOS 27 SDK.
 Older hosts receive the framework's legacy error type, which has no equivalent for these codes.
