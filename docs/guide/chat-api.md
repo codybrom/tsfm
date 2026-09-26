@@ -179,7 +179,7 @@ Key event types:
 | `response.incomplete` | Generation stopped early |
 
 ::: warning
-When streaming structured output or tool calls, tsfm generates the full response before emitting any events. That is a tsfm limitation, not the framework's: Apple's `streamResponse(to:generating:)` has yielded partial structured snapshots since macOS 26, but tsfm's native layer doesn't stream them yet. Only plain text streams incrementally through tsfm.
+When streaming structured output or tool calls, tsfm generates the full response before emitting any events. That is a tsfm limitation, not the framework's: Foundation Models' `streamResponse(to:generating:)` has yielded partial structured snapshots since macOS 26, but tsfm's native layer doesn't stream them yet. Only plain text streams incrementally through tsfm.
 :::
 
 ### Structured Output
@@ -388,7 +388,7 @@ The `Stream` object supports:
 - **`stream.toReadableStream()`**: convert to a Web `ReadableStream` for HTTP responses
 
 ::: warning
-Structured output and tool call responses are buffered by tsfm until the model finishes. Only plain text streams incrementally. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
+Structured output and tool call responses are buffered by tsfm until the model finishes. Only plain text streams incrementally. Foundation Models can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
 :::
 
 ### Chat: Structured Output
@@ -419,7 +419,7 @@ const person = JSON.parse(response.choices[0].message.content!);
 // { name: "Alice", age: 28, city: "Seattle" }
 ```
 
-The JSON schema is converted to Apple's native generation schema format at runtime. The model uses constrained sampling to guarantee valid output, so no retry or validation is needed.
+The JSON schema is converted to the Foundation Models generation schema format at runtime. The model uses constrained sampling to guarantee valid output, so no retry or validation is needed.
 
 ### Chat: Tool Calling
 

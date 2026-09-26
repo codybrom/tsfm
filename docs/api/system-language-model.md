@@ -90,7 +90,7 @@ It reads `0` when the system is refusing to run the model (see [`SystemPressureE
 
 The on-device model's variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26.
 
-There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Apple advises re-testing prompts against a new one. `variant` is how you tell which one you're running against on macOS 27: AFM 3 Core, or AFM 3 Core Advanced on the Macs that support it. You can't choose between them. See [Model variants](/guide/model-configuration#model-variants).
+There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Foundation Models advises re-testing prompts against a new one. `variant` is how you tell which one you're running against on macOS 27: AFM 3 Core, or AFM 3 Core Advanced on the Macs that support it. You can't choose between them. See [Model variants](/guide/model-configuration#model-variants).
 
 ```ts
 readonly variant: string | null

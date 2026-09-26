@@ -191,10 +191,10 @@ const person = content.toObject();
 // { name: "Ada Lovelace", age: 36, occupation: "Mathematician" }
 ```
 
-The SDK converts JSON Schema to Apple's native format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
+The SDK converts JSON Schema to the native Foundation Models format automatically. Use toObject to get the full result as a plain object instead of extracting properties individually.
 
 Shared shapes can go in `$defs` and be referenced with `$ref`, like
-`{ "$ref": "#/$defs/Person" }`. Apple names each definition by its title, so
+`{ "$ref": "#/$defs/Person" }`. Foundation Models names each definition by its title, so
 the SDK sets each definition's title to its key, and a different `title` on a
 definition is replaced. A schema can nest at most 128 levels of JSON deep.
 

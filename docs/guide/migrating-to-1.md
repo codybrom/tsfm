@@ -117,12 +117,13 @@ entitlement. Plain `node` can't use it. See
   reference.
 - `$ref` to `$defs` in JSON schemas resolves. Each definition's `title` is set
   to its key, which Apple requires.
-- Schemas Apple's framework can't build throw `InvalidGenerationSchemaError`
+- Schemas Foundation Models can't use throw `InvalidGenerationSchemaError`
+- Schemas that Foundation Models can't use throw `InvalidGenerationSchemaError`
   instead of `GenerationError` with code 255.
 
 ## No more koffi
 
-tsfm now reaches Apple's framework through its own Node-API addon
+tsfm now reaches Foundation Models through its own Node-API addon
 (`native/tsfm.node`) instead of the `koffi` package, so it has no runtime
 dependencies, and npm no longer warns about koffi's install script. If you
 listed `koffi` in `allowScripts` for tsfm, you can remove it. The public API

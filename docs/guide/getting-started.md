@@ -120,7 +120,7 @@ Where tsfm and the Swift framework do the same thing differently:
 | A tool that throws ends the request: `respond()` rethrows the error | A tool that throws sends the message back to the model and the request continues | Throw `FailRequestError` from `call()` to get Foundation Models' behavior. The request then rejects with `RequestFailedByToolError`. |
 | `reasoningLevel` on `ContextOptions` | `reasoningLevel` in `GenerationOptions` | One options object. |
 | Guides `maximumCount`, `minimumCount`, `pattern` | `maxItems`, `minItems`, `regex` | Named after JSON Schema. |
-| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary. The exported JSON is Apple's. |
+| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary. The exported JSON follows the Foundation Models format. |
 | No counterpart | `cancel()` also clears tsfm's own request state | Both cancel the native task. tsfm additionally drops its active request and unblocks a waiting stream reader. |
 | Macros `@Generable` and `@Guide` | `generable()` and `GenerationGuide` | Runtime builders instead of compile-time macros. |
 

@@ -225,6 +225,24 @@ describe("statusToError", () => {
     expect(err.message).toContain(detail);
   });
 
+  it("maps a 1013 nested under an earlier unmapped 1008 wrapper", () => {
+    const detail =
+      "ModelManagerServices.ModelManagerError error 1008. " +
+      'Underlying: ModelManagerServices.ModelManagerError:1013 - Not executed due to current system state ["CriticalMemoryPressure"]';
+    const err = statusToError(GenerationErrorCode.UNKNOWN_ERROR, detail);
+    expect(err).toBeInstanceOf(SystemPressureError);
+    expect((err as SystemPressureError).state).toBe("CriticalMemoryPressure");
+  });
+
+  it("keeps a lone 1008 generic", () => {
+    const err = statusToError(
+      GenerationErrorCode.UNKNOWN_ERROR,
+      "ModelManagerServices.ModelManagerError error 1008.",
+    );
+    expect(err).not.toBeInstanceOf(SystemPressureError);
+    expect(err).not.toBeInstanceOf(ServiceCrashedError);
+  });
+
   // Messages taken verbatim from ModelManagerServices' own table; see
   // tests/fixtures/service-pressure/pressure.md.
   it.each([

@@ -55,7 +55,7 @@ try {
 
 ### ExceededContextWindowSizeError
 
-The session's accumulated context has exceeded the model's limit. All content (instructions, prompts, responses, tool schemas, tool calls, and tool output) share one context window. Long conversations or large tool outputs will eventually hit this. Dispose the session and start a new one, optionally seeding it with a trimmed [transcript](/guide/transcripts). Apple recommends splitting large tasks across multiple sessions.
+The session's accumulated context has exceeded the model's limit. All content (instructions, prompts, responses, tool schemas, tool calls, and tool output) share one context window. Long conversations or large tool outputs will eventually hit this. Dispose the session and start a new one, optionally seeding it with a trimmed [transcript](/guide/transcripts). The official Foundation Models documentation recommends splitting large tasks across multiple sessions.
 
 ### AssetsUnavailableError
 
@@ -79,7 +79,7 @@ The model generated output during structured generation, but it couldn't be deco
 
 ### RateLimitedError
 
-Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit while macOS 27 generalizes it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background (an important difference for Node-based daemons). On macOS 27 the framework's error can carry a reset date, which tsfm exposes as `err.resetDate`. Wait until then before retrying. Without one, back off and retry after a short delay.
+Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Foundation Models scopes it to apps running in the background that exceed a system rate limit while macOS 27 generalizes it. Foundation Models advises using the non-streaming `respond()` rather than streaming when running in the background (an important difference for Node-based daemons). On macOS 27 the framework's error can carry a reset date, which tsfm exposes as `err.resetDate`. Wait until then before retrying. Without one, back off and retry after a short delay.
 
 ### ConcurrentRequestsError
 
@@ -89,13 +89,13 @@ Foundation Models says not to call `respond()` on a session while `isResponding`
 
 The model declined to generate a response. This is distinct from `GuardrailViolationError`: refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
 
-Only guided generation (`respondWithSchema()`, `respondWithJsonSchema()`) throws this. For a plain-text `respond()` or `streamResponse()`, a refusal comes back as ordinary text, and Apple says you may not be able to tell a refusal from a normal answer programmatically. So in the common case you won't see `RefusalError` from `respond()`.
+Only guided generation (`respondWithSchema()`, `respondWithJsonSchema()`) throws this. For a plain-text `respond()` or `streamResponse()`, a refusal comes back as ordinary text, and Foundation Models says you may not be able to tell a refusal from a normal answer programmatically. So in the common case you won't see `RefusalError` from `respond()`.
 
 ### InvalidGenerationSchemaError
 
 Your `GenerationSchema` is malformed or was rejected by the on-device model. Common causes: unsupported property types, conflicting guides, a `$ref` to a definition that doesn't exist, or schemas that are too complex for the model to constrain.
 
-A JSON schema that nests more than 128 levels deep, or that contains itself, is rejected before the request. Apple's framework would otherwise overflow its stack decoding it, which kills the process.
+A JSON schema that nests more than 128 levels deep, or that contains itself, is rejected before the request. Foundation Models would otherwise overflow its stack decoding it, which kills the process.
 
 ### ServiceCrashedError
 

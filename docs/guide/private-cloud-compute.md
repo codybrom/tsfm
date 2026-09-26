@@ -95,7 +95,7 @@ await model.supportsLocale(); // the host's current locale
 
 Note the asymmetry with the on-device model: `SystemLanguageModel.supportedLanguages`
 and `supportsLocale()` are **synchronous**, but on `PrivateCloudComputeLanguageModel`
-both are **asynchronous** (they return a `Promise`). Apple defined them that way (`async throws`
+both are **asynchronous** (they return a `Promise`). The Foundation Models framework defines them that way (`async throws`
 on PCC, plain on-device), as it did for `contextSize`. On macOS 26
 they resolve to `[]` and `false`.
 

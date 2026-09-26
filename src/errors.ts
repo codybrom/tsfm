@@ -383,14 +383,22 @@ export class ToolCallError extends FoundationModelsError {
 }
 
 /**
- * The model manager's error code, which reaches us spelled several ways:
- * "ModelManagerError Code=1013" nested under the safety classifier,
- * "ModelManagerError:1013" from a tool call, and "ModelManagerError error
- * 1008." from the error's localized description.
+ * Every model manager error code in the detail, in order. They reach us spelled
+ * several ways: "ModelManagerError Code=1013" nested under the safety
+ * classifier, "ModelManagerError:1013" from a tool call, and "ModelManagerError
+ * error 1008." from the error's localized description. A detail can carry
+ * several, such as a 1008 wrapper around a nested 1013, so callers pick the
+ * first one they can map rather than trusting the first one present.
  */
-function parseModelManagerCode(detail: string): number | undefined {
-  const match = /ModelManagerError(?:\s+error|\s+Code=|:)?\s*(\d+)\b/.exec(detail);
-  return match ? Number(match[1]) : undefined;
+function parseModelManagerCodes(detail: string): number[] {
+  return Array.from(
+    detail.matchAll(/ModelManagerError(?:\s+error|\s+Code=|:)?\s*(\d+)\b/g),
+    (match) => Number(match[1]),
+  );
+}
+
+function pickMappedCode(codes: number[]): number | undefined {
+  return codes.find((code) => code === 1012 || code === 1013 || code === 1032);
 }
 
 export function statusToError(status: number, detail?: string | null): GenerationError {
@@ -478,7 +486,7 @@ export function statusToError(status: number, detail?: string | null): Generatio
       );
     default:
       if (status === GenerationErrorCode.UNKNOWN_ERROR && detail) {
-        const modelManagerCode = parseModelManagerCode(detail);
+        const modelManagerCode = pickMappedCode(parseModelManagerCodes(detail));
         // Codes decoded from ModelManagerServices on macOS 27.0 (see
         // tests/fixtures/service-pressure/pressure.md). 1008 is deliberately
         // absent: it's unrecognizedUnderlyingError, a wrapper for any failure
