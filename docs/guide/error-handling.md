@@ -3,7 +3,7 @@
 All SDK errors extend `FoundationModelsError`. Generation-specific errors extend `GenerationError`, which itself extends `FoundationModelsError`. TSFM also adds `ServiceCrashedError`, `SystemPressureError` and `ToolCallError`.
 
 ::: info
-The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com/documentation/foundationmodels/languagemodelerror) (macOS 27) together with [`LanguageModelSession.Error`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/error), [`SystemLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/error) and [`PrivateCloudComputeLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel/error). The older `LanguageModelSession.GenerationError` is deprecated in macOS 27; hosts built against older SDKs still receive it, and tsfm maps both to the same classes.
+The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com/documentation/foundationmodels/languagemodelerror) (macOS 27) together with [`LanguageModelSession.Error`](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/error), [`SystemLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/systemlanguagemodel/error) and [`PrivateCloudComputeLanguageModel.Error`](https://developer.apple.com/documentation/foundationmodels/privatecloudcomputelanguagemodel/error). The older `LanguageModelSession.GenerationError` is deprecated in macOS 27. Hosts built against older SDKs still receive it, and tsfm maps both to the same classes.
 :::
 
 ## Error Hierarchy
@@ -11,7 +11,7 @@ The **Swift** equivalents are [`LanguageModelError`](https://developer.apple.com
 ::: info FoundationModelsError
 All errors inherit from `FoundationModelsError`.
 
-**GenerationError** — errors during generation:
+**GenerationError**: errors during generation:
 
 - `ExceededContextWindowSizeError`
 - `AssetsUnavailableError`
@@ -26,7 +26,7 @@ All errors inherit from `FoundationModelsError`.
 - `ServiceCrashedError`
 - `SystemPressureError`
 
-**ToolCallError** — a tool's `call()` method threw
+**ToolCallError**: a tool's `call()` method threw
 :::
 
 ## Catching Errors
@@ -59,7 +59,7 @@ The session's accumulated context has exceeded the model's limit. All content (i
 
 ### AssetsUnavailableError
 
-The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session — it will resolve once the assets are ready.
+The on-device model files haven't finished downloading. This typically happens right after enabling Apple Intelligence or after a macOS update. Call `model.waitUntilAvailable()` before creating a session. It will resolve once the assets are ready.
 
 ### GuardrailViolationError
 
@@ -71,7 +71,7 @@ A `GenerationGuide` on one of your schema properties isn't supported by the curr
 
 ### UnsupportedLanguageOrLocaleError
 
-The system locale or the language of the prompt isn't supported by the on-device model. Foundation Models supports a subset of languages — this error means you've hit one it can't handle.
+The system locale or the language of the prompt isn't supported by the on-device model. Foundation Models supports a subset of languages. This error means you've hit one it can't handle.
 
 ### DecodingFailureError
 
@@ -79,21 +79,21 @@ The model generated output during structured generation, but it couldn't be deco
 
 ### RateLimitedError
 
-Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit; macOS 27 generalises it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background, which matters for Node daemons. On macOS 27 the framework's error carries a reset date; tsfm doesn't surface it yet, so back off and retry after a short delay.
+Too many requests to the on-device model in a short window. This is an OS-level rate limit, not a network API limit. On macOS 26 Apple scopes it to apps running in the background that exceed a system rate limit while macOS 27 generalizes it. Apple advises using the non-streaming `respond()` rather than streaming when running in the background (an important difference for Node-based daemons). On macOS 27 the framework's error can carry a reset date, which tsfm exposes as `err.resetDate`. Wait until then before retrying. Without one, back off and retry after a short delay.
 
 ### ConcurrentRequestsError
 
-Apple says not to call `respond()` on a session while `isResponding` is `true`; doing so in Swift throws this. tsfm queues requests on a session and runs them one at a time instead, so a second `respond()` waits rather than failing, and this error is nearly unreachable through tsfm. If you see it, a session is being driven from outside tsfm's queue (for example through the transcript of a session that's still responding).
+Foundation Models says not to call `respond()` on a session while `isResponding` is `true`. Doing so in Swift throws this. tsfm queues requests on a session and runs them one at a time instead, so a second `respond()` waits rather than failing, and this error is nearly unreachable through tsfm. If you see it, a session is being driven from outside tsfm's queue (for example through the transcript of a session that's still responding).
 
 ### RefusalError
 
-The model declined to generate a response. This is distinct from `GuardrailViolationError` — refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
+The model declined to generate a response. This is distinct from `GuardrailViolationError`: refusal means the model chose not to answer (e.g., the prompt asks for something outside its capabilities), not that a content filter triggered.
 
 Only guided generation (`respondWithSchema()`, `respondWithJsonSchema()`) throws this. For a plain-text `respond()` or `streamResponse()`, a refusal comes back as ordinary text, and Apple says you may not be able to tell a refusal from a normal answer programmatically. So in the common case you won't see `RefusalError` from `respond()`.
 
 ### InvalidGenerationSchemaError
 
-Your `GenerationSchema` is malformed or was rejected by the on-device model. Common causes: unsupported property types, conflicting guides, a `$ref` to a definition that doesn't exist, or schemas that are too complex for the model to constrain. Also thrown when the native layer returns a `ModelManagerError Code=1041` rejection.
+Your `GenerationSchema` is malformed or was rejected by the on-device model. Common causes: unsupported property types, conflicting guides, a `$ref` to a definition that doesn't exist, or schemas that are too complex for the model to constrain.
 
 A JSON schema that nests more than 128 levels deep, or that contains itself, is rejected before the request. Apple's framework would otherwise overflow its stack decoding it, which kills the process.
 
@@ -109,24 +109,33 @@ The system refused to run the model because of the machine's current state,
 most often memory pressure: "Not executed due to current system state
 [\"CriticalMemoryPressure\"], try again later". `err.state` names the state.
 It also covers a request preempted by a higher-priority one (`state:
-"Preempted"`).
+"Preempted"`), and the system reporting insufficient resources, which names no
+state (`state` is `undefined`).
 
 Nothing is wrong with your code or the model. It clears on its own, usually
-within a few minutes; retry then, and free memory if it persists. `launchctl`
-can't restart these services while System Integrity Protection is on.
+within a few minutes. Retry then, and free memory if it persists. If it still
+fails, log out or restart the Mac. `launchctl` can't restart these services
+while System Integrity Protection is on.
 
-While this lasts, `isAvailable()` still reports `{ available: true }` — it
-describes whether the model is installed and the device eligible, not whether
-the system will serve a request. Two properties do change, and either works as a
-health check: `contextSize` reads `0` instead of its usual value, and `variant`
-drops to a lesser model. Recorded behaviour is in
-`tests/fixtures/service-pressure/`.
+Don't call `waitUntilAvailable()` here: availability already reports success,
+so it returns at once and the next request fails the same way.
+
+While this lasts, `isAvailable()` may still report `{ available: true }`. It describes whether the
+model is installed and the device is eligible, not whether the runtime will accept a request.
+`contextSize` is a better signal: it reads `0` while the runtime is refusing work.
+
+```ts
+const model = new SystemLanguageModel();
+const ready = model.isAvailable().available && model.contextSize > 0;
+```
+
+`tsfm doctor` runs the same check and reports a zero-token context as unhealthy.
 
 ### ToolCallError
 
 Your tool's `call()` method threw during execution. The SDK wraps the original
 error with the tool name and sends its message back to the model as tool output.
-The response continues; `ToolCallError` is not thrown by `respond()`.
+The response continues, and `ToolCallError` is not thrown by `respond()`.
 
 To stop generation, throw `FailRequestError` instead. Text, structured and
 streaming requests then reject with `RequestFailedByToolError`. Check its

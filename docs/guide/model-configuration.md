@@ -23,6 +23,30 @@ const model = new SystemLanguageModel({
 
 Both options are optional and default to the values shown above.
 
+## Model Variants
+
+The model ships with macOS, so it is updated alongside macOS. On macOS 27, the system picks the
+on-device variant based on device hardware, available memory, and suitability for the job. Private Cloud Compute automatically determines which server model to use. For now, there is no ability to force which model is used via API.
+
+| Model | macOS | Runs on | Reached through |
+| --- | --- | --- | --- |
+| On-device model ("AFM 1 Core") | 26.0–26.3 | Mac | `SystemLanguageModel` |
+| On-device model ("AFM 2 Core") | 26.4–26.x | Mac | `SystemLanguageModel` |
+| AFM 3 Core | 27.0 | Mac | `SystemLanguageModel` |
+| AFM 3 Core Advanced | 27.0 | Mac, on the most capable Apple silicon | `SystemLanguageModel` |
+| AFM 3 Cloud | 27.0 | Private Cloud Compute, Apple silicon | `PrivateCloudComputeLanguageModel` |
+| AFM 3 Cloud Pro | 27.0 | Private Cloud Compute, NVIDIA GPUs in Google Cloud | `PrivateCloudComputeLanguageModel` |
+
+Apple has never officially named the two macOS 26 models. According to
+[Apple's most recent model announcement](https://machinelearning.apple.com/research/introducing-third-generation-of-apple-foundation-models),
+AFM 3 Core is a 3-billion-parameter dense model. AFM 3 Core Advanced has 20 billion parameters
+but is sparse, activating 1 to 4 billion at a time. Cloud Pro handles the most demanding work,
+such as agentic tool use and complex reasoning.
+
+On macOS 27, `model.variant` tells you which on-device model is used. It always returns `null` on macOS 26.
+`PrivateCloudComputeLanguageModel` doesn't report which server model answered. See
+[Private Cloud Compute](/guide/private-cloud-compute) for its requirements.
+
 ## Guardrails
 
 Guardrails control how the model handles potentially unsafe content in prompts and responses.

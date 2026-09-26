@@ -57,7 +57,7 @@ describe("on macOS 26", () => {
         expect(err).toBeInstanceOf(UnsupportedCapabilityError);
         expect((err as UnsupportedCapabilityError).minimumRequiredMacOS).toBe(27);
         expect((err as Error).message).toMatch(
-          new RegExp(`toolCallingMode "${mode}" requires macOS 27.*this Mac runs macOS 26`),
+          new RegExp(`toolCallingMode "${mode}" requires macOS 27.*This Mac runs macOS 26`),
         );
         expect(mockFns.FMLanguageModelSessionRespond).not.toHaveBeenCalled();
       },

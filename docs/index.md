@@ -1,6 +1,6 @@
 ---
 layout: home
-title: tsfm — TypeScript SDK for Apple Foundation Models
+title: tsfm: TypeScript SDK for Apple Foundation Models
 titleTemplate: false
 
 hero:

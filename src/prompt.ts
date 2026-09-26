@@ -28,8 +28,8 @@ export interface ContentPromptInput {
 }
 
 /**
- * A prompt with attachments. Pass a plain string when you only need text;
- * `{ text, attachments }` to put attachments after the text; or `{ content }`
+ * A prompt with attachments. Pass a plain string when you only need text,
+ * `{ text, attachments }` to put attachments after the text, or `{ content }`
  * to order text and attachments yourself.
  */
 export type PromptInput = TextPromptInput | ContentPromptInput;
@@ -61,7 +61,7 @@ function promptParts(prompt: string | PromptInput): Array<string | PromptAttachm
     parts = own.content;
   } else {
     if (!Object.hasOwn(own, "text") || typeof own.text !== "string") {
-      throw new TypeError(`A prompt must be ${SHAPES}; this one has no "text"`);
+      throw new TypeError(`A prompt must be ${SHAPES}. This one has no "text"`);
     }
     // An explicit undefined or null reads as "no attachments", like the
     // optional property it is. Only read attachments if it's an own property,

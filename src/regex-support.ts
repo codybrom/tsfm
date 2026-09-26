@@ -41,13 +41,13 @@ export function findUnsupportedRegexConstruct(pattern: string): string | null {
     }
 
     if (c === "[") {
-      return "a character class [...]; use \\d, \\w or \\s, or alternation such as (a|b|c)";
+      return "a character class [...]: use \\d, \\w or \\s, or alternation such as (a|b|c)";
     }
     if (c === "^" || c === "$") {
-      return `the anchor ${c}; patterns already match the whole value, so leave it out`;
+      return `the anchor ${c}: patterns already match the whole value, so leave it out`;
     }
     if (c === "(" && pattern[i + 1] === "?") {
-      return "a (?...) group; use a plain group (...) instead";
+      return "a (?...) group: use a plain group (...) instead";
     }
 
     const isQuantifier = c === "*" || c === "+" || c === "?" || c === "}";

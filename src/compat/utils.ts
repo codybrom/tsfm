@@ -8,11 +8,13 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeNetworkError,
   PrivateCloudComputeEntitlementError,
+  SystemPressureError,
+  ServiceCrashedError,
 } from "../errors.js";
 
 /**
  * Reorder JSON keys to match the property order defined in a JSON schema.
- * Other AI APIs return keys in schema-defined order; Apple returns them in
+ * Other AI APIs return keys in schema-defined order. Foundation Models returns them in
  * generation order. This normalizes the output for compatibility.
  */
 export function reorderJson(json: string, schema: JsonSchema): string {
@@ -84,9 +86,13 @@ export function compatStatusFor(err: unknown): number | null {
   if (err instanceof RateLimitedError || err instanceof PrivateCloudComputeQuotaExceededError) {
     return 429;
   }
+  // The system can't run the model right now, or a system service crashed and
+  // macOS is restarting it. Both clear on their own, so a client should retry.
   if (
     err instanceof PrivateCloudComputeUnavailableError ||
-    err instanceof PrivateCloudComputeNetworkError
+    err instanceof PrivateCloudComputeNetworkError ||
+    err instanceof SystemPressureError ||
+    err instanceof ServiceCrashedError
   ) {
     return 503;
   }

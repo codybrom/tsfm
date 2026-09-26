@@ -1,6 +1,6 @@
 # LanguageModelSession
 
-Manages conversation state and provides all generation methods — text, streaming, structured, and JSON Schema.
+Manages conversation state and provides all generation methods: text, streaming, structured, and JSON Schema.
 
 ## Constructor
 
@@ -22,7 +22,7 @@ new LanguageModelSession(options?: {
 
 ### `respond()`
 
-Generate a text response. The text is in `.content`; `.usage` has the tokens
+Generate a text response. The text is in `.content`, and `.usage` has the tokens
 this request used.
 
 ```ts
@@ -83,7 +83,7 @@ await session.respond({ content: [{ path: "/tmp/chart.png" }] });
 
 Attachments are images only. Each path must be an existing file: otherwise
 `respond()` throws a `PromptAttachmentError` with `reason: "not-found"` before
-anything reaches the native library. Attachments need macOS 27; on macOS 26 the
+anything reaches the native library. Attachments need macOS 27. On macOS 26 the
 reason is `"unsupported-os"`. If the bridge refuses one for another reason, the
 reason is `"unknown"`.
 
@@ -136,7 +136,7 @@ const { content, usage } = await session.streamResponse("Say hi").collect();
 
 ### `prewarm()`
 
-Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget — the prewarm runs in the background on the native side. Apple says to call it at least a second before the first request for it to help, and that it guarantees nothing: it's a hint, and the framework may not act on it.
+Preload model resources and optionally cache a prompt prefix to reduce first-response latency. Fire-and-forget: the prewarm runs in the background on the native side. Apple says to call it at least a second before the first request for it to help, and that it guarantees nothing. It's a hint, and the framework may not act on it.
 
 ```ts
 prewarm(promptPrefix?: string): void
@@ -161,7 +161,7 @@ the cancellation takes effect, and a stopped request rejects with
 tools must honor the signal to stop work. Any late result is ignored.
 Queued requests wait for the cancelled one to
 settle. For streams, `cancel()` unblocks the iterator and iteration ends normally
-on its next step; `collect()` returns the text received so far. Stream cleanup
+on its next step, and `collect()` returns the text received so far. Stream cleanup
 waits for the terminal native callback before releasing the queue lock, so later
 requests cannot overlap the cancelled generation.
 See [Cancellation](/guide/sessions#cancellation).
@@ -211,7 +211,7 @@ readonly isResponding: boolean
 
 `true` while a generation request is in progress.
 
-Apple says not to call `respond()` while this is `true`; in Swift that throws `ConcurrentRequestsError`. tsfm queues requests on a session and runs them one at a time, so calling `respond()` while responding just waits its turn. You rarely need to check this before a call.
+Apple says not to call `respond()` while this is `true`. In Swift that throws `ConcurrentRequestsError`. tsfm queues requests on a session and runs them one at a time, so calling `respond()` while responding just waits its turn. You rarely need to check this before a call.
 
 ### `transcript`
 

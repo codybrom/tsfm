@@ -76,6 +76,24 @@ describe("statusToError", () => {
     expect(err.message).toBe("Rate limited");
   });
 
+  it("reads the rate limit's reset date from the bridge's marker", () => {
+    const err = statusToError(
+      GenerationErrorCode.RATE_LIMITED,
+      "[tsfm-reset-date:2026-09-22T18:30:00Z] Too many requests",
+    );
+    expect(err).toBeInstanceOf(RateLimitedError);
+    expect((err as RateLimitedError).resetDate).toEqual(new Date("2026-09-22T18:30:00Z"));
+    expect(err.message).toBe("Rate limited: Too many requests");
+  });
+
+  it("leaves resetDate undefined when the framework gives none, or an unreadable one", () => {
+    const plain = statusToError(GenerationErrorCode.RATE_LIMITED, "Too many");
+    expect((plain as RateLimitedError).resetDate).toBeUndefined();
+    const err = statusToError(GenerationErrorCode.RATE_LIMITED, "[tsfm-reset-date:soon] Too many");
+    expect((err as RateLimitedError).resetDate).toBeUndefined();
+    expect(err.message).toBe("Rate limited: Too many");
+  });
+
   it("maps CONCURRENT_REQUESTS to ConcurrentRequestsError", () => {
     const err = statusToError(GenerationErrorCode.CONCURRENT_REQUESTS);
     expect(err).toBeInstanceOf(ConcurrentRequestsError);
@@ -316,11 +334,49 @@ describe("statusToError", () => {
     expect(err).toBeInstanceOf(SystemPressureError);
   });
 
-  it("maps code 255 with ModelManagerError Code=1041 to InvalidGenerationSchemaError", () => {
-    const detail = "ModelManagerServices.ModelManagerError Code=1041 - schema rejected";
+  it("leaves 1008, the model manager's unclassified wrapper, as a generic GenerationError", () => {
+    const detail = "ModelManagerServices.ModelManagerError error 1008.";
     const err = statusToError(255, detail);
-    expect(err).toBeInstanceOf(InvalidGenerationSchemaError);
-    expect(err.message).toContain("rejected the schema");
+    expect(err.constructor).toBe(GenerationError);
+    expect(err.message).toContain(detail);
+  });
+
+  it("maps the model manager's insufficient-resources 1012 to SystemPressureError", () => {
+    const detail = "ModelManagerServices.ModelManagerError error 1012.";
+    const err = statusToError(255, detail);
+    expect(err).toBeInstanceOf(SystemPressureError);
+    expect((err as SystemPressureError).state).toBeUndefined();
+    expect(err.message).toContain(`Original error: ${detail}`);
+  });
+
+  it("maps the model manager's inference-provider crash 1032 to ServiceCrashedError", () => {
+    const err = statusToError(255, "ModelManagerServices.ModelManagerError Code=1032");
+    expect(err).toBeInstanceOf(ServiceCrashedError);
+  });
+
+  it.each([["ModelManagerServices.ModelManagerError error 1013.", SystemPressureError]])(
+    "recognizes %s whatever the spelling",
+    (detail, type) => {
+      expect(statusToError(255, detail)).toBeInstanceOf(type);
+    },
+  );
+
+  it("doesn't mistake a longer code for a known one", () => {
+    const err = statusToError(255, "ModelManagerServices.ModelManagerError error 10080.");
+    expect(err).not.toBeInstanceOf(SystemPressureError);
+  });
+
+  it.each([
+    "ModelManagerServices.ModelManagerError Code=1041 - schema rejected",
+    "ModelManagerServices.ModelManagerError error 1041.",
+    "ModelManagerServices.ModelManagerError:1041",
+  ])("leaves the model manager's ipcError 1041 generic: %s", (detail) => {
+    // 1041 is a failure to reach the model manager, so it must not read as a
+    // rejected schema, which would send the caller to rewrite a correct one.
+    const err = statusToError(255, detail);
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err).not.toBeInstanceOf(InvalidGenerationSchemaError);
+    expect(err.message).toContain(detail);
   });
 
   it("maps code 255 without crash signature to generic GenerationError", () => {
@@ -399,7 +455,7 @@ describe("error hierarchy", () => {
 
   it("ServiceCrashedError includes recovery instructions", () => {
     const err = new ServiceCrashedError();
-    expect(err.message).toContain("retry with a new session");
+    expect(err.message).toContain("Retry with a new session");
     expect(err.message).toContain("log out and back in");
     expect(err.message).not.toContain("launchctl");
   });

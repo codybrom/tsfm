@@ -8,7 +8,7 @@ TSFM offers two ways to interact with the on-device Foundation Model:
    <small>(mostly mirrors [the original Swift FoundationModels API](https://developer.apple.com/documentation/foundationmodels))</small>
 2. **Compatibility APIs** that mirror popular cloud interfaces
 
-The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes. It's also available as `tsfm-sdk/openai`; both import paths load the same module.
+The `tsfm-sdk/chat` module translates familiar OpenAI-style calls into native Foundation Models operations, so you can swap in on-device Apple Intelligence with minimal code changes. It's also available as `tsfm-sdk/openai`. Both import paths load the same module.
 
 For full control over sessions, schemas, and tools, use the [native SDK](/guide/sessions) instead.
 
@@ -53,7 +53,7 @@ console.log(completion.choices[0].message.content);
 client.close();
 ```
 
-If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute). The ids Apple's `fm serve` uses, `"system"` and `"pcc"`, are accepted as aliases, so a client written for it works unchanged; responses always report the full name.
+If you've used the OpenAI Node SDK or similar APIs, the interface should feel familiar. The biggest difference is the `model` param. Omit it or set it to `"SystemLanguageModel"` for the on-device model, or set it to `"PrivateCloudComputeLanguageModel"` for [Private Cloud Compute](#private-cloud-compute). The ids Apple's `fm serve` uses, `"system"` and `"pcc"`, are accepted as aliases, so a client written for it works unchanged. Responses always report the full name.
 
 ## What TSFM Supports
 
@@ -69,15 +69,15 @@ Both APIs support the same core capabilities:
 | `temperature`, `max_output_tokens` | `temperature`, `max_output_tokens` | `temperature`, `max_tokens` / `max_completion_tokens` | Full |
 | `top_p`, `seed` | `top_p`, `seed` | `top_p`, `seed` | Full |
 | Image/audio content | `input_image`, `input_file` | Image URLs | Not supported (warns) |
-| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full on macOS 27; `null` on macOS 26 |
+| `usage` / token counts | `usage` | `usage` (streaming: `stream_options.include_usage`) | Full on macOS 27 and `null` on macOS 26 |
 | Reasoning effort | `reasoning: { effort }` | `reasoning_effort` | Private Cloud Compute only |
 
 ### Private Cloud Compute
 
 Set `model` to `"PrivateCloudComputeLanguageModel"` (or `"pcc"`) to send a request to Apple's
 [Private Cloud Compute](/guide/private-cloud-compute) model instead of the
-on-device one. The process running your code needs Apple's PCC entitlement;
-without it, the request throws `PrivateCloudComputeEntitlementError`. The client
+on-device one. The process running your code needs Apple's PCC entitlement.
+Without it, the request throws `PrivateCloudComputeEntitlementError`. The client
 creates the PCC model the first time a request asks for it, and `close()`
 releases it.
 
@@ -328,7 +328,7 @@ The Chat Completions API accepts all standard message roles:
 
 | Role | Behavior |
 | --- | --- |
-| `system` | Mapped to the session's `instructions`. Only the first system message becomes instructions — subsequent ones are treated as user messages with a `[System]` prefix. |
+| `system` | Mapped to the session's `instructions`. Only the first system message becomes instructions. Subsequent ones are treated as user messages with a `[System]` prefix. |
 | `developer` | Same as `system`. |
 | `user` | Mapped to a user transcript entry. The last user message becomes the prompt. |
 | `assistant` | Mapped to a response transcript entry. Tool calls are preserved. |
@@ -336,7 +336,7 @@ The Chat Completions API accepts all standard message roles:
 
 #### Chat: Multi-turn Conversations
 
-Pass the full conversation history in the `messages` array. The client converts it to a native Foundation Models [transcript](/guide/transcripts) behind the scenes — each `create()` call builds a fresh session from the messages you provide.
+Pass the full conversation history in the `messages` array. The client converts it to a native Foundation Models [transcript](/guide/transcripts) behind the scenes: each `create()` call builds a fresh session from the messages you provide.
 
 ```ts
 const response = await client.chat.completions.create({
@@ -367,7 +367,7 @@ for await (const chunk of stream) {
 
 To get the request's token usage, set `stream_options: { include_usage: true }`.
 The stream then ends with one more chunk whose `choices` is empty and whose
-`usage` is set; every other chunk has `usage: null`.
+`usage` is set. Every other chunk has `usage: null`.
 
 ```ts
 const stream = await client.chat.completions.create({
@@ -383,12 +383,12 @@ for await (const chunk of stream) {
 
 The `Stream` object supports:
 
-- **`for await...of`** — iterates chunks, auto-closes on completion or `break`
-- **`stream.close()`** — eagerly release resources without finishing iteration
-- **`stream.toReadableStream()`** — convert to a Web `ReadableStream` for HTTP responses
+- **`for await...of`**: iterates chunks, auto-closes on completion or `break`
+- **`stream.close()`**: eagerly release resources without finishing iteration
+- **`stream.toReadableStream()`**: convert to a Web `ReadableStream` for HTTP responses
 
 ::: warning
-Structured output and tool call responses are buffered by tsfm until the model finishes; only plain text streams incrementally. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
+Structured output and tool call responses are buffered by tsfm until the model finishes. Only plain text streams incrementally. Apple's framework can stream partial structured snapshots, but tsfm's native layer doesn't expose that yet.
 :::
 
 ### Chat: Structured Output
@@ -419,7 +419,7 @@ const person = JSON.parse(response.choices[0].message.content!);
 // { name: "Alice", age: 28, city: "Seattle" }
 ```
 
-The JSON schema is converted to Apple's native generation schema format at runtime. The model uses constrained sampling to guarantee valid output — no retry or validation needed.
+The JSON schema is converted to Apple's native generation schema format at runtime. The model uses constrained sampling to guarantee valid output, so no retry or validation is needed.
 
 ### Chat: Tool Calling
 
@@ -490,11 +490,11 @@ Under the hood, tool calling uses structured output with a discriminated schema.
 
 | Param | Maps to |
 | --- | --- |
-| `temperature` | `GenerationOptions.temperature` |
+| `temperature` | `GenerationOptions.temperature`. Values above 1 are clamped to 1 with a warning, since OpenAI accepts 0 to 2 and Foundation Models accepts 0 to 1 |
 | `max_tokens` / `max_completion_tokens` | `GenerationOptions.maximumResponseTokens` (`max_completion_tokens` takes priority) |
 | `top_p` | `SamplingMode.random({ probabilityThreshold })` |
 | `seed` | `SamplingMode.random({ seed })` |
-| `reasoning_effort` | `GenerationOptions.reasoningLevel` (Private Cloud Compute only; see [above](#private-cloud-compute)) |
+| `reasoning_effort` | `GenerationOptions.reasoningLevel` (Private Cloud Compute only, see [above](#private-cloud-compute)) |
 
 ```ts
 const response = await client.chat.completions.create({
@@ -549,11 +549,11 @@ const client = new Client();
 client.close();
 ```
 
-Each `create()` call manages its own session lifecycle internally — sessions are created from the messages array and disposed after the response completes (or after streaming finishes).
+Each `create()` call manages its own session lifecycle internally: sessions are created from the messages array and disposed after the response completes (or after streaming finishes).
 
 ## What's Next
 
-- [Structured Output](/guide/structured-output) — Schema-based generation with the native SDK
-- [Tools](/guide/tools) — Native tool calling with the `Tool` class
-- [Streaming](/guide/streaming) — Native streaming API
-- [Error Handling](/guide/error-handling) — Full error reference
+- [Structured Output](/guide/structured-output): Schema-based generation with the native SDK
+- [Tools](/guide/tools): Native tool calling with the `Tool` class
+- [Streaming](/guide/streaming): Native streaming API
+- [Error Handling](/guide/error-handling): Full error reference

@@ -8,6 +8,8 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeNetworkError,
   PrivateCloudComputeEntitlementError,
+  SystemPressureError,
+  ServiceCrashedError,
 } from "../../../src/errors.js";
 import type { ChatCompletionCreateParams } from "../../../src/compat/types.js";
 import { SamplingMode } from "../../../src/options.js";
@@ -29,6 +31,18 @@ describe("mapParams", () => {
   it("maps temperature to GenerationOptions.temperature", () => {
     const result = mapParams({ temperature: 0.7 });
     expect(result.temperature).toBe(0.7);
+  });
+
+  it("clamps a temperature above 1, which OpenAI accepts up to 2, and warns", () => {
+    expect(mapParams({ temperature: 1.5 }).temperature).toBe(1);
+    expect(mapParams({ temperature: 2 }).temperature).toBe(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("clamped to 1"));
+  });
+
+  it("leaves a temperature within 0 to 1 alone and silent", () => {
+    expect(mapParams({ temperature: 0 }).temperature).toBe(0);
+    expect(mapParams({ temperature: 1 }).temperature).toBe(1);
+    expect(console.warn).not.toHaveBeenCalled();
   });
 
   it("maps max_tokens to maximumResponseTokens", () => {
@@ -166,9 +180,9 @@ describe("mapParams", () => {
   });
 
   it.each([
-    ["a string", "yes", /"stream_options" must be an object; got string/],
-    ["a number", 3, /"stream_options" must be an object; got number/],
-    ["an array", ["include_usage"], /"stream_options" must be an object; got an array/],
+    ["a string", "yes", /"stream_options" must be an object, got string/],
+    ["a number", 3, /"stream_options" must be an object, got number/],
+    ["an array", ["include_usage"], /"stream_options" must be an object, got an array/],
   ])("warns when stream_options is %s", (_name, value, message) => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: value } as never);
@@ -191,7 +205,7 @@ describe("mapParams", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: { include_usage: "true" } } as never);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringMatching(/"stream_options.include_usage" must be a boolean; got string/),
+      expect.stringMatching(/"stream_options.include_usage" must be a boolean, got string/),
     );
     warn.mockRestore();
   });
@@ -239,6 +253,8 @@ describe("mapParams", () => {
     ["PrivateCloudComputeNetworkError", new PrivateCloudComputeNetworkError(), 503],
     ["PrivateCloudComputeEntitlementError", new PrivateCloudComputeEntitlementError(), 403],
     ["RateLimitedError", new RateLimitedError(), 429],
+    ["SystemPressureError", new SystemPressureError("CriticalMemoryPressure"), 503],
+    ["ServiceCrashedError", new ServiceCrashedError(), 503],
   ])("gives %s an HTTP status, so a proxy doesn't answer 500", (_name, err, status) => {
     expect(compatStatusFor(err)).toBe(status);
     expect(() => throwAsCompatError(err)).toThrow(

@@ -3,7 +3,7 @@
  * Foundation Models bridge (native/libFoundationModels.dylib).
  *
  * The addon does the unsafe parts in C. Native objects arrive as opaque
- * handles; passing the wrong kind, or one already released, throws instead of
+ * handles. Passing the wrong kind, or one already released, throws instead of
  * reaching Swift. Strings are checked and copied, and native callbacks reach
  * JavaScript only while it can receive them. See native/addon/tsfm_addon.c.
  */
@@ -44,7 +44,7 @@ export interface TextResult {
 
 export interface StructuredResult {
   status: number;
-  /** The generated content on success; the caller owns it. */
+  /** The generated content on success. The caller owns it. */
   content: NativePointer | null;
   /** The error message on failure. */
   message: string | null;
@@ -217,7 +217,7 @@ export interface NativeFunctions {
    * Creates a tool. `onCall` receives each call's arguments (the caller owns
    * the content) and an id to answer with FMBridgedToolFinishCall or
    * FMBridgedToolFailCall. A cancellation notification has null content, the
-   * same call id, and `cancelled: true`; it must not be answered.
+   * same call id, and `cancelled: true`. It must not be answered.
    */
   FMBridgedToolCreate(
     name: string,
@@ -237,7 +237,7 @@ export interface NativeFunctions {
   FMRequestCancel(request: RequestHandle): void;
   /** Drops JavaScript's reference to a native object. Idempotent. */
   FMRelease(handle: NativePointer | null): void;
-  /** Cuts in-flight requests and tools off from JavaScript; for process exit. */
+  /** Cuts in-flight requests and tools off from JavaScript, for process exit. */
   FMShutdown(): void;
 }
 

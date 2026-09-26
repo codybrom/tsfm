@@ -50,7 +50,7 @@ export function buildToolInstructions(tools: ChatCompletionTool[]): string {
  *
  * All tool parameters are merged into a single `ToolArguments` schema.
  * If multiple tools share the same parameter name, their schemas must be
- * identical — otherwise an error is thrown to prevent silent conflicts.
+ * identical. Otherwise an error is thrown to prevent silent conflicts.
  *
  * Throws if duplicate tool names are provided or if multiple tools define
  * the same parameter name with different schemas.

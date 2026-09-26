@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-beta.1] - 2026-09-19
 
-The first 1.0 beta. It publishes under npm's `beta` tag (`npm install tsfm-sdk@beta`); `latest` stays on 0.5 until 1.0.0.
+The first 1.0 beta. It publishes under npm's `beta` tag (`npm install tsfm-sdk@beta`), and `latest` stays on 0.5 until 1.0.0.
 
 tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and typed errors for the macOS 27 framework, and still runs on macOS 26. On macOS 26, features that need macOS 27 report a clear reason instead of working. It replaces koffi with tsfm's own Node-API addon, so tsfm has no runtime dependencies, and makes the native layer much harder to crash. See the [migration guide](https://tsfm.dev/guide/migrating-to-1) for the changes that affect existing code.
 
@@ -18,7 +18,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - **Breaking:** `streamResponse()` returns a `ResponseStream`. It iterates text deltas as before, can be iterated once, and adds `.usage` once finished and a `collect()` method.
 - **Breaking:** a request may make at most 32 tool calls by default. Past `maximumToolCalls` it fails with `ToolCallLimitExceededError` instead of calling another tool.
 - A tool's `args` are released once its `call()` settles, instead of waiting for garbage collection. Read what you need from them before `call()` returns or rejects.
-- **Breaking:** `GenerationErrorCode` is a regular `enum` instead of a `const enum`. Comparisons still work; it now exists at runtime.
+- **Breaking:** `GenerationErrorCode` is a regular `enum` instead of a `const enum`. Comparisons still work, and it now exists at runtime.
 - **Breaking:** on macOS 27, regex guides are checked against what the on-device model supports before a request is sent. Unsupported syntax, such as character classes like `[a-z]`, throws `UnsupportedGuideError` naming the construct and, where there is one, a replacement. Private Cloud Compute requests aren't checked, because PCC supports more.
 - Errors from the macOS 27 framework map to typed errors instead of `GenerationError` with code 255.
 - A schema the framework can't build, such as one with an undefined reference, throws `InvalidGenerationSchemaError` instead of `GenerationError` with code 255.
@@ -27,7 +27,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - tsfm no longer installs SIGINT or SIGTERM handlers. A library shouldn't change how its host handles signals: a server draining on SIGTERM was killed by tsfm's re-raise, or ran its own handler twice. Sessions are still released on `exit`, and a process that dies from a signal is safe: the addon never lets a native callback reach JavaScript that's gone.
 - Chat and Responses APIs: `response.created` and `response.in_progress` events carry `status: "in_progress"`, as OpenAI's do.
 - A session rejects a tool listed twice, or two tools with one name, with `FoundationModelsError`.
-- `SamplingMode` objects built by hand are validated like `SamplingMode.random()` output when a request is sent: `top` must be a positive integer and `seed` a non-negative integer up to `Number.MAX_SAFE_INTEGER`; the bridge silently dropped values it couldn't read.
+- `SamplingMode` objects built by hand are validated like `SamplingMode.random()` output when a request is sent: `top` must be a positive integer and `seed` a non-negative integer up to `Number.MAX_SAFE_INTEGER`. The bridge silently dropped values it couldn't read.
 - The stream idle timeout rejects with `GenerationError` instead of a plain `Error`.
 - Emitted JavaScript `target` configured to `ES2022` (with `ES2024` and `ESNext.Disposable` library types) for broad compatibility across runtimes, bundlers, and IDE language servers.
 - JavaScript reaches the bridge through tsfm's own Node-API addon, `native/tsfm.node`, instead of koffi. tsfm has no runtime dependencies, so npm no longer warns about koffi's install script. Native objects are type-tagged handles: passing the wrong kind, a released one, or a non-string where a string belongs throws instead of reaching native code, and native callbacks can't reach JavaScript after a stream is dropped, a tool is disposed or the process exits. Node-API is ABI-stable, so the one bundled build works on every supported Node version.
@@ -36,7 +36,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 - Tools receive a per-invocation `ToolCallContext` with an `AbortSignal`. Pass it to `fetch()` or other cancellable APIs to stop work when the request is cancelled or the tool is disposed. Existing one-argument tool implementations remain supported. Cancellation cannot forcibly stop code that ignores the signal.
 - Token usage (macOS 27): `Response.usage` and `ResponseStream.usage` for a request, and `session.usage` for the whole session, with input, cached, output and reasoning token counts. `null` on macOS 26.
-- `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`; the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
+- `toolCallingMode` (`"allowed"`, `"required"` or `"disallowed"`, and the last two need macOS 27) and `maximumToolCalls` in `GenerationOptions`.
 - `includeSchemaInPrompt` in `GenerationOptions` (default `true`): controls whether structured schema definitions are injected into the prompt text, allowing callers to omit schema text when already known to save tokens.
 - `PrivateCloudComputeLanguageModel` for Apple's server model: a 32K context, reasoning, and a daily quota. It's opt-in, needs macOS 27, and needs a host signed with Apple's PCC entitlement. Includes availability (with missing-entitlement and requires-newer-OS reasons), `waitUntilAvailable()`, `quotaUsage`, `contextSize()`, `capabilities`, `supportedLanguages()` and `supportsLocale()`. Sessions and `fromTranscript()` accept it as their `model`. `supportedLanguages()` and `supportsLocale()` are asynchronous on PCC (Apple defined them `async throws` there), unlike the synchronous versions on `SystemLanguageModel`.
 - `supportsLocale()` on both `SystemLanguageModel` and `PrivateCloudComputeLanguageModel` defaults to the host machine's current locale when called without arguments.
@@ -48,7 +48,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - Chat and Responses APIs accept `"system"` and `"pcc"`, the model ids Apple's `fm serve` uses, as aliases of `"SystemLanguageModel"` and `"PrivateCloudComputeLanguageModel"`. `"pcc"` used to fall back silently to the on-device model.
 - `npx tsfm doctor` reports whether a machine can run tsfm and why not, and notes how to agree to the `fm` CLI's license (`sudo fm license`) if not already agreed. It only reads system configuration, and never agrees on your behalf.
 - New errors: `InvalidArgumentError`, `TimeoutError`, `UnsupportedCapabilityError`, `UnsupportedTranscriptContentError`, `ToolCallLimitExceededError`, `SystemPressureError`, `TranscriptMutationWhileRespondingError`, `FailRequestError`, `RequestFailedByToolError`, `PrivateCloudComputeNetworkError`, `PrivateCloudComputeQuotaExceededError`, `PrivateCloudComputeUnavailableError` and `PrivateCloudComputeEntitlementError`.
-- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities` (macOS 27; `null` on macOS 26).
+- `SystemLanguageModel.variant` (e.g. `"AFM 3 Core Advanced"`) and `capabilities` (macOS 27, and `null` on macOS 26).
 - `UnsupportedCapabilityError.minimumRequiredMacOS`: `27` when a macOS 27 feature is used on macOS 26, so an app can fall back instead of crashing.
 - Transcripts support `reasoning` entries, plus the `contextOptions` and `metadata` fields.
 - Chat and Responses APIs:
@@ -60,6 +60,9 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Fixed
 
+- `tsfm doctor` no longer shows a green check when the model reports itself available but has a 0-token context. In that state every request fails, even though `isAvailable()` says yes.
+- More of the model manager's errors get a specific class instead of "unknown error". Insufficient system resources throws `SystemPressureError`, and a crashed inference provider throws `ServiceCrashedError`. Every model manager code is now recognized in each spelling the framework uses.
+- `RateLimitedError.resetDate` is when the on-device rate limit resets, if the framework says. Needs macOS 27.
 - Stream cancellation and early iterator exit now wait for the terminal native callback before starting the next queued request. Reusing a session while its cancelled generation was still unwinding could crash the host.
 - Concurrent sessions sharing a tool now enforce independent `maximumToolCalls` budgets. Disposing one session releases only its own tool registrations.
 - Cancelling a stream while a tool was pending, reusing the session, and then completing or disposing the old tool could crash Node. Cancellation now removes the tool's native continuation, so late results are ignored. One-shot requests cancelled during a tool call reject with `CancelledError` without waiting for JavaScript's tool to finish.
@@ -99,7 +102,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - `quotaUsage` throws `FoundationModelsError` if the bridge returns quota JSON it can't parse, instead of a raw `SyntaxError`.
 - Chat and Responses APIs release the transcript they built when the session can't be created, instead of leaving it to the garbage collector.
 - Prototype pollution in prompt inputs: properties on prompt objects (e.g. `{ text: "..." }`) could inherit `attachments` or `text` from `Object.prototype`. Explicit `Object.hasOwn()` checks now guard against prototype pollution.
-- Stream cancellation tracks the active native request handle. `session.cancel()` signals the native request immediately; stream cleanup releases the handle and the session's queue lock.
+- Stream cancellation tracks the active native request handle. `session.cancel()` signals the native request immediately. Stream cleanup releases the handle and the session's queue lock.
 
 ## [0.5.1] - 2026-09-18
 
@@ -137,20 +140,20 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Added
 
-- `generable()` — declarative typed schema builder for structured output with full TypeScript type inference, the equivalent of the Python SDK's `@generable` decorator
-- `SystemLanguageModel.contextSize` — read the model's context window size (back-deployed from macOS 26.4 SDK)
-- `SystemLanguageModel.tokenCount()` — count the tokens a prompt, instruction set, tool list, schema, or transcript consumes against the context window. Asynchronous, requires a macOS 26.4+ runtime.
-- Prompt attachments — every method taking a prompt now accepts `{ text, attachments }` as well as a string. Requires macOS 27 and a native library built against the macOS 27 SDK; until then each attachment is refused with a `PromptAttachmentError` naming the reason.
-- `SystemLanguageModel.supportedLanguages` — list supported language codes
-- `SystemLanguageModel.supportsLocale()` — check if a specific locale is supported
-- `LanguageModelSession.prewarm()` — preload model resources and optionally cache a prompt prefix to reduce first-response latency
-- `GeneratedContent.dispose()` / `Symbol.dispose` — explicit resource cleanup for structured output results, with `FinalizationRegistry` auto-cleanup as a safety net
-- `Transcript.dispose()` / `Symbol.dispose` — release the C object behind a standalone transcript from `fromJson()` / `fromDict()`, with `FinalizationRegistry` auto-cleanup as a safety net. No-op for the transcript reached through `session.transcript`, which the session frees.
-- `GeneratedContent.toObject<T>()` — pass the shape the schema guarantees instead of asserting at the call site. Defaults to `JsonObject`, so existing calls are unaffected.
-- `NativeTypeName` type export — compound array type names (`"array<string>"`, `"array<integer>"`, etc.) for use with `GenerationSchema.property()`
-- `decodeString()` — decode a C string pointer without freeing it, for use in callbacks where the C side owns the memory
+- `generable()`: declarative typed schema builder for structured output with full TypeScript type inference, the equivalent of the Python SDK's `@generable` decorator
+- `SystemLanguageModel.contextSize`: read the model's context window size (back-deployed from macOS 26.4 SDK)
+- `SystemLanguageModel.tokenCount()`: count the tokens a prompt, instruction set, tool list, schema, or transcript consumes against the context window. Asynchronous, requires a macOS 26.4+ runtime.
+- Prompt attachments: every method taking a prompt now accepts `{ text, attachments }` as well as a string. Requires macOS 27 and a native library built against the macOS 27 SDK. Until then each attachment is refused with a `PromptAttachmentError` naming the reason.
+- `SystemLanguageModel.supportedLanguages`: list supported language codes
+- `SystemLanguageModel.supportsLocale()`: check if a specific locale is supported
+- `LanguageModelSession.prewarm()`: preload model resources and optionally cache a prompt prefix to reduce first-response latency
+- `GeneratedContent.dispose()` / `Symbol.dispose`: explicit resource cleanup for structured output results, with `FinalizationRegistry` auto-cleanup as a safety net
+- `Transcript.dispose()` / `Symbol.dispose`: release the C object behind a standalone transcript from `fromJson()` / `fromDict()`, with `FinalizationRegistry` auto-cleanup as a safety net. No-op for the transcript reached through `session.transcript`, which the session frees.
+- `GeneratedContent.toObject<T>()`: pass the shape the schema guarantees instead of asserting at the call site. Defaults to `JsonObject`, so existing calls are unaffected.
+- `NativeTypeName` type export: compound array type names (`"array<string>"`, `"array<integer>"`, etc.) for use with `GenerationSchema.property()`
+- `decodeString()`: decode a C string pointer without freeing it, for use in callbacks where the C side owns the memory
 - `Tool.onCall` now receives parsed arguments as a second parameter: `(toolName, args)` instead of `(toolName)`
-- Input validation: `temperature` must be ≥ 0, `maximumResponseTokens` must be a positive integer — both throw immediately on invalid values
+- Input validation: `temperature` must be ≥ 0 and `maximumResponseTokens` must be a positive integer, and both throw immediately on invalid values
 - Explicit FFI type casts (`as NativePointer`, `as boolean`, etc.) at all C call sites
 - 3 new examples: `contact-card` (nested generable schemas), `email-triage` (JSON Schema + streaming + tools), `journal` (tools + transcript persistence)
 - ESLint: `no-floating-promises` and `no-console` for `src/`, `no-eval` and `no-debugger` globally
@@ -167,19 +170,19 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - Stream idle timeout (30s) prevents permanent hangs when native callbacks stop firing. Armed between snapshots rather than after a tool-call snapshot, since the artifact it originally keyed on does not occur.
 - Disposed session methods (`respond`, `respondWithSchema`, `respondWithJsonSchema`, `streamResponse`) now throw `FoundationModelsError` immediately instead of calling into freed native memory
 - `FinalizationRegistry` callbacks across all classes now log warnings via `console.warn` instead of silently swallowing errors
-- Better error message when `libFoundationModels.dylib` is not found — lists all searched paths and suggests `npm run build`
+- Better error message when `libFoundationModels.dylib` is not found. It lists all searched paths and suggests `npm run build`
 - Streaming iterator now resets the session (`FMLanguageModelSessionReset`) on early `break` to prevent stalled subsequent calls
 
 ### Changed
 
 - Declare `generable()` property maps with `satisfies Record<string, PropertyDef>` (or inline them at the call). Assigning them to a plain `const` first widens `optional: true` to `boolean`, and `InferSchema` then marks every property required. The bundled examples show the pattern.
 - **Breaking:** `engines.node` raised from `>=20` to `>=24`. Installing on Node 20 or 22 no longer works.
-- `koffi` upgraded from `^2.15.1` to `^3.1.5`. This is the runtime FFI dependency, and its marshalling of null C strings differs from 2.x — see the streaming fix above.
+- `koffi` upgraded from `^2.15.1` to `^3.1.5`. This is the runtime FFI dependency, and its marshalling of null C strings differs from 2.x (see the streaming fix above).
 - Development toolchain moved to TypeScript 7 (`@typescript/native`, with 6.0.2 available as `tsc6`), `openai` 7, `@types/node` 26, and ESLint 10.
 - Building the dylib from source now requires **Xcode 26.4+**, the first SDK that declares `SystemLanguageModel.contextSize`. The bundled prebuilt library is unaffected.
 - `generable()` array properties now use compound type names (`"array<string>"`, `"array<Name>"`) matching the Python SDK's C bridge convention
-- `GenerationSchema.property()` rejects bare `"array"` type — use compound form like `"array<string>"` or use `generable()` for automatic type resolution
-- Prettier scope widened from `src/` to entire repo (excluding `*.md`); added `.prettierignore`
+- `GenerationSchema.property()` rejects bare `"array"` type, so use compound form like `"array<string>"` or use `generable()` for automatic type resolution
+- Prettier scope widened from `src/` to entire repo (excluding `*.md`), and added `.prettierignore`
 - Standardized "Apple Foundation Models" terminology (dropped possessive "'s") across docs and config
 - README license section rewritten with copyright notice and Apple trademark disclaimer
 - `docs/tsconfig.json` added for VitePress theme type checking
@@ -189,21 +192,21 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Added
 
-- `Tool.onCall` — optional callback that fires at the start of each tool invocation, before `call()` runs. Useful for showing UI indicators while the model waits for tool results.
+- `Tool.onCall`: optional callback that fires at the start of each tool invocation, before `call()` runs. Useful for showing UI indicators while the model waits for tool results.
 
 ## [0.3.0] - 2026-03-11
 
 ### Added
 
-- **Chat & Responses API layer** (`tsfm-sdk/chat`) — industry-standard Chat-style and Responses-style APIs
+- **Chat & Responses API layer** (`tsfm-sdk/chat`): industry-standard Chat-style and Responses-style APIs
   - **Chat Completions API** (`client.chat.completions.create()`) with full message history, streaming, structured output (`json_schema`), and tool calling
-  - **Responses API** (`client.responses.create()`) — string or structured input, function tools, and streaming via `ResponseStream`
-  - Parameter mapping: `temperature`, `max_tokens`/`max_completion_tokens`, `top_p`, `seed` → native `GenerationOptions`; unsupported params warned at runtime
+  - **Responses API** (`client.responses.create()`): string or structured input, function tools, and streaming via `ResponseStream`
+  - Parameter mapping: `temperature`, `max_tokens`/`max_completion_tokens`, `top_p`, `seed` → native `GenerationOptions`, and unsupported params warned at runtime
   - Error mapping: `ExceededContextWindowSizeError` → `finish_reason: "length"`, `GuardrailViolationError` → `finish_reason: "content_filter"`, `RefusalError` → `message.refusal`, `RateLimitedError` → HTTP 429
   - `Stream` and `ResponseStream` async iterables with `toReadableStream()`, `close()`, `Symbol.dispose`, and `FinalizationRegistry` cleanup
   - Tool calling via structured output with `$defs`/`$ref` schemas to prevent parameter name collisions
   - JSON key reordering utility to match schema-defined property order
-- `ServiceCrashedError` — detects crashed `generativeexperiencesd` service and provides recovery instructions
+- `ServiceCrashedError`: detects crashed `generativeexperiencesd` service and provides recovery instructions
 - `Symbol.dispose` support on `SystemLanguageModel`, `LanguageModelSession`, `Tool`, and `Client` for TC39 Explicit Resource Management
 - Typed transcript entries: `TranscriptEntry`, `TranscriptContent`, `TranscriptTextContent`, `TranscriptStructuredContent`, `TranscriptToolCall`, `TranscriptEntryRole` types and `transcript.entries()` method
 - `JsonSchema` and `JsonObject` exported types
@@ -231,7 +234,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 - Docs site visual overhaul: brand colors shifted to teal, Apple-style typography and font rendering, WCAG AA contrast fixes
 - Landing page redesigned with code examples and Chat API showcase
 - Swift-equivalent references extracted into caption-style info boxes across all guide pages
-- Code blocks now word-wrap; inline code uses inherited text color with subtle background
+- Code blocks now word-wrap, and inline code uses inherited text color with subtle background
 - All guide pages updated with Apple conventions terminology alignment
 
 ## [0.2.3] - 2026-03-10
@@ -288,7 +291,7 @@ tsfm 1.0 adds token usage, tool-calling modes, opt-in Private Cloud Compute, and
 
 ### Fixed
 
-- Critical memory leak in all string-returning C functions — `koffi`'s `str` return type was copying strings but discarding the original pointer before it could be freed
+- Critical memory leak in all string-returning C functions: `koffi`'s `str` return type was copying strings but discarding the original pointer before it could be freed
 
 ### Removed
 

@@ -68,7 +68,7 @@ dispose(): void
 
 ### `supportedLanguages`
 
-Returns the language identifiers the model supports, as minimal BCP 47 language tags. Some carry a region where the model distinguishes one (e.g. `["en-GB", "en-AU", "fr-CA", "es-US", "de", "ja", "zh-TW"]`); they are languages, not full locales.
+Returns the language identifiers the model supports, as minimal BCP 47 language tags. Some carry a region where the model distinguishes one (e.g. `["en-GB", "en-AU", "fr-CA", "es-US", "de", "ja", "zh-TW"]`). They are languages, not full locales.
 
 ```ts
 readonly supportedLanguages: string[]
@@ -76,19 +76,21 @@ readonly supportedLanguages: string[]
 
 ### `contextSize`
 
-The maximum number of tokens the model's context window can hold. All input — instructions, prompts, tool definitions, and responses — counts against this limit.
+The maximum number of tokens the model's context window can hold. All input (instructions, prompts, tool definitions, and responses) counts against this limit.
 
 ```ts
 readonly contextSize: number
 ```
 
-The size is per host and per model version, so read it rather than assuming it. Apple's documentation gives 4,096 tokens; tsfm measured 8,192 on macOS 27.0.
+The size is per host and per model version, so read it rather than assuming it. Apple's documentation gives 4,096 tokens. On macOS 27.0, tsfm measured 8,192 with AFM 3 Core Advanced and 4,096 with AFM 3 Core. It's the budget for the whole session, not one prompt: instructions, tools, schemas, history and output all share it.
+
+It reads `0` when the system is refusing to run the model (see [`SystemPressureError`](/guide/error-handling#systempressureerror)), so `contextSize > 0` doubles as a health check.
 
 ### `variant` <Badge type="warning" text="macOS 27" />
 
 The on-device model's variant, e.g. `"AFM 3 Core Advanced"`, or `null` on macOS 26.
 
-There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Apple advises re-testing prompts against a new one. `variant` is how you tell which one you're running against.
+There have been three on-device model versions so far (macOS 26.0–26.3, 26.4 and 27.0), and Apple advises re-testing prompts against a new one. `variant` is how you tell which one you're running against on macOS 27: AFM 3 Core, or AFM 3 Core Advanced on the Macs that support it. You can't choose between them. See [Model variants](/guide/model-configuration#model-variants).
 
 ```ts
 readonly variant: string | null
@@ -96,7 +98,7 @@ readonly variant: string | null
 
 ### `capabilities` <Badge type="warning" text="macOS 27" />
 
-What the model can do, or `null` on macOS 26. Apple doesn't publish the set, which is why this property exists: read it rather than hard-coding it. On macOS 27.0 tsfm observed `"vision"`, `"toolCalling"` and `"guidedGeneration"`, and not `"reasoning"`.
+What the model can do, or `null` on macOS 26. On macOS 27.0 with AFM 3 Core, tsfm observes `"vision"`, `"toolCalling"` and `"guidedGeneration"`, and not `"reasoning"`.
 
 ```ts
 readonly capabilities: ("vision" | "toolCalling" | "guidedGeneration" | "reasoning")[] | null
@@ -119,7 +121,7 @@ type TokenCountInput =
   | { transcript: Transcript };
 ```
 
-Exactly one field applies per call — the C bridge exposes a separate entry point
+Exactly one field applies per call, because the C bridge exposes a separate entry point
 for each kind of input:
 
 ```ts
@@ -130,7 +132,7 @@ await model.tokenCount({ schema: ContactCard.schema });
 await model.tokenCount({ transcript: session.transcript });
 ```
 
-Useful for staying inside `contextSize` before sending a request — tool
+Useful for staying inside `contextSize` before sending a request. Tool
 definitions and schemas are often larger than they look. Measured against the
 on-device model, a five-word prompt costs 15 tokens while a single-argument
 tool definition costs 83.

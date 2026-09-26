@@ -6,24 +6,31 @@ TSFM is **<u>not</u>** a browser library or a cloud API. TSFM requires Node.js �
 
 You might use TSFM for CLI tools, local dev tooling, Electron apps, automation scripts or small Mac-native services written in TypeScript.
 
+## What the On-Device Model Is For
+
+The on-device model is small and built for focused tasks: summarizing,
+extracting entities, classifying, rewriting, short dialog. It isn't a chatbot with broad world
+knowledge. When it needs current, private or app-specific information, give it
+[tools](/guide/tools). A narrow prompt with a schema and a few tools works much better than an
+open-ended agent with dozens. All requests stay on the Mac, work offline and need no API key.
+
 ## Requirements
 
-- **macOS 26** or later, Apple Silicon. A few features need macOS 27; see below.
+- **macOS 26** or later, Apple Silicon. Some features are only available on macOS 26.4+ or macOS 27 (see below).
 - **Apple Intelligence** enabled in System Settings
 - **Node.js 24+**
 
 ### macOS 26 and macOS 27
 
-tsfm runs on both. Features built on macOS 27 APIs don't crash on macOS 26: each
-reports a clear reason your app can check.
+tsfm runs on both. Features built on newer APIs won't crash on macOS 26, but will return `null` or reports a clear unavailablity reason your app can check.
 
 | Feature | On macOS 26 |
 | --- | --- |
-| Token usage (`response.usage`, `session.usage`) | `null` |
+| Token usage (`response.usage`, `session.usage`) | Responds `null` |
 | `toolCallingMode` `"required"` or `"disallowed"` | Throws `UnsupportedCapabilityError` with `minimumRequiredMacOS: 27` |
-| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS`; using it throws `UnsupportedCapabilityError` |
+| [Private Cloud Compute](/guide/private-cloud-compute) | `isAvailable()` reports `REQUIRES_NEWER_OS` and throws `UnsupportedCapabilityError` |
 | [Prompt attachments](/api/language-model-session#prompt-attachments) | Throws `PromptAttachmentError` with `reason: "unsupported-os"` |
-| `model.variant`, `model.capabilities` | `null` |
+| `model.variant`, `model.capabilities` | Responds `null` |
 | `model.tokenCount()` (needs macOS 26.4) | On 26.0–26.3, rejects with `UnsupportedCapabilityError` with `minimumRequiredMacOS: 26.4` |
 
 Everything else works on both, including text, streaming, structured output,
@@ -59,7 +66,7 @@ npx tsfm doctor
 
 It reports the macOS version, whether the native library loads, the on-device
 model's availability and variant, and Private Cloud Compute availability. It only
-reads; it doesn't change anything.
+reads. It doesn't change anything.
 
 ## Quick Start
 
@@ -83,7 +90,7 @@ model.dispose();
 
 ## Key Concepts
 
-**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework is the API for the language models behind it. As of macOS 27 it exposes three model paths: **`SystemLanguageModel`**, the on-device model that runs on Macs, iPhones and iPads with no network; **`PrivateCloudComputeLanguageModel`**, Apple's larger server model; and any model that conforms to the **`LanguageModel`** protocol, which Apple's own `coreai-models` and `foundation-models-utilities` packages use to plug in other models. tsfm covers the first two.
+**Apple Intelligence** refers to Apple's suite of generative AI features (Siri, Writing Tools, Image Playground, and more). The **Foundation Models** framework is the API for the language models behind it. As of macOS 27 it exposes three model paths: **`SystemLanguageModel`** (the on-device model that runs on Macs, iPhones and iPads with no network), **`PrivateCloudComputeLanguageModel`** (Apple's larger server model), and any model that conforms to the **`LanguageModel`** protocol, which Apple's own `coreai-models` and `foundation-models-utilities` packages use to plug in other models. tsfm covers the first two.
 
 tsfm follows the Swift framework closely in its concepts and most of its names, so [Apple's documentation](https://developer.apple.com/documentation/FoundationModels) is a good reference for how the model behaves. It is not a one-to-one port: some methods, option names and error semantics differ, and parts of the framework aren't exposed. See [Differences from the Swift API](#differences-from-the-swift-api) and [What tsfm doesn't expose](#what-tsfm-doesnt-expose) below.
 
@@ -95,13 +102,13 @@ tsfm follows the Swift framework closely in its concepts and most of its names, 
 
 ## Where To Go From Here
 
-- [Model Configuration](/guide/model-configuration) — Use cases, guardrails, availability
-- [Sessions](/guide/sessions) — Creating and using sessions
-- [Streaming](/guide/streaming) — Token-by-token response streaming
-- [Structured Outputs](/guide/structured-output) — Typed generation with dictionary or JSON schemas
-- [Tools](/guide/tools) — Function calling
-- [Error Handling](/guide/error-handling) — Error types and recovery
-- [Chat API Compatibility](/guide/chat-api) — Drop-in Chat API compatible interface
+- [Model Configuration](/guide/model-configuration): Use cases, guardrails, availability
+- [Sessions](/guide/sessions): Creating and using sessions
+- [Streaming](/guide/streaming): Token-by-token response streaming
+- [Structured Outputs](/guide/structured-output): Typed generation with dictionary or JSON schemas
+- [Tools](/guide/tools): Function calling
+- [Error Handling](/guide/error-handling): Error types and recovery
+- [Chat API Compatibility](/guide/chat-api): Drop-in Chat API compatible interface
 
 ## Differences from the Swift API
 
@@ -110,18 +117,18 @@ Where tsfm and the Swift framework do the same thing differently:
 | Swift | tsfm | Note |
 | --- | --- | --- |
 | `respond(to:generating:)` / `respond(to:schema:)` | `respondWithSchema()` / `respondWithJsonSchema()` | Two methods instead of a generic parameter. |
-| A tool that throws ends the request: `respond()` rethrows the error | A tool that throws sends the message back to the model and the request continues | Throw `FailRequestError` from `call()` to get Apple's behavior; the request then rejects with `RequestFailedByToolError`. |
+| A tool that throws ends the request: `respond()` rethrows the error | A tool that throws sends the message back to the model and the request continues | Throw `FailRequestError` from `call()` to get Foundation Models' behavior. The request then rejects with `RequestFailedByToolError`. |
 | `reasoningLevel` on `ContextOptions` | `reasoningLevel` in `GenerationOptions` | One options object. |
 | Guides `maximumCount`, `minimumCount`, `pattern` | `maxItems`, `minItems`, `regex` | Named after JSON Schema. |
-| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary; the exported JSON is Apple's. |
-| No counterpart | `cancel()` also clears tsfm's own request state | Both cancel the native task; tsfm additionally drops its active request and unblocks a waiting stream reader. |
+| Transcript roles `instructions`, `prompt`, `response`, `toolCalls`, `toolOutput` | `instructions`, `user`, `response`, `tool`, `reasoning` | tsfm's `entries()` vocabulary. The exported JSON is Apple's. |
+| No counterpart | `cancel()` also clears tsfm's own request state | Both cancel the native task. tsfm additionally drops its active request and unblocks a waiting stream reader. |
 | Macros `@Generable` and `@Guide` | `generable()` and `GenerationGuide` | Runtime builders instead of compile-time macros. |
 
 ## What tsfm doesn't expose
 
-The framework has these; tsfm doesn't, as of 1.0:
+The framework has these, but tsfm doesn't, as of 1.0:
 
-- Streaming partial structured snapshots (`streamResponse(to:generating:)`, macOS 26+). tsfm streams text only; structured output is buffered until complete.
+- Streaming partial structured snapshots (`streamResponse(to:generating:)`, macOS 26+). tsfm streams text only. Structured output is buffered until complete.
 - Dynamic profiles and dynamic instructions (macOS 27), and the history-transform hooks built on them.
 - The `LanguageModel` protocol for custom models.
 - `transcriptErrorHandlingPolicy`.
@@ -132,7 +139,7 @@ The framework has these; tsfm doesn't, as of 1.0:
 - Mutating `Transcript.history`. tsfm transcripts are read, exported and restored, not edited in place.
 - `Response.rawContent` and `Response.transcriptEntries`.
 
-Skills, as used in Apple's utilities package, aren't framework API; they're a pattern built on tools. You can build the same thing today with tools and `anyOf` guides.
+Skills, as used in Apple's utilities package, aren't framework API. They're a pattern built on tools. You can build the same thing today with tools and `anyOf` guides.
 
 ## Building from Source
 

@@ -13,7 +13,7 @@ export type CompatModel = SystemLanguageModel | PrivateCloudComputeLanguageModel
 /**
  * Every accepted `model` value. `"system"` and `"pcc"` are the ids Apple's
  * `fm serve` uses for the same two models, so a client written for it selects
- * the model it meant; responses still report the canonical name.
+ * the model it meant. Responses still report the canonical name.
  */
 const MODELS = new Map<string, CompatModelName>([
   [SYSTEM_MODEL, SYSTEM_MODEL],
@@ -50,7 +50,7 @@ const EFFORT_TO_REASONING_LEVEL = new Map<string, ReasoningLevel | null>([
 /**
  * Maps an OpenAI reasoning effort to a tsfm `reasoningLevel`.
  *
- * Only Private Cloud Compute reasons; for the on-device model the effort is
+ * Only Private Cloud Compute reasons. For the on-device model the effort is
  * warned about and ignored. `"none"` leaves the level unset.
  */
 export function mapReasoningEffort(
@@ -61,8 +61,8 @@ export function mapReasoningEffort(
   if (effort == null) return undefined;
   if (model !== PCC_MODEL) {
     console.warn(
-      `[tsfm compat] Parameter "${paramName}" needs model "${PCC_MODEL}"; ` +
-        `the on-device model doesn't reason. It will be ignored.`,
+      `[tsfm compat] Parameter "${paramName}" needs model "${PCC_MODEL}". ` +
+        `The on-device model doesn't reason. It will be ignored.`,
     );
     return undefined;
   }

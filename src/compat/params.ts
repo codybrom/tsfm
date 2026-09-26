@@ -33,7 +33,7 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
  * Emits console.warn for unsupported params and unknown model names.
  *
  * `reasoning_effort` maps to `reasoningLevel` when `model` is
- * `"PrivateCloudComputeLanguageModel"`; the on-device model doesn't reason.
+ * `"PrivateCloudComputeLanguageModel"`. The on-device model doesn't reason.
  */
 /**
  * A caller's params, with only their own properties. Request objects arrive as
@@ -48,6 +48,23 @@ export function ownParams<T extends object>(params: T): T {
   // didn't send would still find a polluted one. This copy has no prototype,
   // so a missing key reads as undefined.
   return Object.assign(Object.create(null) as T, params);
+}
+
+/**
+ * The temperature to hand to the on-device model. Chat Completions and
+ * Responses accept 0 to 2, and Foundation Models accepts 0 to 1, so a value
+ * above 1 is clamped rather than failing a request the OpenAI API would
+ * serve. Anything else, a negative or a non-number, is left for
+ * serializeOptions to reject.
+ */
+export function mapTemperature(temperature: number): number {
+  if (typeof temperature === "number" && temperature > 1) {
+    console.warn(
+      `[tsfm compat] Parameter "temperature" value ${temperature} is above the on-device model's maximum of 1. It will be clamped to 1.`,
+    );
+    return 1;
+  }
+  return temperature;
 }
 
 export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationOptions {
@@ -65,7 +82,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
 
   // temperature — independent of sampling mode
   if (params.temperature != null) {
-    options.temperature = params.temperature;
+    options.temperature = mapTemperature(params.temperature);
   }
 
   // max_completion_tokens takes priority over max_tokens
@@ -108,7 +125,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
     (typeof rawStreamOptions !== "object" || Array.isArray(rawStreamOptions))
   ) {
     console.warn(
-      `[tsfm compat] Parameter "stream_options" must be an object; got ${Array.isArray(rawStreamOptions) ? "an array" : typeof rawStreamOptions}. It will be ignored.`,
+      `[tsfm compat] Parameter "stream_options" must be an object, got ${Array.isArray(rawStreamOptions) ? "an array" : typeof rawStreamOptions}. It will be ignored.`,
     );
   } else if (rawStreamOptions) {
     const streamOptions = ownParams(rawStreamOptions) as Record<string, unknown>;
@@ -119,7 +136,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
       typeof streamOptions.include_usage !== "boolean"
     ) {
       console.warn(
-        `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean; got ${typeof streamOptions.include_usage}. It will be ignored.`,
+        `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean, got ${typeof streamOptions.include_usage}. It will be ignored.`,
       );
     }
     for (const key of Object.keys(streamOptions)) {

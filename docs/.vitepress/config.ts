@@ -1,4 +1,5 @@
 import { defineConfig } from "vitepress";
+import footnote from "markdown-it-footnote";
 import svgLoader from "vite-svg-loader";
 import { generateLlmsTxt, generateLlmTxt, generateLlmsFullTxt } from "./generate-llms";
 import type { Plugin } from "vite";
@@ -90,6 +91,12 @@ export default defineConfig({
   cleanUrls: true,
   sitemap: {
     hostname: "https://tsfm.dev",
+  },
+
+  markdown: {
+    config(md) {
+      md.use(footnote);
+    },
   },
 
   vite: {
