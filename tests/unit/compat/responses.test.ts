@@ -344,6 +344,20 @@ describe("Responses API compat layer", () => {
       client.close();
     });
 
+    it("clamps a temperature above 1 instead of failing the request", async () => {
+      simulateRespondSuccess("test");
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const client = new Client();
+      await client.responses.create({ input: "test", temperature: 1.5 });
+
+      const optionsJson = mockFns.FMLanguageModelSessionRespond.mock.calls[0][2] as string;
+      expect(JSON.parse(optionsJson)).toMatchObject({ temperature: 1 });
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("clamped to 1"));
+      warnSpy.mockRestore();
+      client.close();
+    });
+
     it("passes max_output_tokens through", async () => {
       simulateRespondSuccess("test");
 

@@ -490,7 +490,7 @@ Under the hood, tool calling uses structured output with a discriminated schema.
 
 | Param | Maps to |
 | --- | --- |
-| `temperature` | `GenerationOptions.temperature` |
+| `temperature` | `GenerationOptions.temperature`. Values above 1 are clamped to 1 with a warning, since OpenAI accepts 0 to 2 and Foundation Models accepts 0 to 1 |
 | `max_tokens` / `max_completion_tokens` | `GenerationOptions.maximumResponseTokens` (`max_completion_tokens` takes priority) |
 | `top_p` | `SamplingMode.random({ probabilityThreshold })` |
 | `seed` | `SamplingMode.random({ seed })` |

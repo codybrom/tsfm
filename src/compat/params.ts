@@ -50,6 +50,23 @@ export function ownParams<T extends object>(params: T): T {
   return Object.assign(Object.create(null) as T, params);
 }
 
+/**
+ * The temperature to hand to the on-device model. Chat Completions and
+ * Responses accept 0 to 2, and Foundation Models accepts 0 to 1, so a value
+ * above 1 is clamped rather than failing a request the OpenAI API would
+ * serve. Anything else, a negative or a non-number, is left for
+ * serializeOptions to reject.
+ */
+export function mapTemperature(temperature: number): number {
+  if (typeof temperature === "number" && temperature > 1) {
+    console.warn(
+      `[tsfm compat] Parameter "temperature" value ${temperature} is above the on-device model's maximum of 1. It will be clamped to 1.`,
+    );
+    return 1;
+  }
+  return temperature;
+}
+
 export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationOptions {
   const params = ownParams(raw);
   const options: GenerationOptions = {};
@@ -65,7 +82,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
 
   // temperature — independent of sampling mode
   if (params.temperature != null) {
-    options.temperature = params.temperature;
+    options.temperature = mapTemperature(params.temperature);
   }
 
   // max_completion_tokens takes priority over max_tokens

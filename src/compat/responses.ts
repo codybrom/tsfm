@@ -3,7 +3,7 @@ import { LanguageModelSession } from "../session.js";
 import { Transcript } from "../transcript.js";
 import type { JsonObject } from "../schema.js";
 import { SamplingMode, type GenerationOptions } from "../options.js";
-import { ownParams } from "./params.js";
+import { mapTemperature, ownParams } from "./params.js";
 import type { Usage, ResponseStream as ModelResponseStream } from "../response.js";
 import {
   ExceededContextWindowSizeError,
@@ -159,7 +159,7 @@ function mapResponseParams(raw: ResponseCreateParams): GenerationOptions {
     );
   }
 
-  if (params.temperature != null) options.temperature = params.temperature;
+  if (params.temperature != null) options.temperature = mapTemperature(params.temperature);
   if (params.max_output_tokens != null) options.maximumResponseTokens = params.max_output_tokens;
 
   const topP = params.top_p ?? undefined;

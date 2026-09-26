@@ -33,6 +33,18 @@ describe("mapParams", () => {
 
   it("maps max_tokens to maximumResponseTokens", () => {
     const result = mapParams({ max_tokens: 512 });
+  it("clamps a temperature above 1, which OpenAI accepts up to 2, and warns", () => {
+    expect(mapParams({ temperature: 1.5 }).temperature).toBe(1);
+    expect(mapParams({ temperature: 2 }).temperature).toBe(1);
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("clamped to 1"));
+  });
+
+  it("leaves a temperature within 0 to 1 alone and silent", () => {
+    expect(mapParams({ temperature: 0 }).temperature).toBe(0);
+    expect(mapParams({ temperature: 1 }).temperature).toBe(1);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
     expect(result.maximumResponseTokens).toBe(512);
   });
 

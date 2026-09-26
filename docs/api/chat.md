@@ -65,7 +65,7 @@ create(params: ResponseCreateParams & { stream: true }): Promise<ResponseStream>
 | `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `instructions` | `string` | No | System instructions |
 | `stream` | `boolean` | No | Enable streaming |
-| `temperature` | `number` | No | Sampling temperature |
+| `temperature` | `number` | No | Sampling temperature. Foundation Models accepts 0 to 1, so a value above 1 is clamped to 1 with a warning |
 | `max_output_tokens` | `number` | No | Maximum response tokens |
 | `top_p` | `number` | No | Probability threshold for sampling |
 | `seed` | `number` | No | Random seed for reproducibility |
@@ -335,8 +335,8 @@ Request parameters for `create()`.
 | `model` | `string` | No | `"SystemLanguageModel"` (default) or `"PrivateCloudComputeLanguageModel"`; `"system"` and `"pcc"`, the ids Apple's `fm serve` uses, are aliases. Other names warn and use the on-device model. |
 | `stream` | `boolean` | No | Enable streaming |
 | `stream_options` | `{ include_usage?: boolean }` | No | With `include_usage`, the stream ends with a chunk that carries `usage` |
-| `reasoning_effort` | `string` | No | Maps to `reasoningLevel` for Private Cloud Compute; ignored with a warning for the on-device model |
-| `temperature` | `number` | No | Sampling temperature |
+| `reasoning_effort` | `string` | No | Maps to `reasoningLevel` for Private Cloud Compute, and is ignored with a warning for the on-device model |
+| `temperature` | `number` | No | Sampling temperature. Foundation Models accepts 0 to 1, so a value above 1 is clamped to 1 with a warning |
 | `max_tokens` | `number` | No | Maximum response tokens |
 | `max_completion_tokens` | `number` | No | Same as `max_tokens` (takes priority) |
 | `top_p` | `number` | No | Probability threshold for sampling |
