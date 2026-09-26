@@ -8,6 +8,8 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeNetworkError,
   PrivateCloudComputeEntitlementError,
+  SystemPressureError,
+  ServiceCrashedError,
 } from "../errors.js";
 
 /**
@@ -86,7 +88,9 @@ export function compatStatusFor(err: unknown): number | null {
   }
   if (
     err instanceof PrivateCloudComputeUnavailableError ||
-    err instanceof PrivateCloudComputeNetworkError
+    err instanceof PrivateCloudComputeNetworkError ||
+    err instanceof SystemPressureError ||
+    err instanceof ServiceCrashedError
   ) {
     return 503;
   }

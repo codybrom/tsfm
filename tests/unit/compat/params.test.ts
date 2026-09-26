@@ -8,6 +8,8 @@ import {
   PrivateCloudComputeUnavailableError,
   PrivateCloudComputeNetworkError,
   PrivateCloudComputeEntitlementError,
+  SystemPressureError,
+  ServiceCrashedError,
 } from "../../../src/errors.js";
 import type { ChatCompletionCreateParams } from "../../../src/compat/types.js";
 import { SamplingMode } from "../../../src/options.js";
@@ -251,6 +253,8 @@ describe("mapParams", () => {
     ["PrivateCloudComputeNetworkError", new PrivateCloudComputeNetworkError(), 503],
     ["PrivateCloudComputeEntitlementError", new PrivateCloudComputeEntitlementError(), 403],
     ["RateLimitedError", new RateLimitedError(), 429],
+    ["SystemPressureError", new SystemPressureError("CriticalMemoryPressure"), 503],
+    ["ServiceCrashedError", new ServiceCrashedError(), 503],
   ])("gives %s an HTTP status, so a proxy doesn't answer 500", (_name, err, status) => {
     expect(compatStatusFor(err)).toBe(status);
     expect(() => throwAsCompatError(err)).toThrow(
