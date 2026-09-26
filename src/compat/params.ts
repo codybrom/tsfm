@@ -33,7 +33,7 @@ const UNSUPPORTED_PARAMS: ReadonlyArray<keyof ChatCompletionCreateParams> = [
  * Emits console.warn for unsupported params and unknown model names.
  *
  * `reasoning_effort` maps to `reasoningLevel` when `model` is
- * `"PrivateCloudComputeLanguageModel"`; the on-device model doesn't reason.
+ * `"PrivateCloudComputeLanguageModel"`. The on-device model doesn't reason.
  */
 /**
  * A caller's params, with only their own properties. Request objects arrive as
@@ -125,7 +125,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
     (typeof rawStreamOptions !== "object" || Array.isArray(rawStreamOptions))
   ) {
     console.warn(
-      `[tsfm compat] Parameter "stream_options" must be an object; got ${Array.isArray(rawStreamOptions) ? "an array" : typeof rawStreamOptions}. It will be ignored.`,
+      `[tsfm compat] Parameter "stream_options" must be an object, got ${Array.isArray(rawStreamOptions) ? "an array" : typeof rawStreamOptions}. It will be ignored.`,
     );
   } else if (rawStreamOptions) {
     const streamOptions = ownParams(rawStreamOptions) as Record<string, unknown>;
@@ -136,7 +136,7 @@ export function mapParams(raw: Partial<ChatCompletionCreateParams>): GenerationO
       typeof streamOptions.include_usage !== "boolean"
     ) {
       console.warn(
-        `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean; got ${typeof streamOptions.include_usage}. It will be ignored.`,
+        `[tsfm compat] Parameter "stream_options.include_usage" must be a boolean, got ${typeof streamOptions.include_usage}. It will be ignored.`,
       );
     }
     for (const key of Object.keys(streamOptions)) {

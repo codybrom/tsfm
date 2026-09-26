@@ -7,8 +7,8 @@ import type { GenerationSchema } from "./schema.js";
 import type { Transcript } from "./transcript.js";
 
 /**
- * What to measure with `tokenCount()`. Exactly one field applies per call —
- * the C bridge exposes a separate entry point for each kind of input.
+ * What to measure with `tokenCount()`. Exactly one field applies per call.
+ * The C bridge exposes a separate entry point for each kind of input.
  */
 export type TokenCountInput =
   | { prompt: string | PromptInput }
@@ -48,13 +48,13 @@ export interface AvailabilityResult {
 /**
  * Represents the on-device Apple Intelligence language model.
  *
- * Create one instance per application; it is safe to reuse across multiple
+ * Create one instance per application. It is safe to reuse across multiple
  * `LanguageModelSession` instances. Call `isAvailable()` before creating a
  * session, or use `waitUntilAvailable()` in server processes where the model
  * may still be downloading at startup.
  *
- * Call `dispose()` when done to release the underlying C object immediately;
- * otherwise it is released automatically when the instance is garbage collected.
+ * Call `dispose()` when done to release the underlying C object immediately.
+ * Otherwise it is released automatically when the instance is garbage collected.
  */
 export class SystemLanguageModel {
   /** @internal */
@@ -81,9 +81,9 @@ export class SystemLanguageModel {
    * Check whether the model is ready for generation.
    *
    * When `available` is `false`, `reason` indicates why:
-   * - `APPLE_INTELLIGENCE_NOT_ENABLED` / `DEVICE_NOT_ELIGIBLE` — permanent;
-   *   retrying will not help.
-   * - `MODEL_NOT_READY` — transient; the model is still downloading or
+   * - `APPLE_INTELLIGENCE_NOT_ENABLED` / `DEVICE_NOT_ELIGIBLE`: permanent.
+   *   Retrying will not help.
+   * - `MODEL_NOT_READY`: transient. The model is still downloading or
    *   warming up. Use `waitUntilAvailable()` to poll.
    */
   isAvailable(): AvailabilityResult {
@@ -100,11 +100,11 @@ export class SystemLanguageModel {
   /**
    * Resolves when the model becomes available, or once the timeout expires.
    * Useful in long-lived server processes where the model may not be ready
-   * immediately at startup. Only retries on MODEL_NOT_READY; permanent
+   * immediately at startup. Only retries on MODEL_NOT_READY. Permanent
    * failures (device ineligible, Apple Intelligence disabled) return immediately.
    *
    * @param timeoutMs  Maximum time to wait in milliseconds (default: 30000)
-   * @returns The availability result — check `.available` to confirm success
+   * @returns The availability result. Check `.available` to confirm success
    */
   async waitUntilAvailable(timeoutMs = 30_000, intervalMs = 500): Promise<AvailabilityResult> {
     const deadline = Date.now() + timeoutMs;
@@ -122,7 +122,7 @@ export class SystemLanguageModel {
 
   /**
    * The maximum number of tokens the model's context window can hold.
-   * All input — instructions, prompts, tool definitions, and responses — counts
+   * All input (instructions, prompts, tool definitions, and responses) counts
    * against this limit.
    */
   get contextSize(): number {
@@ -134,7 +134,7 @@ export class SystemLanguageModel {
     return getFunctions().FMSystemLanguageModelGetVariantName(this._model());
   }
 
-  /** What the model can do, or `null` on macOS 26. Apple doesn't publish the set; read it rather than assuming it. */
+  /** What the model can do, or `null` on macOS 26. Foundation Models doesn't publish the set. Read it rather than assuming it. */
   get capabilities(): ModelCapability[] | null {
     return parseCapabilities(
       getFunctions().FMSystemLanguageModelGetCapabilitiesJSON(this._model()),
@@ -157,8 +157,8 @@ export class SystemLanguageModel {
   }
 
   /**
-   * Check whether the model supports a locale; the host's current locale when
-   * none is given, as Apple's `supportsLocale(_:)` defaults to `.current`.
+   * Check whether the model supports a locale (the host's current locale when
+   * none is given), as the Foundation Models `supportsLocale(_:)` defaults to `.current`.
    *
    * @param localeIdentifier  A BCP 47 / ICU locale string (e.g. `"en_US"`, `"ja_JP"`)
    */

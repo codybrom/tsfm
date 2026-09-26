@@ -374,8 +374,9 @@ describe("statusToError", () => {
     // 1041 is a failure to reach the model manager, so it must not read as a
     // rejected schema, which would send the caller to rewrite a correct one.
     const err = statusToError(255, detail);
-    expect(err).toBeInstanceOf(InvalidGenerationSchemaError);
-    expect(err.message).toContain("rejected the schema");
+    expect(err).toBeInstanceOf(GenerationError);
+    expect(err).not.toBeInstanceOf(InvalidGenerationSchemaError);
+    expect(err.message).toContain(detail);
   });
 
   it("maps code 255 without crash signature to generic GenerationError", () => {
@@ -454,7 +455,7 @@ describe("error hierarchy", () => {
 
   it("ServiceCrashedError includes recovery instructions", () => {
     const err = new ServiceCrashedError();
-    expect(err.message).toContain("retry with a new session");
+    expect(err.message).toContain("Retry with a new session");
     expect(err.message).toContain("log out and back in");
     expect(err.message).not.toContain("launchctl");
   });

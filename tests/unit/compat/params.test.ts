@@ -33,8 +33,6 @@ describe("mapParams", () => {
     expect(result.temperature).toBe(0.7);
   });
 
-  it("maps max_tokens to maximumResponseTokens", () => {
-    const result = mapParams({ max_tokens: 512 });
   it("clamps a temperature above 1, which OpenAI accepts up to 2, and warns", () => {
     expect(mapParams({ temperature: 1.5 }).temperature).toBe(1);
     expect(mapParams({ temperature: 2 }).temperature).toBe(1);
@@ -47,6 +45,8 @@ describe("mapParams", () => {
     expect(console.warn).not.toHaveBeenCalled();
   });
 
+  it("maps max_tokens to maximumResponseTokens", () => {
+    const result = mapParams({ max_tokens: 512 });
     expect(result.maximumResponseTokens).toBe(512);
   });
 
@@ -180,9 +180,9 @@ describe("mapParams", () => {
   });
 
   it.each([
-    ["a string", "yes", /"stream_options" must be an object; got string/],
-    ["a number", 3, /"stream_options" must be an object; got number/],
-    ["an array", ["include_usage"], /"stream_options" must be an object; got an array/],
+    ["a string", "yes", /"stream_options" must be an object, got string/],
+    ["a number", 3, /"stream_options" must be an object, got number/],
+    ["an array", ["include_usage"], /"stream_options" must be an object, got an array/],
   ])("warns when stream_options is %s", (_name, value, message) => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: value } as never);
@@ -205,7 +205,7 @@ describe("mapParams", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     mapParams({ stream_options: { include_usage: "true" } } as never);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringMatching(/"stream_options.include_usage" must be a boolean; got string/),
+      expect.stringMatching(/"stream_options.include_usage" must be a boolean, got string/),
     );
     warn.mockRestore();
   });

@@ -49,10 +49,10 @@ export type PromptAttachmentFailure =
 /**
  * Raised when an attachment cannot be added to a prompt.
  *
- * Attachments need macOS 27; on macOS 26 the reason is `unsupported-os`. A path
+ * Attachments need macOS 27. On macOS 26 the reason is `unsupported-os`. A path
  * that isn't an existing file is `not-found`, thrown before native code runs.
  * tsfm's bridge always builds with the macOS 27 SDK, so `unsupported-sdk` is
- * never reported by it; the member stays for compatibility with 0.5, and for a
+ * never reported by it. The member stays for compatibility with 0.5, and for a
  * library built from upstream's bridge without that SDK.
  */
 export class PromptAttachmentError extends FoundationModelsError {
@@ -295,7 +295,7 @@ export class FailRequestError extends Error {
 /**
  * A tool failed the request by throwing `FailRequestError`. `toolName` and
  * `cause` (the `FailRequestError`) are set for requests made through a
- * session; with `toolCallingMode: "required"`, this is how a tool ends the
+ * session. With `toolCallingMode: "required"`, this is how a tool ends the
  * request.
  * A tool shared by concurrent sessions preserves each failed invocation's
  * original error as the corresponding request's `cause`.
@@ -345,7 +345,7 @@ export class SystemPressureError extends GenerationError {
     const message =
       `The system can't run the model right now` +
       (state ? ` (${state}${cause ? `: ${cause}` : ""})` : "") +
-      ". It usually recovers on its own within a few minutes; retry then, " +
+      ". It usually recovers on its own within a few minutes. Retry then, " +
       "and free memory if it persists.";
     super(detail ? `${message}\n\nOriginal error: ${detail}` : message);
     this.name = "SystemPressureError";
@@ -365,7 +365,7 @@ export class ServiceCrashedError extends GenerationError {
     // is on, so the recovery is to wait, or log out or restart.
     const recovery =
       "The Apple Intelligence service has crashed. macOS restarts it, usually within a few " +
-      "minutes; retry with a new session then. If it keeps failing, log out and back in, or " +
+      "minutes. Retry with a new session then. If it keeps failing, log out and back in, or " +
       "restart the Mac.";
     super(detail ? `${recovery}\n\nOriginal error: ${detail}` : recovery);
     this.name = "ServiceCrashedError";
